@@ -671,7 +671,7 @@ Cursor changes are instant: crosshair for draw tools, `grab`/`grabbing` for pan.
 1. `Canvas.tsx` mounting four absolutely positioned layers plus the text overlay div, identically sized, correct z-order.
 2. `resizeCanvas` with DPR capping. Handle window resize, preserving the viewport centre (`E-10`).
 3. `Renderer` class with dirty flags and the single rAF loop. Visibility handling. Unmount cleanup.
-4. `screenToCanvas` / `canvasToScreen` in `packages/shared/src/geometry.ts`, using branded types.
+4. ~~`screenToCanvas` / `canvasToScreen` in `packages/shared/src/geometry.ts`~~ — **already shipped in Phase 1.** Import from `@coboard/shared`; do **not** create `features/canvas/geometry/transform.ts`, which the file list below still names. A client-side copy would violate `R-ARCH-007` and `R-COORD-004`. Only genuinely client-only geometry (culling against a DOM-sized viewport) belongs under `features/canvas/geometry/`.
 5. Viewport slice in the Zustand store. `clamp` helper. ±1,000,000 coordinate clamp.
 6. `useWheel` — distinguish pan (`ctrlKey === false`) from zoom (`ctrlKey === true`).
 7. Pointer-anchored zoom. Verify visually: the point under the cursor must not move.
@@ -679,20 +679,28 @@ Cursor changes are instant: crosshair for draw tools, `grab`/`grabbing` for pan.
 9. Zoom controls component and keyboard shortcuts (`Cmd+0`, `Cmd+1`, `Cmd +/-`).
 10. Zoom to fit, including the empty-board case.
 11. Viewport culling with the padding margin.
-12. A debug overlay showing viewport, zoom and visible-object count.
+12. A debug overlay (`?debug=1`) showing viewport, zoom, visible-object count and live frame timing, plus a dev-only `?stress=1` loader for the fixture.
+
+> **Corrections applied during implementation.**
+> - **Geometry lives in `@coboard/shared`** (task 4 above). No `transform.ts` was created.
+> - **A blockout object renderer is required here.** The exit gate measures fps against 10,000 objects, which needs *something* drawn for them, but real stroke rendering is Phase 3 and shapes are Phase 5. Phase 2 draws each object as its tinted bounding box — enough to exercise culling, the once-per-frame transform and style batching honestly. Phase 3 replaces the stroke path.
+> - **Layer 0 (grid) is `[P2]` and was not built.** Layers 1–3 plus the text-overlay div are mounted; the grid slot is reserved so z-order will not shift.
+> - **No router yet.** `App.tsx` renders `<Canvas />` directly. React Router arrives in Phase 7 with the auth guards.
 
 ### Files
 
 ```
 apps/web/src/features/canvas/Canvas.tsx
-apps/web/src/features/canvas/renderer/Renderer.ts
-apps/web/src/features/canvas/renderer/{drawObjects,drawInteraction,drawOverlay}.ts
-apps/web/src/features/canvas/geometry/transform.ts
-apps/web/src/features/canvas/interaction/{machine.ts,useWheel.ts,usePointer.ts}
+apps/web/src/features/canvas/renderer/{Renderer,drawObjects,drawInteraction,drawOverlay,resizeCanvas}.ts
+apps/web/src/features/canvas/geometry/culling.ts        # client-only; transforms come from @coboard/shared
+apps/web/src/features/canvas/interaction/{machine,usePointer,useWheel,useKeyboard}.ts
 apps/web/src/features/canvas/interaction/handlers/pan.ts
+apps/web/src/features/canvas/devFixture.ts
 apps/web/src/components/board/ZoomControls.tsx
+apps/web/src/components/dev/CanvasDebugOverlay.tsx
 apps/web/src/stores/boardStore.ts
-packages/shared/src/geometry.ts
+apps/web/vite.config.ts                                  # dev-only /fixtures middleware
+tests/e2e/{canvas-viewport,canvas-performance}.spec.ts
 ```
 
 ### Tests

@@ -2,7 +2,9 @@
 
 **A real-time collaborative whiteboard.** Multiple people open the same board URL and simultaneously draw freehand strokes, place shapes, write text and drop sticky notes. Every action appears on every other screen within a few hundred milliseconds, with live labelled cursors.
 
-> **Status: Phase 1 complete.** The monorepo, shared package, design tokens and CI gates are in place. The canvas arrives in Phase 2. See [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md).
+> **Status: Phase 2 complete.** Monorepo, shared package, design tokens, CI gates, and the canvas surface with working pan and zoom. Drawing tools arrive in Phase 3. See [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md).
+>
+> Try it: `pnpm dev`, then `http://localhost:5173/?stress=1&debug=1` for the 10,000-object stress board with the frame-timing overlay.
 
 ---
 
