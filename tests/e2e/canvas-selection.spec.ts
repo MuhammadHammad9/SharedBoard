@@ -313,28 +313,33 @@ test('a 1 px line is selectable at 10% zoom — FLOWS E-11', async ({ page }) =>
   }
   await expect(zoomOut).toBeDisabled()
 
-  // Convert the line's canvas midpoint to screen and click near — but not
-  // exactly on — it. Without the 4/zoom tolerance this is unclickable.
+  /*
+   * Convert the line's canvas midpoint to screen and click near — but not
+   * exactly on — it. Without the 4/zoom tolerance this is unclickable.
+   *
+   * The viewport comes from `__coboardViewport`, NOT from the ?debug=1
+   * overlay. The overlay repaints on a 250 ms interval by design, so reading
+   * it straight after a zoom yields a stale pan and a target tens of pixels
+   * off — which is exactly how this test passed locally and failed on CI.
+   */
   const [line] = await objects(page)
   const target = await page.evaluate(
     ([cx, cy]) => {
-      const pan = document
-        .querySelector('[data-testid="dbg-pan"]')!
-        .textContent!.split(',')
-      const zoom =
-        Number.parseFloat(
-          document
-            .querySelector('[data-testid="dbg-zoom"]')!
-            .textContent!.replace('%', ''),
-        ) / 100
-      return {
-        x: cx! * zoom + Number.parseFloat(pan[0]!),
-        y: cy! * zoom + Number.parseFloat(pan[1]!),
-      }
+      const v = (
+        window as unknown as {
+          __coboardViewport: () => { x: number; y: number; zoom: number }
+        }
+      ).__coboardViewport()
+      return { x: cx! * v.zoom + v.x, y: cy! * v.zoom + v.y, zoom: v.zoom }
     },
     [line!.x + line!.width / 2, line!.y + line!.height / 2],
   )
 
+  expect(target.zoom).toBeCloseTo(0.1, 5)
+
+  // 2 screen px off the path. The tolerance is 4 screen px at any zoom, so
+  // this must hit — and at 10% zoom it is 20 canvas units away from a line
+  // one tenth of a screen pixel wide.
   const box = (await (await surface(page)).boundingBox())!
   await page.mouse.click(box.x + target.x, box.y + target.y + 2)
 

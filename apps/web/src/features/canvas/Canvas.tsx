@@ -266,6 +266,13 @@ export function Canvas() {
       // Store-commit counter. The E-07 batching test reads this to prove a
       // 500-object drag is one write per frame, not five hundred.
       w.__coboardVersion = () => boardStore.getState().objectsVersion
+      /*
+       * The LIVE viewport. Tests that need to convert canvas → screen must
+       * read it here and not from the ?debug=1 overlay: that overlay repaints
+       * on a 250 ms interval by design, so reading it right after a zoom gives
+       * a stale pan and a click target tens of pixels off.
+       */
+      w.__coboardViewport = () => ({ ...boardStore.getState().viewport })
     }
 
     return () => {
