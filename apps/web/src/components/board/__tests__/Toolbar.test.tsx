@@ -1,12 +1,19 @@
 /**
- * @vitest-environment jsdom
+ * @vitest-environment happy-dom
  *
  * Toolbar and properties panel — FLOWS §14.2, §14.4, R-STATE-005.
  *
- * The only jsdom suite in the project so far. It is scoped per-file rather
- * than switched on globally: the geometry, renderer and sync suites are pure
- * logic, they run faster in `node`, and a DOM they never touch is a DOM that
- * can hide a missing guard.
+ * The only DOM suite in the project so far. The environment is scoped
+ * per-file rather than switched on globally: the geometry, renderer and sync
+ * suites are pure logic, they run faster in `node`, and a DOM they never touch
+ * is a DOM that can hide a missing guard.
+ *
+ * happy-dom rather than jsdom, and not by preference: jsdom 30 declares
+ * `engines: ^22.22.2 || ^24.15.0 || >=26` and pulls `undici@8`, whose
+ * `require('node:worker_threads').markAsUncloneable` is undefined on the
+ * Node 20 LTS that TRD §1.1 pins and CI runs. It installs and passes on a
+ * Node 22 dev machine, then dies in CI. happy-dom declares `>=20` and has no
+ * undici dependency at all, so the whole class of problem goes away.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -66,8 +73,10 @@ describe('Toolbar — FLOWS §14.2', () => {
 
   it('exposes the active tool through aria-pressed, not colour alone', () => {
     render(<Board />)
-    expect(screen.getByRole('button', { name: 'Select' })).toHaveProperty('ariaPressed', 'true')
-    expect(screen.getByRole('button', { name: 'Pen' })).toHaveProperty('ariaPressed', 'false')
+    // The ATTRIBUTE, not the IDL reflection — the attribute is what assistive
+    // technology reads, and not every DOM implementation reflects it.
+    expect(screen.getByRole('button', { name: 'Select' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Pen' }).getAttribute('aria-pressed')).toBe('false')
   })
 
   it('disables the tools that have no implementation yet', () => {
@@ -187,10 +196,9 @@ describe('PropertiesPanel — FLOWS §14.4', () => {
     await user.click(red)
 
     expect(boardStore.getState().pen.color).toBe(PEN_COLOURS[2])
-    expect(screen.getByRole('button', { name: `Colour ${PEN_COLOURS[2]}` })).toHaveProperty(
-      'ariaPressed',
-      'true',
-    )
+    expect(
+      screen.getByRole('button', { name: `Colour ${PEN_COLOURS[2]}` }).getAttribute('aria-pressed'),
+    ).toBe('true')
   })
 
   it('binds the thickness presets and the slider to the same value', async () => {
