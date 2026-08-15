@@ -19,7 +19,8 @@ async function surface(page: Page) {
 
 /** Total object count, straight off the canvas's own accessible name. */
 async function objectCount(page: Page): Promise<number> {
-  const label = (await page.getByTestId('canvas-surface').getAttribute('aria-label')) ?? ''
+  const label =
+    (await page.getByTestId('canvas-surface').getAttribute('aria-label')) ?? ''
   return Number.parseInt(label.replace(/\D+/g, ''), 10) || 0
 }
 
@@ -64,7 +65,9 @@ test.beforeEach(async ({ page }) => {
   await page.getByTestId('tool-pen').click()
 })
 
-test('the toolbar renders and the pen can be selected — FLOWS §14.2', async ({ page }) => {
+test('the toolbar renders and the pen can be selected — FLOWS §14.2', async ({
+  page,
+}) => {
   await expect(page.getByTestId('toolbar')).toBeVisible()
   await expect(page.getByTestId('tool-pen')).toHaveAttribute('aria-pressed', 'true')
   // The pen's crosshair is the affordance that says "this will draw".
@@ -72,7 +75,10 @@ test('the toolbar renders and the pen can be selected — FLOWS §14.2', async (
 })
 
 test('the properties panel swaps to pen context — FLOWS §14.4', async ({ page }) => {
-  await expect(page.getByTestId('properties-panel')).toHaveAttribute('data-context', 'pen')
+  await expect(page.getByTestId('properties-panel')).toHaveAttribute(
+    'data-context',
+    'pen',
+  )
   await expect(page.getByTestId('pen-properties')).toBeVisible()
 
   // Select with an empty selection hides the panel entirely.
@@ -120,7 +126,8 @@ test('Escape mid-stroke discards it entirely — FLOWS E-09', async ({ page }) =
   const box = (await page.getByTestId('canvas-surface').boundingBox())!
   await page.mouse.move(box.x + 300, box.y + 300)
   await page.mouse.down()
-  for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + 300 + i * 20, box.y + 300 + i * 5)
+  for (let i = 1; i <= 10; i++)
+    await page.mouse.move(box.x + 300 + i * 20, box.y + 300 + i * 5)
 
   await page.keyboard.press('Escape')
   await page.mouse.up()
@@ -176,21 +183,21 @@ test('drawing does NOT repaint the object layer — R-CANVAS-002', async ({ page
   await page.mouse.down()
   const objectPaintsAtStart = await page.evaluate(
     () =>
-      (window as unknown as { __coboardMetrics: () => { objectPaints: number } }).__coboardMetrics()
-        .objectPaints,
+      (
+        window as unknown as { __coboardMetrics: () => { objectPaints: number } }
+      ).__coboardMetrics().objectPaints,
   )
 
   for (let i = 1; i <= 30; i++) {
     await page.mouse.move(box.x + 300 + i * 8, box.y + 300 + Math.sin(i / 3) * 40)
   }
 
-  const mid = await page.evaluate(
-    () =>
-      (
-        window as unknown as {
-          __coboardMetrics: () => { objectPaints: number; interactionPaints: number }
-        }
-      ).__coboardMetrics(),
+  const mid = await page.evaluate(() =>
+    (
+      window as unknown as {
+        __coboardMetrics: () => { objectPaints: number; interactionPaints: number }
+      }
+    ).__coboardMetrics(),
   )
   await page.mouse.up()
 

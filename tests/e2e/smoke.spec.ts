@@ -24,7 +24,10 @@ test('PRD §15 canvas background token is applied in the browser', async ({ page
   await expect(surface).toBeVisible()
   // --color-bg-canvas #FAFAFA — conflict C-7. If this is teal, someone pasted
   // the ui-ux-pro-max generator output over the mandated tokens.
-  await expect(surface.locator('xpath=..')).toHaveCSS('background-color', 'rgb(250, 250, 250)')
+  await expect(surface.locator('xpath=..')).toHaveCSS(
+    'background-color',
+    'rgb(250, 250, 250)',
+  )
 })
 
 test('PRD §15 accent token is applied to board chrome', async ({ page }) => {

@@ -126,7 +126,8 @@ export class Renderer {
    * than handler-to-paint. Repeated calls before a paint keep the earliest.
    */
   noteInput(timeStamp: number): void {
-    if (this.pendingInput < 0 || timeStamp < this.pendingInput) this.pendingInput = timeStamp
+    if (this.pendingInput < 0 || timeStamp < this.pendingInput)
+      this.pendingInput = timeStamp
   }
 
   /** Exposed for tests; the loop calls this itself. */

@@ -13,10 +13,18 @@
  */
 
 /** The board's own infinite coordinate space. Objects are always stored in these. */
-export type CanvasPoint = { readonly x: number; readonly y: number; readonly __brand: 'canvas' }
+export type CanvasPoint = {
+  readonly x: number
+  readonly y: number
+  readonly __brand: 'canvas'
+}
 
 /** Pixel positions in the browser window. Derived, never persisted. */
-export type ScreenPoint = { readonly x: number; readonly y: number; readonly __brand: 'screen' }
+export type ScreenPoint = {
+  readonly x: number
+  readonly y: number
+  readonly __brand: 'screen'
+}
 
 /** The visible rectangle: pan offset plus zoom scale. */
 export interface Viewport {

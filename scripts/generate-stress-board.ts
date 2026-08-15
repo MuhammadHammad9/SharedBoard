@@ -123,8 +123,10 @@ function makeShape(i: number): BoardObject {
     strokeWidth: Math.floor(between(STROKE_WIDTH_MIN, 6)),
     fill: rand() > 0.5 ? pick(PEN_COLOURS) : ('none' as const),
   }
-  if (type === 'rect') return { ...base, type: 'rect', cornerRadius: rand() > 0.6 ? 8 : 0 }
-  if (type === 'arrow') return { ...base, type: 'arrow', arrowStart: false, arrowEnd: true }
+  if (type === 'rect')
+    return { ...base, type: 'rect', cornerRadius: rand() > 0.6 ? 8 : 0 }
+  if (type === 'arrow')
+    return { ...base, type: 'arrow', arrowStart: false, arrowEnd: true }
   return base as BoardObject
 }
 

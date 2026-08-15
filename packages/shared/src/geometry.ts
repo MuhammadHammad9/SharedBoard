@@ -56,7 +56,10 @@ export interface Rect {
 }
 
 export const rectsIntersect = (a: Rect, b: Rect): boolean =>
-  a.x + a.width >= b.x && a.x <= b.x + b.width && a.y + a.height >= b.y && a.y <= b.y + b.height
+  a.x + a.width >= b.x &&
+  a.x <= b.x + b.width &&
+  a.y + a.height >= b.y &&
+  a.y <= b.y + b.height
 
 /** True when `inner` is FULLY contained by `outer` — marquee selection rule. */
 export const rectContains = (outer: Rect, inner: Rect): boolean =>
@@ -143,7 +146,10 @@ export const normalizeRotation = (deg: number): number => ((deg % 360) + 360) % 
  * where the user started and stopped. Each kept point carries its own pressure
  * through unchanged.
  */
-export function simplifyStroke(points: readonly number[], epsilon = SIMPLIFY_EPSILON): number[] {
+export function simplifyStroke(
+  points: readonly number[],
+  epsilon = SIMPLIFY_EPSILON,
+): number[] {
   const stride = STROKE_POINT_STRIDE
   const count = Math.floor(points.length / stride)
   // Two points are already minimal: no interior point exists to discard.
@@ -170,7 +176,14 @@ export function simplifyStroke(points: readonly number[], epsilon = SIMPLIFY_EPS
     let worstIdx = -1
     let worstDistSq = epsilonSq
     for (let i = first + 1; i < last; i++) {
-      const d = distanceToSegmentSq(points[i * stride]!, points[i * stride + 1]!, x1, y1, x2, y2)
+      const d = distanceToSegmentSq(
+        points[i * stride]!,
+        points[i * stride + 1]!,
+        x1,
+        y1,
+        x2,
+        y2,
+      )
       if (d > worstDistSq) {
         worstDistSq = d
         worstIdx = i

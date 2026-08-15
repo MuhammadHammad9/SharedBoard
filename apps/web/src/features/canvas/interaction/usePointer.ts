@@ -104,7 +104,8 @@ export function usePointer(
        * lives. Simplification on commit throws the redundancy away again, so
        * the extra fidelity costs nothing downstream.
        */
-      const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : []
+      const events =
+        typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : []
       if (events.length > 0) {
         for (const ce of events) {
           appendPoint(ce.clientX - rect.left, ce.clientY - rect.top, ce.pressure)

@@ -55,7 +55,11 @@ export function PenProperties() {
 
       <section className="flex flex-col gap-2">
         <h3 className="text-xs font-medium text-muted">Thickness</h3>
-        <div className="flex items-center gap-1" role="group" aria-label="Thickness presets">
+        <div
+          className="flex items-center gap-1"
+          role="group"
+          aria-label="Thickness presets"
+        >
           {WIDTH_PRESETS.map(w => (
             <button
               key={w}
@@ -68,7 +72,9 @@ export function PenProperties() {
                 'flex h-8 flex-1 cursor-pointer items-center justify-center rounded-sm ' +
                 'transition-colors duration-fast ease-standard active:scale-[0.97] ' +
                 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ' +
-                (pen.strokeWidth === w ? 'bg-accent/10 ring-1 ring-accent' : 'hover:bg-subtle')
+                (pen.strokeWidth === w
+                  ? 'bg-accent/10 ring-1 ring-accent'
+                  : 'hover:bg-subtle')
               }
             >
               {/* A dot at the real diameter — the preview IS the value. */}

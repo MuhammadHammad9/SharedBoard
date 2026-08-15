@@ -119,9 +119,12 @@ describe('rect helpers', () => {
 
   it('unions rects and returns null for an empty set', () => {
     expect(unionRects([])).toBeNull()
-    expect(
-      unionRects([a, { x: -50, y: 20, width: 20, height: 200 }]),
-    ).toEqual({ x: -50, y: 0, width: 150, height: 220 })
+    expect(unionRects([a, { x: -50, y: 20, width: 20, height: 200 }])).toEqual({
+      x: -50,
+      y: 0,
+      width: 150,
+      height: 220,
+    })
   })
 })
 

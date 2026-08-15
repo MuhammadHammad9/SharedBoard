@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { POLYLINE_ZOOM_THRESHOLD, type BoardObject, type StrokeObject } from '@coboard/shared'
+import {
+  POLYLINE_ZOOM_THRESHOLD,
+  type BoardObject,
+  type StrokeObject,
+} from '@coboard/shared'
 import { drawStroke, strokePath, strokeStyleKey } from '../shapes/stroke.js'
 import { drawObjects } from '../drawObjects.js'
 
@@ -97,7 +101,13 @@ describe('strokePath — TRD §7.5', () => {
     const { ctx, ops } = recorder()
     strokePath(ctx, [0, 0, 0.5, 20, 20, 0.5, 40, 0, 0.5], true)
 
-    expect(ops).toEqual(['beginPath', 'moveTo(0,0)', 'lineTo(20,20)', 'lineTo(40,0)', 'stroke'])
+    expect(ops).toEqual([
+      'beginPath',
+      'moveTo(0,0)',
+      'lineTo(20,20)',
+      'lineTo(40,0)',
+      'stroke',
+    ])
     expect(ops.some(o => o.startsWith('quad'))).toBe(false)
   })
 
@@ -115,7 +125,16 @@ describe('strokePath — TRD §7.5', () => {
 describe('drawStroke', () => {
   it('sets round caps and joins, and restores globalAlpha', () => {
     const { ctx } = recorder()
-    drawStroke(ctx, { points: [0, 0, 0.5, 10, 10, 0.5], color: '#EF4444', strokeWidth: 8, opacity: 0.5 }, 1)
+    drawStroke(
+      ctx,
+      {
+        points: [0, 0, 0.5, 10, 10, 0.5],
+        color: '#EF4444',
+        strokeWidth: 8,
+        opacity: 0.5,
+      },
+      1,
+    )
     expect(ctx.lineCap).toBe('round')
     expect(ctx.lineJoin).toBe('round')
     expect(ctx.lineWidth).toBe(8)
@@ -127,7 +146,12 @@ describe('drawStroke', () => {
     const { ctx, ops } = recorder()
     drawStroke(
       ctx,
-      { points: [0, 0, 0.5, 10, 10, 0.5, 20, 0, 0.5], color: '#000000', strokeWidth: 1, opacity: 1 },
+      {
+        points: [0, 0, 0.5, 10, 10, 0.5, 20, 0, 0.5],
+        color: '#000000',
+        strokeWidth: 1,
+        opacity: 1,
+      },
       POLYLINE_ZOOM_THRESHOLD - 0.01,
     )
     expect(ops.some(o => o.startsWith('quad'))).toBe(false)

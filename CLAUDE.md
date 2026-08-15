@@ -4,12 +4,12 @@
 >
 > This document tells you **how to work here**. [`RULES.md`](./RULES.md) tells you **what you must not do**. When this file explains a constraint, it cites the rule ID so you can read the binding version.
 
-| Field | Value |
-|---|---|
-| Product | **CoBoard** — real-time collaborative whiteboard |
-| Repository | `MuhammadHammad9/SharedBoard` |
-| Status | Phase 3 of 15 complete — canvas, viewport, pen tool. See `docs/04-IMPLEMENTATION-PLAN.md` |
-| Stack | React 18.3 · TypeScript 5.4 strict · Vite 6 (defect `D-4`) · Zustand 4 · Canvas 2D · Tailwind 3.x · Node 20 · Express 4 · `ws` · PostgreSQL 15 · Prisma 5 · Redis 7 |
+| Field      | Value                                                                                                                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Product    | **CoBoard** — real-time collaborative whiteboard                                                                                                                    |
+| Repository | `MuhammadHammad9/SharedBoard`                                                                                                                                       |
+| Status     | Phase 3 of 15 complete — canvas, viewport, pen tool. See `docs/04-IMPLEMENTATION-PLAN.md`                                                                           |
+| Stack      | React 18.3 · TypeScript 5.4 strict · Vite 6 (defect `D-4`) · Zustand 4 · Canvas 2D · Tailwind 3.x · Node 20 · Express 4 · `ws` · PostgreSQL 15 · Prisma 5 · Redis 7 |
 
 ---
 
@@ -36,13 +36,13 @@ A person who has never seen the app can open a link, type a name, be drawing wit
 
 ## 1.4 The four-document map
 
-| Document | Answers | Read it when |
-|---|---|---|
-| [`docs/01-PRD.md`](./docs/01-PRD.md) | **What** to build, and for whom | You need a requirement ID, a copy string, a budget, or an acceptance criterion |
-| [`docs/02-FLOWS.md`](./docs/02-FLOWS.md) | **Where the user ends up** when they do X on screen A | You are building a screen, a route guard, a state machine, or an edge case |
-| [`docs/03-TRD.md`](./docs/03-TRD.md) | **How** to build it | You need a schema, a protocol message, an algorithm, or a technical decision |
-| [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md) | **In what order**, and what "done" means for each step | You are starting a phase, or you want to know which requirement IDs a task covers |
-| [`RULES.md`](./RULES.md) | **What is forbidden**, and which authority wins a conflict | Always. Especially before adding a dependency or a design decision |
+| Document                                                             | Answers                                                    | Read it when                                                                      |
+| -------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [`docs/01-PRD.md`](./docs/01-PRD.md)                                 | **What** to build, and for whom                            | You need a requirement ID, a copy string, a budget, or an acceptance criterion    |
+| [`docs/02-FLOWS.md`](./docs/02-FLOWS.md)                             | **Where the user ends up** when they do X on screen A      | You are building a screen, a route guard, a state machine, or an edge case        |
+| [`docs/03-TRD.md`](./docs/03-TRD.md)                                 | **How** to build it                                        | You need a schema, a protocol message, an algorithm, or a technical decision      |
+| [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md) | **In what order**, and what "done" means for each step     | You are starting a phase, or you want to know which requirement IDs a task covers |
+| [`RULES.md`](./RULES.md)                                             | **What is forbidden**, and which authority wins a conflict | Always. Especially before adding a dependency or a design decision                |
 
 **Read them in this order on day one:** PRD top to bottom → this file → RULES.md §2 → the implementation plan phase you are starting. Then keep the PRD and the plan open in tabs.
 
@@ -60,18 +60,18 @@ See anti-pattern `A-80`.
 
 Read these before writing anything. Each links its binding rule.
 
-| # | Rule | Why | Rule ID |
-|---|---|---|---|
-| 1 | **Canvas objects never go in React state** | 60 re-renders/second. This is the single most common way this project dies | `R-ARCH-003` |
-| 2 | **Never store screen coordinates** | If a stored coordinate changes when the user pans, that is data corruption | `R-COORD-002` |
-| 3 | **Ops and presence are different things** | Ops are persisted and acknowledged. Presence is never written to the database | `R-SYNC-001` |
-| 4 | **The server is the sole authority on ordering** | Every "which change won?" is answered by a server sequence number, never a client timestamp | `R-ARCH-008` |
-| 5 | **Remote ops never touch your undo stack** | Otherwise undo reverts a teammate's work. Unacceptable | `R-UNDO-001` |
-| 6 | **Persist before ack** | An acknowledged op must be durable, or the zero-loss guarantee is a lie | `R-SYNC-012` |
-| 7 | **Authorize every socket message server-side** | A viewer with the console open will try to forge an op | `R-SEC-001` |
-| 8 | **Exactly one `requestAnimationFrame` loop** | Not one per layer, not one per component | `R-CANVAS-010` |
-| 9 | **A remote cursor must never redraw layer 1** | If moving a mouse in one window drops the frame rate in another, the layering is wrong | `R-CANVAS-002` |
-| 10 | **Specifications outrank design skills** | The precedence ladder is not negotiable in a PR thread | `R-PREC-001` |
+| #   | Rule                                             | Why                                                                                         | Rule ID        |
+| --- | ------------------------------------------------ | ------------------------------------------------------------------------------------------- | -------------- |
+| 1   | **Canvas objects never go in React state**       | 60 re-renders/second. This is the single most common way this project dies                  | `R-ARCH-003`   |
+| 2   | **Never store screen coordinates**               | If a stored coordinate changes when the user pans, that is data corruption                  | `R-COORD-002`  |
+| 3   | **Ops and presence are different things**        | Ops are persisted and acknowledged. Presence is never written to the database               | `R-SYNC-001`   |
+| 4   | **The server is the sole authority on ordering** | Every "which change won?" is answered by a server sequence number, never a client timestamp | `R-ARCH-008`   |
+| 5   | **Remote ops never touch your undo stack**       | Otherwise undo reverts a teammate's work. Unacceptable                                      | `R-UNDO-001`   |
+| 6   | **Persist before ack**                           | An acknowledged op must be durable, or the zero-loss guarantee is a lie                     | `R-SYNC-012`   |
+| 7   | **Authorize every socket message server-side**   | A viewer with the console open will try to forge an op                                      | `R-SEC-001`    |
+| 8   | **Exactly one `requestAnimationFrame` loop**     | Not one per layer, not one per component                                                    | `R-CANVAS-010` |
+| 9   | **A remote cursor must never redraw layer 1**    | If moving a mouse in one window drops the frame rate in another, the layering is wrong      | `R-CANVAS-002` |
+| 10  | **Specifications outrank design skills**         | The precedence ladder is not negotiable in a PR thread                                      | `R-PREC-001`   |
 
 ---
 
@@ -123,11 +123,11 @@ The client has three layers with strict responsibilities. Mixing them is how per
                     └───────────────┘
 ```
 
-| Layer | Technology | Owns | Re-renders React? |
-|---|---|---|---|
-| **UI** | React components | Header, toolbar, panels, modals, toasts | Only on UI-relevant state |
-| **Render** | Plain TS + `requestAnimationFrame` | Drawing pixels | **Never** — reads the store directly via `store.subscribe()` |
-| **Sync** | Plain TS classes | Socket, outbox, sequence numbers, reconnection | Only connection status |
+| Layer      | Technology                         | Owns                                           | Re-renders React?                                            |
+| ---------- | ---------------------------------- | ---------------------------------------------- | ------------------------------------------------------------ |
+| **UI**     | React components                   | Header, toolbar, panels, modals, toasts        | Only on UI-relevant state                                    |
+| **Render** | Plain TS + `requestAnimationFrame` | Drawing pixels                                 | **Never** — reads the store directly via `store.subscribe()` |
+| **Sync**   | Plain TS classes                   | Socket, outbox, sequence numbers, reconnection | Only connection status                                       |
 
 ### The selector rule
 
@@ -143,7 +143,7 @@ When a component genuinely needs object data — the properties panel, for insta
 
 ```ts
 const fill = useBoardStore(s =>
-  s.selection.length === 1 ? s.objects.get(s.selection[0])?.style.fill : undefined
+  s.selection.length === 1 ? s.objects.get(s.selection[0])?.style.fill : undefined,
 )
 ```
 
@@ -288,12 +288,12 @@ apps/server/src/
 
 Four boundaries chosen so people rarely edit the same file — the practical answer to PRD risk `R-9`. Editing a module you do not own needs a heads-up in the PR description (`R-ARCH-006`).
 
-| Module | Owner |
-|---|---|
-| `features/canvas/renderer` | Renderer owner |
-| `features/canvas/interaction` | Interaction owner |
-| `features/sync` | Sync owner |
-| `features/boards` + `features/auth` | Product owner |
+| Module                              | Owner             |
+| ----------------------------------- | ----------------- |
+| `features/canvas/renderer`          | Renderer owner    |
+| `features/canvas/interaction`       | Interaction owner |
+| `features/sync`                     | Sync owner        |
+| `features/boards` + `features/auth` | Product owner     |
 
 ## 4.2 `packages/shared` is not optional
 
@@ -356,25 +356,26 @@ Append `?debug=1` to any board URL. It shows `lastAppliedSeq`, `objects.size` an
   ```
 
   This feels pedantic in week 1 and saves a full day in week 5. PRD risk `R-7` is this exact bug.
+
 - Validate at the boundary with Zod, from `packages/shared/src/schemas`. Reject, never coerce (`R-SEC-003`).
 
 ## 6.2 Naming
 
 The PRD standardizes vocabulary and so does the code. Use these words to mean exactly these things:
 
-| Term | Meaning |
-|---|---|
-| **Board** | One infinite canvas with an ID and URL |
-| **Object** | Anything on the board. Not "shape", not "element" — `object` |
-| **Operation / op** | An atomic immutable change: create, update, delete |
-| **Op log** | The append-only ordered list. The source of truth |
-| **Snapshot** | Materialized state at a sequence number, so we don't replay 50,000 ops |
-| **Session** | One user's connection to one board |
-| **Presence** | Ephemeral live data — cursor, selection, viewport. Never persisted |
-| **Viewport** | Visible rectangle: pan `(x, y)` + `zoom` |
-| **Canvas coordinates** | The board's own infinite space. Objects are always stored in these |
-| **Screen coordinates** | Pixels in the window. **Never stored** |
-| **Room** | Server-side grouping of sessions on one board |
+| Term                   | Meaning                                                                |
+| ---------------------- | ---------------------------------------------------------------------- |
+| **Board**              | One infinite canvas with an ID and URL                                 |
+| **Object**             | Anything on the board. Not "shape", not "element" — `object`           |
+| **Operation / op**     | An atomic immutable change: create, update, delete                     |
+| **Op log**             | The append-only ordered list. The source of truth                      |
+| **Snapshot**           | Materialized state at a sequence number, so we don't replay 50,000 ops |
+| **Session**            | One user's connection to one board                                     |
+| **Presence**           | Ephemeral live data — cursor, selection, viewport. Never persisted     |
+| **Viewport**           | Visible rectangle: pan `(x, y)` + `zoom`                               |
+| **Canvas coordinates** | The board's own infinite space. Objects are always stored in these     |
+| **Screen coordinates** | Pixels in the window. **Never stored**                                 |
+| **Room**               | Server-side grouping of sessions on one board                          |
 
 ## 6.3 Git
 
@@ -391,24 +392,24 @@ The PRD standardizes vocabulary and so does the code. Use these words to mean ex
 
 ## 7.1 Tokens
 
-| Token | Value | Use |
-|---|---|---|
-| `--color-bg-canvas` | `#FAFAFA` | Canvas background |
-| `--color-bg-app` | `#FFFFFF` | Panels, header |
-| `--color-bg-subtle` | `#F4F4F5` | Dashboard background |
-| `--color-border` | `#E4E4E7` | Dividers, panel edges |
-| `--color-text-primary` | `#18181B` | Body text |
-| `--color-text-secondary` | `#71717A` | Metadata, hints |
-| `--color-accent` | `#4F46E5` | Primary buttons, active tool |
-| `--color-danger` | `#DC2626` | Delete, errors |
-| `--color-success` | `#16A34A` | Connected, confirmations |
-| `--color-warning` | `#D97706` | Reconnecting |
-| `--radius-sm` / `md` / `lg` | 4 / 8 / 12 px | Controls / panels / modals |
-| `--shadow-panel` | `0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.06)` | Floating panels |
-| `--space-*` | 4, 8, 12, 16, 24, 32, 48 px | 4 px base scale — never arbitrary |
-| `--font-sans` | `Inter, system-ui, -apple-system, sans-serif` | All UI |
-| `--duration-fast` / `base` / `slow` | 120 / 200 / 320 ms | Micro / standard / modal |
-| `--easing-standard` | `cubic-bezier(0.2, 0, 0, 1)` | Default easing |
+| Token                               | Value                                                   | Use                               |
+| ----------------------------------- | ------------------------------------------------------- | --------------------------------- |
+| `--color-bg-canvas`                 | `#FAFAFA`                                               | Canvas background                 |
+| `--color-bg-app`                    | `#FFFFFF`                                               | Panels, header                    |
+| `--color-bg-subtle`                 | `#F4F4F5`                                               | Dashboard background              |
+| `--color-border`                    | `#E4E4E7`                                               | Dividers, panel edges             |
+| `--color-text-primary`              | `#18181B`                                               | Body text                         |
+| `--color-text-secondary`            | `#71717A`                                               | Metadata, hints                   |
+| `--color-accent`                    | `#4F46E5`                                               | Primary buttons, active tool      |
+| `--color-danger`                    | `#DC2626`                                               | Delete, errors                    |
+| `--color-success`                   | `#16A34A`                                               | Connected, confirmations          |
+| `--color-warning`                   | `#D97706`                                               | Reconnecting                      |
+| `--radius-sm` / `md` / `lg`         | 4 / 8 / 12 px                                           | Controls / panels / modals        |
+| `--shadow-panel`                    | `0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.06)` | Floating panels                   |
+| `--space-*`                         | 4, 8, 12, 16, 24, 32, 48 px                             | 4 px base scale — never arbitrary |
+| `--font-sans`                       | `Inter, system-ui, -apple-system, sans-serif`           | All UI                            |
+| `--duration-fast` / `base` / `slow` | 120 / 200 / 320 ms                                      | Micro / standard / modal          |
+| `--easing-standard`                 | `cubic-bezier(0.2, 0, 0, 1)`                            | Default easing                    |
 
 ## 7.2 Frozen palettes
 
@@ -438,25 +439,33 @@ export default {
   theme: {
     extend: {
       colors: {
-        canvas:  '#FAFAFA',
-        app:     '#FFFFFF',
-        subtle:  '#F4F4F5',
-        border:  '#E4E4E7',
+        canvas: '#FAFAFA',
+        app: '#FFFFFF',
+        subtle: '#F4F4F5',
+        border: '#E4E4E7',
         primary: '#18181B',
-        muted:   '#71717A',
-        accent:  '#4F46E5',
-        danger:  '#DC2626',
+        muted: '#71717A',
+        accent: '#4F46E5',
+        danger: '#DC2626',
         success: '#16A34A',
         warning: '#D97706',
-        presence: { /* the 12 frozen colours */ },
-        sticky:   { /* the 8 frozen colours */ },
+        presence: {/* the 12 frozen colours */},
+        sticky: {/* the 8 frozen colours */},
       },
       borderRadius: { sm: '4px', md: '8px', lg: '12px' },
-      spacing:      { 1:'4px', 2:'8px', 3:'12px', 4:'16px', 6:'24px', 8:'32px', 12:'48px' },
-      fontFamily:   { sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] },
-      boxShadow:    { panel: '0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.06)' },
-      transitionDuration:              { fast: '120ms', base: '200ms', slow: '320ms' },
-      transitionTimingFunction:        { standard: 'cubic-bezier(0.2, 0, 0, 1)' },
+      spacing: {
+        1: '4px',
+        2: '8px',
+        3: '12px',
+        4: '16px',
+        6: '24px',
+        8: '32px',
+        12: '48px',
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] },
+      boxShadow: { panel: '0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.06)' },
+      transitionDuration: { fast: '120ms', base: '200ms', slow: '320ms' },
+      transitionTimingFunction: { standard: 'cubic-bezier(0.2, 0, 0, 1)' },
     },
   },
 }
@@ -529,7 +538,7 @@ PRD §15 mandates `#4F46E5` indigo, `#FAFAFA`, `#18181B` and Inter. **Take the p
 
 ## 8.2 `design-taste-frontend`
 
-**What it is.** An anti-slop skill that reads the brief, infers a design direction, and avoids templated output. Its own header scopes it: *"Landing pages, portfolios, and redesigns. Not dashboards, not data tables, not multi-step product UI."*
+**What it is.** An anti-slop skill that reads the brief, infers a design direction, and avoids templated output. Its own header scopes it: _"Landing pages, portfolios, and redesigns. Not dashboards, not data tables, not multi-step product UI."_
 
 **When to invoke.** Marketing (S-01) in full. Auth zone for typography and colour guidance only.
 
@@ -537,17 +546,17 @@ PRD §15 mandates `#4F46E5` indigo, `#FAFAFA`, `#18181B` and Inter. **Take the p
 
 **Mandatory pre-flight.** State a one-line **Design Read** before generating (`R-SKILL-030`):
 
-> *"Reading this as: product-led SaaS landing for design-conscious collaborators, with a Linear-clean language, leaning toward Tailwind utilities + Inter + restrained motion."*
+> _"Reading this as: product-led SaaS landing for design-conscious collaborators, with a Linear-clean language, leaning toward Tailwind utilities + Inter + restrained motion."_
 
 **The three dials, locked per zone** (`R-SKILL-031`). Do not re-derive these per task:
 
-| Zone | `DESIGN_VARIANCE` | `MOTION_INTENSITY` | `VISUAL_DENSITY` |
-|---|---|---|---|
-| Marketing (S-01) | 7 | 6 | 4 |
-| Auth | 5 | 3 | 4 |
-| Product chrome | 5 | 3 | 5 |
-| Board chrome | 4 | 2 | 6 |
-| System states | 4 | 2 | 3 |
+| Zone             | `DESIGN_VARIANCE` | `MOTION_INTENSITY` | `VISUAL_DENSITY` |
+| ---------------- | ----------------- | ------------------ | ---------------- |
+| Marketing (S-01) | 7                 | 6                  | 4                |
+| Auth             | 5                 | 3                  | 4                |
+| Product chrome   | 5                 | 3                  | 5                |
+| Board chrome     | 4                 | 2                  | 6                |
+| System states    | 4                 | 2                  | 3                |
 
 Board chrome sits lowest on motion because of conflict `C-6`.
 
@@ -599,12 +608,12 @@ Board chrome sits lowest on motion because of conflict `C-6`.
 
 **Not adopted: its GSAP mandate** (`R-SKILL-052`, conflict `C-3`). GSAP + ScrollTrigger is roughly 50 KB against a 250 KB initial budget, for one page. Reproduce its paradigms without it:
 
-| `gpt-taste` paradigm | CoBoard implementation |
-|---|---|
-| ScrollTrigger pinning | `position: sticky` + `IntersectionObserver` |
-| Scrubbing text reveal | CSS scroll-driven animation (`animation-timeline: view()`), `IntersectionObserver` fallback |
-| Image scale and fade on scroll | `IntersectionObserver` toggling a class; `transform`/`opacity` transition |
-| Card stacking | `position: sticky` with incremental `top` offsets |
+| `gpt-taste` paradigm           | CoBoard implementation                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------- |
+| ScrollTrigger pinning          | `position: sticky` + `IntersectionObserver`                                                 |
+| Scrubbing text reveal          | CSS scroll-driven animation (`animation-timeline: view()`), `IntersectionObserver` fallback |
+| Image scale and fade on scroll | `IntersectionObserver` toggling a class; `transform`/`opacity` transition                   |
+| Card stacking                  | `position: sticky` with incremental `top` offsets                                           |
 
 Its `picsum.photos` guidance is for development placeholders only (`R-SKILL-054`).
 
@@ -622,11 +631,11 @@ Its `picsum.photos` guidance is for development placeholders only (`R-SKILL-054`
 
 ```ts
 export const transitions = {
-  spring:       { type: 'spring', stiffness: 300, damping: 24 },
+  spring: { type: 'spring', stiffness: 300, damping: 24 },
   springBouncy: { type: 'spring', stiffness: 500, damping: 15 },
-  springStiff:  { type: 'spring', stiffness: 700, damping: 30 },
-  smooth:       { type: 'tween', duration: 0.3,  ease: 'easeInOut' },
-  snappy:       { type: 'tween', duration: 0.15, ease: [0.25, 0.1, 0.25, 1] },
+  springStiff: { type: 'spring', stiffness: 700, damping: 30 },
+  smooth: { type: 'tween', duration: 0.3, ease: 'easeInOut' },
+  snappy: { type: 'tween', duration: 0.15, ease: [0.25, 0.1, 0.25, 1] },
 } as const
 ```
 
@@ -653,18 +662,18 @@ export const transitions = {
 
 **Operational note.** Invoked with no specific question, this skill replies with a single fixed line and nothing else. **Always invoke it with a concrete question** (`R-SKILL-071`):
 
-> *"Review the toast enter and exit transitions in `components/ui/Toast.tsx`."*
+> _"Review the toast enter and exit transitions in `components/ui/Toast.tsx`."_
 
 **The decision framework — answer in order before writing any animation.**
 
 **1. Should this animate at all?** (`R-MOTION-001`)
 
-| Frequency | Decision |
-|---|---|
-| 100+ times/day — keyboard shortcuts, tool switching, selection, drawing | **No animation. Ever.** |
-| Tens of times/day — hover, list navigation | Remove or drastically reduce |
-| Occasional — modals, drawers, toasts | Standard animation |
-| Rare — onboarding, celebrations | May add delight |
+| Frequency                                                               | Decision                     |
+| ----------------------------------------------------------------------- | ---------------------------- |
+| 100+ times/day — keyboard shortcuts, tool switching, selection, drawing | **No animation. Ever.**      |
+| Tens of times/day — hover, list navigation                              | Remove or drastically reduce |
+| Occasional — modals, drawers, toasts                                    | Standard animation           |
+| Rare — onboarding, celebrations                                         | May add delight              |
 
 This table is why the canvas is a no-decoration zone. A whiteboard's core interactions land squarely in the top row.
 
@@ -675,10 +684,10 @@ This table is why the canvas is a no-decoration zone. A whiteboard's core intera
 Built-in CSS easings are too weak. Project curves (`R-MOTION-012`):
 
 ```css
---ease-out:        cubic-bezier(0.23, 1, 0.32, 1);   /* UI interactions */
---ease-in-out:     cubic-bezier(0.77, 0, 0.175, 1);  /* on-screen movement */
---ease-drawer:     cubic-bezier(0.32, 0.72, 0, 1);   /* iOS-like drawer */
---easing-standard: cubic-bezier(0.2, 0, 0, 1);       /* PRD §15 default */
+--ease-out: cubic-bezier(0.23, 1, 0.32, 1); /* UI interactions */
+--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); /* on-screen movement */
+--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* iOS-like drawer */
+--easing-standard: cubic-bezier(0.2, 0, 0, 1); /* PRD §15 default */
 ```
 
 **4. How fast?** (`R-MOTION-020`) Button press 100–160 ms · tooltips 125–200 ms · dropdowns 150–250 ms · modals and drawers 200–500 ms. **UI animations stay under 300 ms.**
@@ -703,11 +712,11 @@ Built-in CSS easings are too weak. Project curves (`R-MOTION-012`):
 
 **Review format is mandatory** (`R-SKILL-072`). A single markdown table, one row per issue:
 
-| Before | After | Why |
-| --- | --- | --- |
-| `transition: all 300ms` | `transition: transform 200ms ease-out` | Specify exact properties; avoid `all` |
-| `transform: scale(0)` | `transform: scale(0.95); opacity: 0` | Nothing in the real world appears from nothing |
-| `ease-in` on dropdown | `ease-out` with a custom curve | `ease-in` feels sluggish at the moment the user is watching |
+| Before                  | After                                  | Why                                                         |
+| ----------------------- | -------------------------------------- | ----------------------------------------------------------- |
+| `transition: all 300ms` | `transition: transform 200ms ease-out` | Specify exact properties; avoid `all`                       |
+| `transform: scale(0)`   | `transform: scale(0.95); opacity: 0`   | Nothing in the real world appears from nothing              |
+| `ease-in` on dropdown   | `ease-out` with a custom curve         | `ease-in` feels sluggish at the moment the user is watching |
 
 Not a bulleted list. A table.
 
@@ -717,15 +726,15 @@ Not a bulleted list. A table.
 
 Two of the six skills exclude themselves from product UI by their own terms, and CoBoard is roughly 90% product UI. Zoning is how all six stay useful without producing a whiteboard that looks like a marketing site (conflict `C-5`, rule `R-SKILL-010`).
 
-| Zone | Screens | Skills that fire | Forbidden |
-|---|---|---|---|
-| **Marketing** | S-01 | `gpt-taste`, `high-end-visual-design`, `design-taste-frontend`, `ui-ux-pro-max`, `framer-motion-animator` | — |
-| **Auth** | S-02 … S-06 | `ui-ux-pro-max`, `emil-design-eng`, `design-taste-frontend` (type/colour only) | `gpt-taste` |
-| **Product chrome** | S-07, S-08, S-09, S-16 | `ui-ux-pro-max`, `emil-design-eng`, `framer-motion-animator` (lazy) | `gpt-taste`, `high-end-visual-design` |
-| **Board chrome** | S-10 header/toolbar/panels/zoom, S-12 … S-15 | `ui-ux-pro-max`, `emil-design-eng` | `gpt-taste`, `high-end-visual-design`, `framer-motion-animator` |
-| **Canvas** | The 4 layers | **None** — TRD §7 is the only authority | All six |
-| **System states** | S-17 … S-21 | `ui-ux-pro-max`, `emil-design-eng` | `gpt-taste`, `high-end-visual-design` |
-| **Guest** | S-11, S-22 | `ui-ux-pro-max`, `emil-design-eng`, `high-end-visual-design` (join card only) | `gpt-taste` |
+| Zone               | Screens                                      | Skills that fire                                                                                          | Forbidden                                                       |
+| ------------------ | -------------------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| **Marketing**      | S-01                                         | `gpt-taste`, `high-end-visual-design`, `design-taste-frontend`, `ui-ux-pro-max`, `framer-motion-animator` | —                                                               |
+| **Auth**           | S-02 … S-06                                  | `ui-ux-pro-max`, `emil-design-eng`, `design-taste-frontend` (type/colour only)                            | `gpt-taste`                                                     |
+| **Product chrome** | S-07, S-08, S-09, S-16                       | `ui-ux-pro-max`, `emil-design-eng`, `framer-motion-animator` (lazy)                                       | `gpt-taste`, `high-end-visual-design`                           |
+| **Board chrome**   | S-10 header/toolbar/panels/zoom, S-12 … S-15 | `ui-ux-pro-max`, `emil-design-eng`                                                                        | `gpt-taste`, `high-end-visual-design`, `framer-motion-animator` |
+| **Canvas**         | The 4 layers                                 | **None** — TRD §7 is the only authority                                                                   | All six                                                         |
+| **System states**  | S-17 … S-21                                  | `ui-ux-pro-max`, `emil-design-eng`                                                                        | `gpt-taste`, `high-end-visual-design`                           |
+| **Guest**          | S-11, S-22                                   | `ui-ux-pro-max`, `emil-design-eng`, `high-end-visual-design` (join card only)                             | `gpt-taste`                                                     |
 
 Modals belong to the zone of the screen that opens them (`R-SKILL-012`).
 
@@ -777,13 +786,13 @@ The only movement on the canvas is the movement the user is making (`R-MOTION-00
 
 ## 10.3 Library policy
 
-| Mechanism | Where | Why |
-|---|---|---|
-| **CSS transitions + custom cubic-béziers** | Everywhere, default | Zero bundle cost, off main thread, interruptible |
-| **`@starting-style` / WAAPI** | Entry animations, programmatic control | Same benefits, no library |
-| **`IntersectionObserver` + CSS scroll-driven** | Marketing scroll effects | Replaces GSAP ScrollTrigger at zero cost |
-| **Framer Motion** | Marketing + dashboard chunks, lazy-loaded | Gesture and shared-layout work that CSS cannot express |
-| **GSAP** | **Not a dependency** | ~50 KB for one page against a 250 KB budget |
+| Mechanism                                      | Where                                     | Why                                                    |
+| ---------------------------------------------- | ----------------------------------------- | ------------------------------------------------------ |
+| **CSS transitions + custom cubic-béziers**     | Everywhere, default                       | Zero bundle cost, off main thread, interruptible       |
+| **`@starting-style` / WAAPI**                  | Entry animations, programmatic control    | Same benefits, no library                              |
+| **`IntersectionObserver` + CSS scroll-driven** | Marketing scroll effects                  | Replaces GSAP ScrollTrigger at zero cost               |
+| **Framer Motion**                              | Marketing + dashboard chunks, lazy-loaded | Gesture and shared-layout work that CSS cannot express |
+| **GSAP**                                       | **Not a dependency**                      | ~50 KB for one page against a 250 KB budget            |
 
 `R-MOTION-050` … `R-MOTION-053`.
 
@@ -791,15 +800,15 @@ The only movement on the canvas is the movement the user is making (`R-MOTION-00
 
 ```css
 /* Curves */
---ease-out:        cubic-bezier(0.23, 1, 0.32, 1);
---ease-in-out:     cubic-bezier(0.77, 0, 0.175, 1);
---ease-drawer:     cubic-bezier(0.32, 0.72, 0, 1);
+--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 --easing-standard: cubic-bezier(0.2, 0, 0, 1);
 
 /* Durations */
---duration-fast: 120ms;   /* micro    — button press, hover */
---duration-base: 200ms;   /* standard — dropdown, tooltip   */
---duration-slow: 320ms;   /* modal    — dialog, drawer      */
+--duration-fast: 120ms; /* micro    — button press, hover */
+--duration-base: 200ms; /* standard — dropdown, tooltip   */
+--duration-slow: 320ms; /* modal    — dialog, drawer      */
 ```
 
 Never `ease-in`. Never `transition: all`. Never animate `width`, `height`, `top`, `left`, `margin` or `padding`. Never animate from `scale(0)`.
@@ -810,32 +819,32 @@ Never `ease-in`. Never `transition: all`. Never animate `width`, `height`, `top`
 
 Budgets, not aspirations. A PR that regresses one does not merge (`R-PERF-001`).
 
-| Metric | Budget | How to measure |
-|---|---|---|
-| Landing LCP | ≤ 1.5 s on 4G | Lighthouse |
-| Dashboard interactive | ≤ 2.0 s | Lighthouse |
-| Board first paint, 500 objects | ≤ 1.5 s | Custom perf mark |
-| Board first paint, 5,000 objects | ≤ 3.0 s | Custom perf mark |
-| Drawing frame rate, 5,000 objects | ≥ 55 fps | Chrome perf panel, stress board |
-| Pan/zoom frame rate | ≥ 55 fps | Chrome perf panel |
-| Input to local pixel | ≤ 16 ms | Instrumented |
-| Local input to remote render, p95 | ≤ 250 ms | Instrumented, same region |
-| Initial JS, gzipped | ≤ 250 KB | `pnpm analyze` — CI gate |
-| Board route chunk, gzipped | ≤ 200 KB | `pnpm analyze` — CI gate |
-| Heap with 5,000 objects | ≤ 300 MB | Chrome memory profiler |
-| Typical WebSocket op | ≤ 2 KB | Network tab |
+| Metric                            | Budget        | How to measure                  |
+| --------------------------------- | ------------- | ------------------------------- |
+| Landing LCP                       | ≤ 1.5 s on 4G | Lighthouse                      |
+| Dashboard interactive             | ≤ 2.0 s       | Lighthouse                      |
+| Board first paint, 500 objects    | ≤ 1.5 s       | Custom perf mark                |
+| Board first paint, 5,000 objects  | ≤ 3.0 s       | Custom perf mark                |
+| Drawing frame rate, 5,000 objects | ≥ 55 fps      | Chrome perf panel, stress board |
+| Pan/zoom frame rate               | ≥ 55 fps      | Chrome perf panel               |
+| Input to local pixel              | ≤ 16 ms       | Instrumented                    |
+| Local input to remote render, p95 | ≤ 250 ms      | Instrumented, same region       |
+| Initial JS, gzipped               | ≤ 250 KB      | `pnpm analyze` — CI gate        |
+| Board route chunk, gzipped        | ≤ 200 KB      | `pnpm analyze` — CI gate        |
+| Heap with 5,000 objects           | ≤ 300 MB      | Chrome memory profiler          |
+| Typical WebSocket op              | ≤ 2 KB        | Network tab                     |
 
 ## 11.1 Where the frames go
 
 Profile before optimizing. At 5,000 objects the typical distribution is:
 
-| Cost | Share | Fix |
-|---|---|---|
-| Canvas context state changes | ~40% | Batch by style |
-| Path construction | ~25% | Simplify strokes; cull |
-| React re-renders | ~20% | Narrow selectors; keep objects out of React |
-| Hit testing | ~10% | AABB pre-filter; spatial index only if measured |
-| Serialization | ~5% | Delta presence; batch ops |
+| Cost                         | Share | Fix                                             |
+| ---------------------------- | ----- | ----------------------------------------------- |
+| Canvas context state changes | ~40%  | Batch by style                                  |
+| Path construction            | ~25%  | Simplify strokes; cull                          |
+| React re-renders             | ~20%  | Narrow selectors; keep objects out of React     |
+| Hit testing                  | ~10%  | AABB pre-filter; spatial index only if measured |
+| Serialization                | ~5%   | Delta presence; batch ops                       |
 
 **Do not build a spatial index preemptively** (`R-CANVAS-029`). A linear filter is fine to ~10,000 objects.
 
@@ -864,13 +873,13 @@ Full rules in `RULES.md` §11. The ones that catch people out:
 
 # 13. Testing
 
-| Level | Tool | Target |
-|---|---|---|
-| Unit | Vitest | 80% of `lib`, `geometry`, `history`, `sync` |
-| Component | Testing Library | Forms, modals, board cards, toolbar |
-| Integration | Vitest + supertest | Every endpoint, including authorization failures |
-| Socket | Vitest + `ws` client | Every message type |
-| E2E | Playwright | Every PRD §11 scenario, multi-context |
+| Level       | Tool                 | Target                                           |
+| ----------- | -------------------- | ------------------------------------------------ |
+| Unit        | Vitest               | 80% of `lib`, `geometry`, `history`, `sync`      |
+| Component   | Testing Library      | Forms, modals, board cards, toolbar              |
+| Integration | Vitest + supertest   | Every endpoint, including authorization failures |
+| Socket      | Vitest + `ws` client | Every message type                               |
+| E2E         | Playwright           | Every PRD §11 scenario, multi-context            |
 
 ## 13.1 The five tests that matter
 
@@ -912,26 +921,26 @@ Item 2 is the one interns skip. PRD risk `R-4` rates it "Very High" likelihood. 
 
 # 15. When something is wrong — symptom index
 
-| Symptom | Likely cause | Where to look |
-|---|---|---|
-| Drawing lags on a busy board | Objects in React state, or layer 1 redrawing too often | `R-ARCH-003`, `R-CANVAS-002`; TRD §12.1 |
-| Moving the mouse in one window drops FPS in another | Cursors rendering on the object layer | `R-CANVAS-002`; FLOWS §14.3 |
-| Two clients show different boards | Ops applied out of order, or a full-object UPDATE payload | `R-SYNC-020`, `R-CONV-002`; the `?debug=1` hash |
-| Undo reverted a teammate's work | A remote op reached the history stack | `R-UNDO-001`; TRD §8.3 |
-| Objects flicker in then vanish on load | Snapshot/socket buffering rule not followed | `R-SYNC-035`; FLOWS §2.3 step 5 |
-| Object jumps when the user pans | Screen coordinates were stored | `R-COORD-002` |
-| Stuck in a drag forever | `pointercancel` not handled | `R-CANVAS-052`; FLOWS §15.1 |
-| Duplicate objects after reconnect | Op IDs not used as idempotency keys | `R-SYNC-014`; TRD §5.4 step 4 |
-| Ops lost after a server restart | Acking before persisting | `R-SYNC-012`; TRD D-14 |
-| Two ops got the same seq | `SELECT MAX(seq)` outside a transaction | `R-SYNC-013`; TRD §5.4 |
-| Server hammered after a restart | Backoff without full jitter | `R-SYNC-030`; TRD §10.2 |
-| A viewer edited the board | Client-side-only permission check | `R-SEC-001`; test `AT-20` |
-| Canvas blank for everyone in the room | `Infinity`/`NaN` coordinate accepted | `R-SEC-004`; TRD §11.3 |
-| A flash of the login screen | Silent refresh not awaited before routing | FLOWS §2.2 step 2 |
-| Bundle over budget | An animation library reached the wrong chunk | `R-PERF-020`, `R-PERF-021` |
-| Copy differs between two screens | Strings inlined instead of imported | `R-UI-052` |
-| UI feels sluggish though it is fast | `ease-in`, or durations over 300 ms | `R-MOTION-010`, `R-MOTION-021` |
-| Design decision disputed in review | Check the precedence ladder before arguing | `RULES.md` §2 |
+| Symptom                                             | Likely cause                                              | Where to look                                   |
+| --------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------- |
+| Drawing lags on a busy board                        | Objects in React state, or layer 1 redrawing too often    | `R-ARCH-003`, `R-CANVAS-002`; TRD §12.1         |
+| Moving the mouse in one window drops FPS in another | Cursors rendering on the object layer                     | `R-CANVAS-002`; FLOWS §14.3                     |
+| Two clients show different boards                   | Ops applied out of order, or a full-object UPDATE payload | `R-SYNC-020`, `R-CONV-002`; the `?debug=1` hash |
+| Undo reverted a teammate's work                     | A remote op reached the history stack                     | `R-UNDO-001`; TRD §8.3                          |
+| Objects flicker in then vanish on load              | Snapshot/socket buffering rule not followed               | `R-SYNC-035`; FLOWS §2.3 step 5                 |
+| Object jumps when the user pans                     | Screen coordinates were stored                            | `R-COORD-002`                                   |
+| Stuck in a drag forever                             | `pointercancel` not handled                               | `R-CANVAS-052`; FLOWS §15.1                     |
+| Duplicate objects after reconnect                   | Op IDs not used as idempotency keys                       | `R-SYNC-014`; TRD §5.4 step 4                   |
+| Ops lost after a server restart                     | Acking before persisting                                  | `R-SYNC-012`; TRD D-14                          |
+| Two ops got the same seq                            | `SELECT MAX(seq)` outside a transaction                   | `R-SYNC-013`; TRD §5.4                          |
+| Server hammered after a restart                     | Backoff without full jitter                               | `R-SYNC-030`; TRD §10.2                         |
+| A viewer edited the board                           | Client-side-only permission check                         | `R-SEC-001`; test `AT-20`                       |
+| Canvas blank for everyone in the room               | `Infinity`/`NaN` coordinate accepted                      | `R-SEC-004`; TRD §11.3                          |
+| A flash of the login screen                         | Silent refresh not awaited before routing                 | FLOWS §2.2 step 2                               |
+| Bundle over budget                                  | An animation library reached the wrong chunk              | `R-PERF-020`, `R-PERF-021`                      |
+| Copy differs between two screens                    | Strings inlined instead of imported                       | `R-UI-052`                                      |
+| UI feels sluggish though it is fast                 | `ease-in`, or durations over 300 ms                       | `R-MOTION-010`, `R-MOTION-021`                  |
+| Design decision disputed in review                  | Check the precedence ladder before arguing                | `RULES.md` §2                                   |
 
 ---
 

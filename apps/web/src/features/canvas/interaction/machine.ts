@@ -37,7 +37,15 @@ import type { ObjectId } from '@coboard/shared'
 
 export type InteractionState =
   | { type: 'IDLE' }
-  | { type: 'PANNING'; startX: number; startY: number; originX: number; originY: number; pointerId: number | null; previous: InteractionType }
+  | {
+      type: 'PANNING'
+      startX: number
+      startY: number
+      originX: number
+      originY: number
+      pointerId: number | null
+      previous: InteractionType
+    }
   | { type: 'MARQUEEING'; startX: number; startY: number; pointerId: number }
   | { type: 'DRAGGING'; pointerId: number; ids: ObjectId[] }
   | { type: 'RESIZING'; pointerId: number; handle: string }

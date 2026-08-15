@@ -122,11 +122,14 @@ export function scan(roots: string[], banned: string[]): Violation[] {
 
 /* ── CLI ──────────────────────────────────────────────────────────────────── */
 
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*\//, ''))
+const isMain =
+  process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*\//, ''))
 
 if (isMain) {
   const root = resolve(import.meta.dirname, '..')
-  const budgets = JSON.parse(readFileSync(resolve(root, 'budgets.json'), 'utf8')) as BudgetsFile
+  const budgets = JSON.parse(
+    readFileSync(resolve(root, 'budgets.json'), 'utf8'),
+  ) as BudgetsFile
   const roots = BOARD_ENTRIES.map(p => resolve(root, p))
   const present = roots.filter(existsSync)
 
@@ -142,7 +145,9 @@ if (isMain) {
   const violations = scan(present, budgets.bannedInBoardChunk)
 
   if (violations.length > 0) {
-    console.error('[board-chunk] BANNED ANIMATION LIBRARY IN THE BOARD CHUNK — C-3, R-PERF-021\n')
+    console.error(
+      '[board-chunk] BANNED ANIMATION LIBRARY IN THE BOARD CHUNK — C-3, R-PERF-021\n',
+    )
     for (const v of violations) {
       console.error(`  ${v.specifier}`)
       console.error(`    in ${v.file}`)
@@ -151,7 +156,9 @@ if (isMain) {
     console.error(
       '\n  Framer Motion is permitted only in the marketing and dashboard chunks.',
     )
-    console.error('  GSAP is not a dependency of this project. See RULES.md §2.3 conflict C-3.')
+    console.error(
+      '  GSAP is not a dependency of this project. See RULES.md §2.3 conflict C-3.',
+    )
     process.exit(1)
   }
 

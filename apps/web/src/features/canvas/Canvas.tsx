@@ -4,7 +4,10 @@ import { boardStore, useBoardStore } from '../../stores/boardStore.js'
 import { Toolbar } from '../../components/board/Toolbar.js'
 import { PropertiesPanel } from '../../components/board/PropertiesPanel.js'
 import { ZoomControls } from '../../components/board/ZoomControls.js'
-import { CanvasDebugOverlay, type DebugSnapshot } from '../../components/dev/CanvasDebugOverlay.js'
+import {
+  CanvasDebugOverlay,
+  type DebugSnapshot,
+} from '../../components/dev/CanvasDebugOverlay.js'
 import { Renderer } from './renderer/Renderer.js'
 import { resizeCanvas } from './renderer/resizeCanvas.js'
 import { getViewRect, isVisible } from './geometry/culling.js'
@@ -215,7 +218,9 @@ export function Canvas() {
     if (!flags.stress) return
     // The object count reaches the aria-label through the store selector, so
     // nothing here needs the resolved value.
-    loadStressFixture().catch(err => console.error('[canvas] stress fixture failed:', err))
+    loadStressFixture().catch(err =>
+      console.error('[canvas] stress fixture failed:', err),
+    )
   }, [flags.stress])
 
   const readDebug = useCallback((): DebugSnapshot => {

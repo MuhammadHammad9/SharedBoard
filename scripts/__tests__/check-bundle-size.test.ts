@@ -2,7 +2,12 @@ import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checkSizes, classify, collectJsFiles, type BudgetsFile } from '../check-bundle-size.js'
+import {
+  checkSizes,
+  classify,
+  collectJsFiles,
+  type BudgetsFile,
+} from '../check-bundle-size.js'
 
 /**
  * Negative tests for the bundle-size gate (PRD §7.1, R-PERF-020, conflict C-4).
@@ -55,11 +60,15 @@ describe('classify', () => {
     // This repository lives at .../SharedBoard/. Matching the full path
     // classified every chunk as the board chunk, which silently disabled the
     // initial-bundle budget entirely.
-    expect(classify('/home/user/SharedBoard/apps/web/dist/assets/index-a1.js')).toBe('initial')
+    expect(classify('/home/user/SharedBoard/apps/web/dist/assets/index-a1.js')).toBe(
+      'initial',
+    )
     expect(classify('/home/user/SharedBoard/apps/web/dist/assets/vendor-react.js')).toBe(
       'initial',
     )
-    expect(classify('/home/user/SharedBoard/apps/web/dist/assets/Board-a1.js')).toBe('board')
+    expect(classify('/home/user/SharedBoard/apps/web/dist/assets/Board-a1.js')).toBe(
+      'board',
+    )
   })
 })
 

@@ -42,7 +42,8 @@
     *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
-      transition-property: opacity, color, background-color, border-color, fill, stroke !important;
+      transition-property:
+        opacity, color, background-color, border-color, fill, stroke !important;
       transition-duration: var(--duration-fast) !important;
       scroll-behavior: auto !important;
     }

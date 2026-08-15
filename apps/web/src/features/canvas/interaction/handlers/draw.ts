@@ -56,7 +56,12 @@ function toCanvas(screenX: number, screenY: number): { x: number; y: number } {
  * Begin a stroke. Returns false when the machine refuses the transition, in
  * which case the caller must not capture the pointer.
  */
-export function beginDraw(pointerId: number, screenX: number, screenY: number, pressure: number): boolean {
+export function beginDraw(
+  pointerId: number,
+  screenX: number,
+  screenY: number,
+  pressure: number,
+): boolean {
   const { interaction, pen, setInteraction, startDraft } = boardStore.getState()
   if (!canTransition(interaction.type, 'DRAWING')) return false
 
@@ -107,7 +112,8 @@ export function appendPoint(screenX: number, screenY: number, pressure: number):
  * produced nothing worth storing.
  */
 export function commitDraw(element: Element | null): StrokeObject | null {
-  const { interaction, draft, addObject, clearDraft, setInteraction } = boardStore.getState()
+  const { interaction, draft, addObject, clearDraft, setInteraction } =
+    boardStore.getState()
   if (interaction.type !== 'DRAWING') return null
 
   releaseCapture(element, interaction.pointerId)

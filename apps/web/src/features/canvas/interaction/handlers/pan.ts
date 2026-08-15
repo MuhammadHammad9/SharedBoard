@@ -14,7 +14,11 @@ import { canEnterPanning, isCapturing, type InteractionState } from '../machine.
  * Space during a stroke does nothing.
  */
 
-export function beginPan(pointerId: number | null, screenX: number, screenY: number): boolean {
+export function beginPan(
+  pointerId: number | null,
+  screenX: number,
+  screenY: number,
+): boolean {
   const { interaction, viewport, setInteraction } = boardStore.getState()
   if (!canEnterPanning(interaction.type)) return false
 
@@ -57,9 +61,9 @@ export function endPan(element: Element | null): void {
 
   if (element && interaction.pointerId !== null && isCapturing('PANNING')) {
     try {
-      ;(element as HTMLElement & { releasePointerCapture(id: number): void }).releasePointerCapture(
-        interaction.pointerId,
-      )
+      ;(
+        element as HTMLElement & { releasePointerCapture(id: number): void }
+      ).releasePointerCapture(interaction.pointerId)
     } catch {
       // Pointer already released or never captured. Not an error.
     }

@@ -48,7 +48,10 @@ export function loadPrefs(
   const raw = readRaw()
   if (!raw || typeof raw !== 'object') return defaults
   const o = raw as Record<string, unknown>
-  const pen = (typeof o.pen === 'object' && o.pen !== null ? o.pen : {}) as Record<string, unknown>
+  const pen = (typeof o.pen === 'object' && o.pen !== null ? o.pen : {}) as Record<
+    string,
+    unknown
+  >
 
   const num = (v: unknown, min: number, max: number, fallback: number): number =>
     typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : fallback
@@ -63,7 +66,12 @@ export function loadPrefs(
         typeof pen.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(pen.color)
           ? pen.color
           : defaults.pen.color,
-      strokeWidth: num(pen.strokeWidth, bounds.widthMin, bounds.widthMax, defaults.pen.strokeWidth),
+      strokeWidth: num(
+        pen.strokeWidth,
+        bounds.widthMin,
+        bounds.widthMax,
+        defaults.pen.strokeWidth,
+      ),
       opacity: num(pen.opacity, 0.1, 1, defaults.pen.opacity),
     },
   }

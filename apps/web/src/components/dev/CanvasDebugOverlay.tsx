@@ -43,7 +43,11 @@ export function CanvasDebugOverlay({ read }: Props) {
       className="pointer-events-none absolute left-4 top-4 z-panel rounded-md border border-border bg-app/95 p-3 font-mono text-[11px] leading-relaxed text-primary shadow-panel"
       data-testid="debug-overlay"
     >
-      <Row label="zoom" value={`${(viewport.zoom * 100).toFixed(1)}%`} testId="dbg-zoom" />
+      <Row
+        label="zoom"
+        value={`${(viewport.zoom * 100).toFixed(1)}%`}
+        testId="dbg-zoom"
+      />
       <Row
         label="pan"
         value={`${viewport.x.toFixed(1)}, ${viewport.y.toFixed(1)}`}

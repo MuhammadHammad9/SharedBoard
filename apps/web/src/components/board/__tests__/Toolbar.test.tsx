@@ -48,7 +48,9 @@ afterEach(cleanup)
 describe('Toolbar — FLOWS §14.2', () => {
   it('renders all eleven tools in the specified order', () => {
     render(<Board />)
-    const buttons = within(screen.getByRole('toolbar', { name: 'Tools' })).getAllByRole('button')
+    const buttons = within(screen.getByRole('toolbar', { name: 'Tools' })).getAllByRole(
+      'button',
+    )
     expect(buttons.map(b => b.getAttribute('aria-label'))).toEqual([
       'Select',
       'Hand',
@@ -75,8 +77,12 @@ describe('Toolbar — FLOWS §14.2', () => {
     render(<Board />)
     // The ATTRIBUTE, not the IDL reflection — the attribute is what assistive
     // technology reads, and not every DOM implementation reflects it.
-    expect(screen.getByRole('button', { name: 'Select' }).getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByRole('button', { name: 'Pen' }).getAttribute('aria-pressed')).toBe('false')
+    expect(
+      screen.getByRole('button', { name: 'Select' }).getAttribute('aria-pressed'),
+    ).toBe('true')
+    expect(screen.getByRole('button', { name: 'Pen' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    )
   })
 
   it('disables the tools that have no implementation yet', () => {
@@ -112,11 +118,15 @@ describe('Toolbar — FLOWS §14.2', () => {
     render(<Board />)
     // The active tool stays enabled so it never looks broken mid-stroke; every
     // other tool locks until the interaction returns to IDLE.
-    expect((screen.getByRole('button', { name: 'Pen' }) as HTMLButtonElement).disabled).toBe(false)
-    expect((screen.getByRole('button', { name: 'Hand' }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('button', { name: 'Select' }) as HTMLButtonElement).disabled).toBe(
-      true,
-    )
+    expect(
+      (screen.getByRole('button', { name: 'Pen' }) as HTMLButtonElement).disabled,
+    ).toBe(false)
+    expect(
+      (screen.getByRole('button', { name: 'Hand' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    expect(
+      (screen.getByRole('button', { name: 'Select' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
   })
 })
 
@@ -197,7 +207,9 @@ describe('PropertiesPanel — FLOWS §14.4', () => {
 
     expect(boardStore.getState().pen.color).toBe(PEN_COLOURS[2])
     expect(
-      screen.getByRole('button', { name: `Colour ${PEN_COLOURS[2]}` }).getAttribute('aria-pressed'),
+      screen
+        .getByRole('button', { name: `Colour ${PEN_COLOURS[2]}` })
+        .getAttribute('aria-pressed'),
     ).toBe('true')
   })
 

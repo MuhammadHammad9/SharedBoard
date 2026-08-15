@@ -84,13 +84,17 @@ export function checkSizes(distDir: string, budgets: BudgetsFile): CheckResult {
 
 /* ── CLI ──────────────────────────────────────────────────────────────────── */
 
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*\//, ''))
+const isMain =
+  process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*\//, ''))
 
 if (isMain) {
   const root = resolve(import.meta.dirname, '..')
   const distArg = process.argv.indexOf('--dist')
-  const distDir = distArg !== -1 ? resolve(process.argv[distArg + 1]!) : resolve(root, 'apps/web/dist')
-  const budgets = JSON.parse(readFileSync(resolve(root, 'budgets.json'), 'utf8')) as BudgetsFile
+  const distDir =
+    distArg !== -1 ? resolve(process.argv[distArg + 1]!) : resolve(root, 'apps/web/dist')
+  const budgets = JSON.parse(
+    readFileSync(resolve(root, 'budgets.json'), 'utf8'),
+  ) as BudgetsFile
 
   if (!existsSync(distDir)) {
     console.error(`[bundle-size] dist not found at ${distDir}. Run \`pnpm build\` first.`)

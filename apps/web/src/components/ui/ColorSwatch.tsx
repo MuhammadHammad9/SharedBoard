@@ -56,7 +56,9 @@ export function ColorSwatch({ color, selected, onSelect, name }: ColorSwatchProp
         'transition-transform duration-fast ease-out active:scale-[0.97] ' +
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ' +
         'focus-visible:outline-accent ' +
-        (selected ? 'ring-2 ring-accent ring-offset-2 ring-offset-app' : 'ring-1 ring-border')
+        (selected
+          ? 'ring-2 ring-accent ring-offset-2 ring-offset-app'
+          : 'ring-1 ring-border')
       }
       // R-UI-002 forbids arbitrary colour values in classes. This is DATA — one
       // of the ten frozen PEN_COLOURS, rendered as itself — not a styling

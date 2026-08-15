@@ -29,10 +29,12 @@ describe('simplifyStroke — Ramer–Douglas–Peucker, ε = 0.5 canvas units', 
     // chord, so all nine are redundant.
     const line = pts(Array.from({ length: 11 }, (_, i) => [i * 10, i * 10] as const))
     const out = simplifyStroke(line)
-    expect(out).toEqual(pts([
-      [0, 0],
-      [100, 100],
-    ]))
+    expect(out).toEqual(
+      pts([
+        [0, 0],
+        [100, 100],
+      ]),
+    )
   })
 
   it('preserves the first and last points exactly', () => {
@@ -55,11 +57,13 @@ describe('simplifyStroke — Ramer–Douglas–Peucker, ε = 0.5 canvas units', 
       [100, 100],
     ])
     const out = simplifyStroke(l)
-    expect(out).toEqual(pts([
-      [0, 0],
-      [100, 0],
-      [100, 100],
-    ]))
+    expect(out).toEqual(
+      pts([
+        [0, 0],
+        [100, 0],
+        [100, 100],
+      ]),
+    )
   })
 
   it('carries each kept point’s own pressure through unchanged', () => {
@@ -105,7 +109,9 @@ describe('simplifyStroke — Ramer–Douglas–Peucker, ε = 0.5 canvas units', 
   it('never moves a kept point further than ε from the original path', () => {
     // The correctness property RDP actually guarantees, and the reason "no
     // visible difference" is a claim rather than a hope.
-    const raw = pts(Array.from({ length: 120 }, (_, i) => [i * 3, Math.sin(i / 5) * 50] as const))
+    const raw = pts(
+      Array.from({ length: 120 }, (_, i) => [i * 3, Math.sin(i / 5) * 50] as const),
+    )
     const out = simplifyStroke(raw, SIMPLIFY_EPSILON)
     // Every kept point is one of the originals, unmodified.
     for (let i = 0; i < out.length; i += 3) {

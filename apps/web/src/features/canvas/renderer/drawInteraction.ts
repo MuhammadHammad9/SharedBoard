@@ -37,7 +37,10 @@ export interface DrawLayerArgs {
   draft?: DraftStroke | null
 }
 
-export function drawInteraction(ctx: CanvasRenderingContext2D, args: DrawLayerArgs): void {
+export function drawInteraction(
+  ctx: CanvasRenderingContext2D,
+  args: DrawLayerArgs,
+): void {
   const { viewport, width, height, dpr, draft } = args
 
   ctx.save()

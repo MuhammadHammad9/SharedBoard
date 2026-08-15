@@ -89,7 +89,9 @@ describe('untrusted input', () => {
 
   it('rejects a stroke width outside its bounds', () => {
     for (const bad of [0, -5, 25, 1e9]) {
-      store(JSON.stringify({ activeTool: 'pen', pen: { ...DEFAULTS.pen, strokeWidth: bad } }))
+      store(
+        JSON.stringify({ activeTool: 'pen', pen: { ...DEFAULTS.pen, strokeWidth: bad } }),
+      )
       expect(load().pen.strokeWidth).toBe(DEFAULTS.pen.strokeWidth)
     }
   })
@@ -98,14 +100,21 @@ describe('untrusted input', () => {
     // JSON cannot carry these literally, but null round-trips from them and a
     // hand-edited value can be anything. An Infinity reaching the renderer as
     // a lineWidth blanks the layer.
-    store('{"activeTool":"pen","pen":{"color":"#EF4444","strokeWidth":null,"opacity":null}}')
+    store(
+      '{"activeTool":"pen","pen":{"color":"#EF4444","strokeWidth":null,"opacity":null}}',
+    )
     const out = load()
     expect(out.pen.strokeWidth).toBe(DEFAULTS.pen.strokeWidth)
     expect(out.pen.opacity).toBe(DEFAULTS.pen.opacity)
   })
 
   it('keeps the valid fields when only one is corrupt', () => {
-    store(JSON.stringify({ activeTool: 'pen', pen: { color: '#EF4444', strokeWidth: 'wide' } }))
+    store(
+      JSON.stringify({
+        activeTool: 'pen',
+        pen: { color: '#EF4444', strokeWidth: 'wide' },
+      }),
+    )
     const out = load()
     expect(out.activeTool).toBe('pen')
     expect(out.pen.color).toBe('#EF4444')

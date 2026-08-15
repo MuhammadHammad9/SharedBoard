@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { COORD_MAX, STROKE_POINT_STRIDE } from '@coboard/shared'
 import { boardStore } from '../../../stores/boardStore.js'
-import { appendPoint, beginDraw, cancelDraw, commitDraw } from '../interaction/handlers/draw.js'
+import {
+  appendPoint,
+  beginDraw,
+  cancelDraw,
+  commitDraw,
+} from '../interaction/handlers/draw.js'
 import { beginPan } from '../interaction/handlers/pan.js'
 import { canTransition } from '../interaction/machine.js'
 
@@ -18,7 +23,8 @@ let uuidCounter = 0
 beforeEach(() => {
   uuidCounter = 0
   vi.stubGlobal('crypto', {
-    randomUUID: () => `${(++uuidCounter).toString().padStart(8, '0')}-0000-4000-8000-000000000000`,
+    randomUUID: () =>
+      `${(++uuidCounter).toString().padStart(8, '0')}-0000-4000-8000-000000000000`,
   })
 
   boardStore.setState({

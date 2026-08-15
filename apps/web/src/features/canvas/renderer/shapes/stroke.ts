@@ -1,4 +1,8 @@
-import { POLYLINE_ZOOM_THRESHOLD, STROKE_POINT_STRIDE, type StrokeObject } from '@coboard/shared'
+import {
+  POLYLINE_ZOOM_THRESHOLD,
+  STROKE_POINT_STRIDE,
+  type StrokeObject,
+} from '@coboard/shared'
 
 /**
  * Freehand stroke rendering — TRD §7.5, R-CANVAS-031.

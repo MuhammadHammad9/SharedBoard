@@ -6,7 +6,11 @@
  */
 
 import { z } from 'zod'
-import { DISPLAY_NAME_MAX, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../constants.js'
+import {
+  DISPLAY_NAME_MAX,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from '../constants.js'
 
 /** RFC 5322 pragmatic subset, per FR-AUTH-001. */
 export const EmailSchema = z

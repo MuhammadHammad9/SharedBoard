@@ -40,7 +40,18 @@ import { loadPrefs, savePrefs } from '../lib/persist.js'
  * construct a new Map instead.
  */
 
-export type Tool = 'select' | 'hand' | 'pen' | 'eraser' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'sticky' | 'text' | 'image'
+export type Tool =
+  | 'select'
+  | 'hand'
+  | 'pen'
+  | 'eraser'
+  | 'rect'
+  | 'ellipse'
+  | 'line'
+  | 'arrow'
+  | 'sticky'
+  | 'text'
+  | 'image'
 
 /**
  * Tools with a working implementation. The rest render in the toolbar (FLOWS
@@ -50,7 +61,8 @@ export type Tool = 'select' | 'hand' | 'pen' | 'eraser' | 'rect' | 'ellipse' | '
  */
 export const ACTIVE_TOOLS: readonly Tool[] = ['select', 'hand', 'pen']
 
-export const isActiveTool = (t: string): t is Tool => (ACTIVE_TOOLS as readonly string[]).includes(t)
+export const isActiveTool = (t: string): t is Tool =>
+  (ACTIVE_TOOLS as readonly string[]).includes(t)
 
 /** Pen settings — FR-CANVAS-005, FLOWS §14.4. */
 export interface PenSettings {
@@ -103,17 +115,17 @@ interface BoardState {
   clearDraft: () => void
 }
 
-const clampCoordValue = (n: number) => (n < COORD_MIN ? COORD_MIN : n > COORD_MAX ? COORD_MAX : n)
+const clampCoordValue = (n: number) =>
+  n < COORD_MIN ? COORD_MIN : n > COORD_MAX ? COORD_MAX : n
 
 /**
  * Preferences restored at module load, validated on the way in. See
  * lib/persist.ts — a stored value is untrusted input.
  */
-const restored = loadPrefs(
-  { activeTool: 'select', pen: DEFAULT_PEN },
-  isActiveTool,
-  { widthMin: STROKE_WIDTH_MIN, widthMax: STROKE_WIDTH_MAX },
-)
+const restored = loadPrefs({ activeTool: 'select', pen: DEFAULT_PEN }, isActiveTool, {
+  widthMin: STROKE_WIDTH_MIN,
+  widthMax: STROKE_WIDTH_MAX,
+})
 
 export const useBoardStore = create<BoardState>((set, get) => ({
   objects: new Map(),
@@ -136,7 +148,9 @@ export const useBoardStore = create<BoardState>((set, get) => ({
    * never object data, never hit-testing.
    */
   panBy: (dxScreen, dyScreen) =>
-    set(s => ({ viewport: { ...s.viewport, x: s.viewport.x + dxScreen, y: s.viewport.y + dyScreen } })),
+    set(s => ({
+      viewport: { ...s.viewport, x: s.viewport.x + dxScreen, y: s.viewport.y + dyScreen },
+    })),
 
   /**
    * Pointer-anchored zoom — R-COORD-005 (Blocking), FR-CANVAS-003.
@@ -144,12 +158,20 @@ export const useBoardStore = create<BoardState>((set, get) => ({
    * (R-COORD-004). Centre-anchored zoom feels broken and is non-negotiable.
    */
   zoomAt: (screenX, screenY, factor) =>
-    set(s => ({ viewport: zoomAtPoint(s.viewport, screenPoint(screenX, screenY), factor) })),
+    set(s => ({
+      viewport: zoomAtPoint(s.viewport, screenPoint(screenX, screenY), factor),
+    })),
 
   setZoom: (zoom, anchorX, anchorY) =>
     set(s => {
       const target = clampZoom(zoom)
-      return { viewport: zoomAtPoint(s.viewport, screenPoint(anchorX, anchorY), target / s.viewport.zoom) }
+      return {
+        viewport: zoomAtPoint(
+          s.viewport,
+          screenPoint(anchorX, anchorY),
+          target / s.viewport.zoom,
+        ),
+      }
     }),
 
   resetZoom: (anchorX, anchorY) => get().setZoom(1, anchorX, anchorY),
@@ -254,7 +276,8 @@ export const useBoardStore = create<BoardState>((set, get) => ({
    */
   touchDraft: () => set(s => ({ draftVersion: s.draftVersion + 1 })),
 
-  clearDraft: () => set(s => (s.draft === null ? {} : { draft: null, draftVersion: s.draftVersion + 1 })),
+  clearDraft: () =>
+    set(s => (s.draft === null ? {} : { draft: null, draftVersion: s.draftVersion + 1 })),
 }))
 
 /**

@@ -43,7 +43,8 @@ interface Metrics {
 
 async function readMetrics(page: Page): Promise<Metrics> {
   return page.evaluate(() => {
-    const fn = (window as unknown as { __coboardMetrics?: () => Metrics }).__coboardMetrics
+    const fn = (window as unknown as { __coboardMetrics?: () => Metrics })
+      .__coboardMetrics
     if (!fn) throw new Error('__coboardMetrics not exposed — is this a dev/test build?')
     return fn()
   })
@@ -51,7 +52,9 @@ async function readMetrics(page: Page): Promise<Metrics> {
 
 async function resetMetrics(page: Page): Promise<void> {
   await page.evaluate(() => {
-    ;(window as unknown as { __coboardResetMetrics?: () => void }).__coboardResetMetrics?.()
+    ;(
+      window as unknown as { __coboardResetMetrics?: () => void }
+    ).__coboardResetMetrics?.()
   })
 }
 
@@ -62,7 +65,9 @@ test('pans the 10,000-object stress board within the frame budget', async ({ pag
   await expect(page.getByTestId('canvas-surface')).toHaveAttribute('data-ready', 'true')
 
   // Wait for the fixture to land — the object count in the overlay proves it.
-  await expect(page.getByTestId('dbg-objects')).toContainText('/ 10000', { timeout: 30_000 })
+  await expect(page.getByTestId('dbg-objects')).toContainText('/ 10000', {
+    timeout: 30_000,
+  })
 
   const box = (await page.getByTestId('canvas-surface').boundingBox())!
 
@@ -89,12 +94,15 @@ test('pans the 10,000-object stress board within the frame budget', async ({ pag
   )
 
   expect(m.count, 'renderer painted frames during the pan').toBeGreaterThan(10)
-  expect(m.p95, `p95 frame time ${m.p95.toFixed(2)}ms exceeded the CI floor`).toBeLessThan(
-    CI_P95_CEILING_MS,
-  )
+  expect(
+    m.p95,
+    `p95 frame time ${m.p95.toFixed(2)}ms exceeded the CI floor`,
+  ).toBeLessThan(CI_P95_CEILING_MS)
 })
 
-test('draws on the 10,000-object stress board within the frame budget', async ({ page }) => {
+test('draws on the 10,000-object stress board within the frame budget', async ({
+  page,
+}) => {
   /*
    * Phase 3's exit gate: "Drawing on the 10,000-object stress board holds
    * ≥55 fps". Harder than the pan test, because every frame now pays for real
@@ -105,7 +113,9 @@ test('draws on the 10,000-object stress board within the frame budget', async ({
 
   await page.goto(STRESS_BOARD)
   await expect(page.getByTestId('canvas-surface')).toHaveAttribute('data-ready', 'true')
-  await expect(page.getByTestId('dbg-objects')).toContainText('/ 10000', { timeout: 30_000 })
+  await expect(page.getByTestId('dbg-objects')).toContainText('/ 10000', {
+    timeout: 30_000,
+  })
 
   await page.getByTestId('tool-pen').click()
   const box = (await page.getByTestId('canvas-surface').boundingBox())!
@@ -133,9 +143,10 @@ test('draws on the 10,000-object stress board within the frame budget', async ({
   )
 
   expect(m.count, 'renderer painted frames during the drag').toBeGreaterThan(10)
-  expect(m.p95, `p95 frame time ${m.p95.toFixed(2)}ms exceeded the CI floor`).toBeLessThan(
-    CI_P95_CEILING_MS,
-  )
+  expect(
+    m.p95,
+    `p95 frame time ${m.p95.toFixed(2)}ms exceeded the CI floor`,
+  ).toBeLessThan(CI_P95_CEILING_MS)
   expect(
     m.inputP95,
     `input-to-pixel p95 ${m.inputP95.toFixed(2)}ms exceeded the CI floor`,
@@ -150,7 +161,9 @@ test('culls off-screen objects rather than drawing all 10,000', async ({ page })
   test.slow()
 
   await page.goto(STRESS_BOARD)
-  await expect(page.getByTestId('dbg-objects')).toContainText('/ 10000', { timeout: 30_000 })
+  await expect(page.getByTestId('dbg-objects')).toContainText('/ 10000', {
+    timeout: 30_000,
+  })
 
   const text = (await page.getByTestId('dbg-objects').textContent()) ?? ''
   const visible = Number.parseInt(text.split('/')[0]!.trim(), 10)

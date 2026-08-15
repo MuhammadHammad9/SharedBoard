@@ -52,7 +52,11 @@ describe('DPR handling — R-CANVAS-020', () => {
 
   it('honours ratios below the cap', () => {
     expect(backingStoreSize(800, 600, 1).dpr).toBe(1)
-    expect(backingStoreSize(800, 600, 1.5)).toMatchObject({ width: 1200, height: 900, dpr: 1.5 })
+    expect(backingStoreSize(800, 600, 1.5)).toMatchObject({
+      width: 1200,
+      height: 900,
+      dpr: 1.5,
+    })
   })
 
   it('treats a zero or missing ratio as 1', () => {
@@ -121,8 +125,12 @@ describe('zoom — FR-CANVAS-003, R-COORD-005', () => {
     const px = 250
     const py = 175
     const worldBefore = {
-      x: (px - useBoardStore.getState().viewport.x) / useBoardStore.getState().viewport.zoom,
-      y: (py - useBoardStore.getState().viewport.y) / useBoardStore.getState().viewport.zoom,
+      x:
+        (px - useBoardStore.getState().viewport.x) /
+        useBoardStore.getState().viewport.zoom,
+      y:
+        (py - useBoardStore.getState().viewport.y) /
+        useBoardStore.getState().viewport.zoom,
     }
     useBoardStore.getState().zoomAt(px, py, 1.75)
     const v = useBoardStore.getState().viewport
@@ -197,7 +205,13 @@ describe('interaction machine — FLOWS §15.1', () => {
   })
 
   it('allows PANNING from IDLE and from transform states', () => {
-    for (const from of ['IDLE', 'DRAGGING', 'RESIZING', 'ROTATING', 'MARQUEEING'] as const) {
+    for (const from of [
+      'IDLE',
+      'DRAGGING',
+      'RESIZING',
+      'ROTATING',
+      'MARQUEEING',
+    ] as const) {
       expect(canEnterPanning(from)).toBe(true)
     }
   })
@@ -249,11 +263,13 @@ describe('tool state', () => {
 
 describe('object loading', () => {
   it('sorts ids by the fractional z-index string — TRD §6.4', () => {
-    useBoardStore.getState().loadObjects([
-      obj({ id: 'aaaaaaaa-1111-4111-8111-111111111111', zIndex: 'a2' }),
-      obj({ id: 'bbbbbbbb-2222-4222-8222-222222222222', zIndex: 'a0' }),
-      obj({ id: 'cccccccc-3333-4333-8333-333333333333', zIndex: 'a1' }),
-    ])
+    useBoardStore
+      .getState()
+      .loadObjects([
+        obj({ id: 'aaaaaaaa-1111-4111-8111-111111111111', zIndex: 'a2' }),
+        obj({ id: 'bbbbbbbb-2222-4222-8222-222222222222', zIndex: 'a0' }),
+        obj({ id: 'cccccccc-3333-4333-8333-333333333333', zIndex: 'a1' }),
+      ])
     const { sortedIds, objects } = useBoardStore.getState()
     expect(sortedIds.map(id => objects.get(id)!.zIndex)).toEqual(['a0', 'a1', 'a2'])
   })
