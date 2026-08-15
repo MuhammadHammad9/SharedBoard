@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client", "node"],
+    // Vite bundles this app; tsc only typechecks it. Emitting would drop
+    // tailwind.config.js next to its own source, where PostCSS could pick up
+    // a stale copy.
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src/**/*", "tailwind.config.ts", "vite.config.ts"]
+}

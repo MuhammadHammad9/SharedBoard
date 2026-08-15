@@ -1,0 +1,16 @@
+{
+  "$comment": "Performance budgets from PRD §7.1. Single source of truth for the CI size gate (R-PERF-001, R-PERF-020, conflict C-4). Sizes are gzipped bytes.",
+  "bundles": {
+    "initial": {
+      "label": "Initial JS (gzipped)",
+      "maxBytes": 256000,
+      "maxLabel": "250 KB"
+    },
+    "board": {
+      "label": "Board route chunk (gzipped)",
+      "maxBytes": 204800,
+      "maxLabel": "200 KB"
+    }
+  },
+  "bannedInBoardChunk": ["framer-motion", "motion/react", "motion", "gsap", "@gsap/react"]
+}

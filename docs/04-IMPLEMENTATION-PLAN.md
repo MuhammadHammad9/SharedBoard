@@ -365,7 +365,7 @@ None.
 |---|---|---|
 | Framework | React | 18.3 |
 | Language | TypeScript | 5.4+, `strict: true` |
-| Build | Vite | 5.x |
+| Build | Vite | ~~5.x~~ **6.4.3+** — see defect `D-4` |
 | Routing | React Router | 6.x |
 | Client state | Zustand | 4.x |
 | Server state | TanStack Query | 5.x |
@@ -464,17 +464,21 @@ Add the global `prefers-reduced-motion` block now so no component has to remembe
 4. Prisma initialized against the Docker Postgres. Empty initial migration to prove the connection.
 5. Tailwind 3.x with the full PRD §15 token mapping. Both frozen palettes into `packages/shared/src/constants.ts`.
 6. Branded coordinate types and the first Zod schemas in `packages/shared`. Import one from each side to prove the wiring.
-7. ESLint + Prettier. Rules: no `dangerouslySetInnerHTML`, no icon package except Phosphor, no `framer-motion` import from board-route paths.
+7. ESLint + Prettier. Rules: no `dangerouslySetInnerHTML`, no icon package except Phosphor, no `framer-motion` import from board-route paths. *(Uses `eslint.config.js` flat config — ESLint 9's format — rather than the `.eslintrc.cjs` named above, which is the ESLint 8 format. Same rules.)*
 8. Vitest configured for all three packages. Playwright configured with two browser contexts (needed from Phase 9).
 9. CI pipeline with all eight gates. The bundle-size gate needs `rollup-plugin-visualizer` plus a size assertion.
 10. `.env.example`, README bootstrap section, `pnpm db:seed` stub.
-11. **Seed the 10,000-object stress board.** Committed from week 1, per PRD risk `R-2`. Every later performance claim is measured against it (`R-PERF-025`).
+11. **Commit the 10,000-object stress board as a FIXTURE**, at `fixtures/stress-board.json`, with the deterministic generator that produced it (`scripts/generate-stress-board.ts`). Required from week 1 by PRD risk `R-2`; every later performance claim is measured against it (`R-PERF-025`).
+
+    > **Correction to the original plan.** This task previously read "seed the 10,000-object stress board". It cannot be a *database* seed at Phase 1 — the `Board` and `Operation` models do not exist until Phase 8. What PRD risk `R-2` actually requires is a stress board *"committed to the repo from week 1"*, which is a fixture. Phase 8 adds the DB seed that loads it.
 
 ### Files
 
 ```
-package.json  pnpm-workspace.yaml  tsconfig.base.json
-docker-compose.yml  .env.example  .eslintrc.cjs  .prettierrc
+package.json  pnpm-workspace.yaml  tsconfig.base.json  budgets.json
+docker-compose.yml  .env.example  eslint.config.js  .prettierrc
+scripts/dev-services.sh          # native postgres+redis fallback
+fixtures/stress-board.json       # 10,000 objects, committed
 .github/workflows/ci.yml
 apps/web/{package.json,vite.config.ts,tailwind.config.ts,index.html}
 apps/web/src/{main.tsx,App.tsx,index.css}
@@ -1940,7 +1944,7 @@ Card hover must not scale — scaling shifts layout and makes the grid jitter un
 
 ### Tasks
 
-1. Prisma `Board`, `Operation`, `Snapshot` models and migration.
+1. Prisma `Board`, `Operation`, `Snapshot` models and migration. Replace the Phase 1 seed stub with one that loads `fixtures/stress-board.json` into the database, and drop `--skip-generate` from `db:migrate` now that models exist.
 2. `BoardService`: create, list with cursor pagination, rename, soft delete, restore, permanent delete, duplicate.
 3. `OpService`: append op with transactional seq assignment; the same code path the socket will use in Phase 9.
 4. `SnapshotService`: generate every 500 ops as a background job; retain 3; load path merging snapshot + tail ops.

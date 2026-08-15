@@ -1,0 +1,139 @@
+name: CI
+
+# The eight gates from docs/04-IMPLEMENTATION-PLAN.md Phase 1 and TRD §14.3.
+#
+# Two of these exist specifically to enforce conflict resolutions from
+# RULES.md §2.3:
+#   - bundle-size      → C-4, R-PERF-020
+#   - board-chunk      → C-3, R-PERF-021
+# Without them, the decision not to adopt GSAP and to confine Framer Motion to
+# two chunks decays the first time someone is in a hurry.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # Chromium is preinstalled in this image; never download browsers.
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+jobs:
+  quality:
+    name: Types, lint, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Gate 1 — blocking
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Gate 2 — blocking, zero warnings tolerated
+      - name: Lint
+        run: pnpm lint
+
+      # Gate 3 — blocking
+      - name: Unit and integration tests
+        run: pnpm test
+
+      # Gate 4 — blocking. C-3 / R-PERF-021.
+      - name: Board chunk contains no animation library
+        run: pnpm check:board-chunk
+
+  bundle:
+    name: Bundle size budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Gate 5 — blocking. PRD §7.1: initial ≤250 KB gz, board ≤200 KB gz.
+      - name: Build and check budgets
+        run: pnpm analyze
+
+      - name: Upload bundle report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-stats
+          path: apps/web/stats.html
+          if-no-files-found: ignore
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Gate 6 — blocking on high/critical. R-SEC-019.
+      - name: pnpm audit
+        run: pnpm audit --audit-level high
+
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    # Gate 7 — blocking on main, advisory on PRs. TRD §14.3.
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Playwright
+        run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+
+  lighthouse:
+    name: Lighthouse
+    runs-on: ubuntu-latest
+    # Gate 8 — advisory. TRD §14.3.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Placeholder
+        run: |
+          echo "Lighthouse CI is advisory and is wired in Phase 15,"
+          echo "when the landing page and dashboard exist to measure."
+          echo "Budgets: landing LCP <= 1.5s on 4G, dashboard interactive <= 2.0s."

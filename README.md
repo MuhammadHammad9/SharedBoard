@@ -2,7 +2,7 @@
 
 **A real-time collaborative whiteboard.** Multiple people open the same board URL and simultaneously draw freehand strokes, place shapes, write text and drop sticky notes. Every action appears on every other screen within a few hundred milliseconds, with live labelled cursors.
 
-> **Status: documentation phase.** This repository currently contains the specifications and the build plan. No application code has been written yet. Start with [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md) Phase 1.
+> **Status: Phase 1 complete.** The monorepo, shared package, design tokens and CI gates are in place. The canvas arrives in Phase 2. See [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md).
 
 ---
 
@@ -61,15 +61,47 @@ React 18.3 · TypeScript 5.4 strict · Vite 5 · Zustand 4 · Canvas 2D · Tailw
 
 ## Getting started
 
-Nothing to run yet — Phase 1 creates the workspace. Once it exists:
-
 ```bash
 cp .env.example .env
 docker compose up -d           # postgres + redis
 pnpm install
 pnpm db:migrate
-pnpm db:seed                   # includes the 10,000-object stress board
 pnpm dev                       # web :5173, server :3000
+```
+
+### If you have no Docker daemon
+
+Some CI sandboxes and remote dev containers ship Postgres and Redis natively but
+no Docker daemon. Use the fallback instead of `docker compose`:
+
+```bash
+bash scripts/dev-services.sh   # starts native postgres + redis
+# ...
+bash scripts/dev-services.sh --stop
+```
+
+Both paths produce the same `DATABASE_URL` and `REDIS_URL`, so `.env` is identical either way.
+
+### Commands
+
+| Command | What it does |
+|---|---|
+| `pnpm dev` | Both apps — web on :5173, server on :3000 |
+| `pnpm typecheck` | `tsc --build` across the workspace |
+| `pnpm lint` | ESLint, zero warnings tolerated |
+| `pnpm test` | Vitest unit and integration suite |
+| `pnpm test:e2e` | Playwright |
+| `pnpm build` | Build all three packages |
+| `pnpm analyze` | Build, then enforce the PRD §7.1 bundle budgets |
+| `pnpm check:board-chunk` | Assert no animation library reaches the board chunk |
+| `pnpm fixtures:generate` | Regenerate the 10,000-object stress board |
+| `pnpm db:migrate` | Apply Prisma migrations |
+
+Running Playwright against a preinstalled Chromium whose build number does not match
+`@playwright/test`:
+
+```bash
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium pnpm test:e2e
 ```
 
 ---

@@ -1,0 +1,49 @@
+# CoBoard local services — TRD §14.1.
+#
+# This is the canonical path on a normal development machine:
+#     docker compose up -d
+#
+# If your environment has no Docker daemon (some CI sandboxes and remote
+# containers), use the native fallback instead:
+#     bash scripts/dev-services.sh
+#
+# Both produce the same DATABASE_URL and REDIS_URL, so .env is identical
+# either way.
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: coboard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: coboard
+      POSTGRES_PASSWORD: coboard
+      POSTGRES_DB: coboard
+    ports:
+      - '5432:5432'
+    volumes:
+      - coboard-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U coboard -d coboard']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: coboard-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - coboard-redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  coboard-pgdata:
+  coboard-redisdata:

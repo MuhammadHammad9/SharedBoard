@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+dist-types/
+build/
+*.tsbuildinfo
+.vite/
+
+# Environment — R-SEC-016: .env is never committed, .env.example is
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Test and coverage output
+coverage/
+playwright-report/
+test-results/
+.playwright/
+
+# Bundle analysis
+stats.html
+bundle-report.json
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Prisma generated client
+packages/**/generated/
+apps/server/src/generated/
