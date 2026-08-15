@@ -14,9 +14,11 @@ on:
     branches: [main]
   pull_request:
 
-env:
-  # Chromium is preinstalled in this image; never download browsers.
-  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+# NOTE: do not set PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD here. GitHub runners ship no
+# browser, so skipping the download turns the e2e job's `playwright install`
+# into a no-op and the tests then fail with a missing executable. Sandboxes that
+# DO ship a preinstalled Chromium use the opt-in PLAYWRIGHT_CHROMIUM_EXECUTABLE
+# override in playwright.config.ts instead.
 
 jobs:
   quality:
@@ -26,8 +28,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
@@ -58,8 +58,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -84,8 +82,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -104,8 +100,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
