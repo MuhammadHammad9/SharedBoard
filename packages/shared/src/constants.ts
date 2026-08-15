@@ -53,7 +53,9 @@ export const STICKY_COLOURS = {
 export type StickyColourName = keyof typeof STICKY_COLOURS
 export type StickyColour = (typeof STICKY_COLOURS)[StickyColourName]
 
-export const STICKY_COLOUR_VALUES = Object.values(STICKY_COLOURS) as readonly StickyColour[]
+export const STICKY_COLOUR_VALUES = Object.values(
+  STICKY_COLOURS,
+) as readonly StickyColour[]
 
 /** Pen tool swatches — 10 colours plus custom (FR-CANVAS-005). */
 export const PEN_COLOURS = [

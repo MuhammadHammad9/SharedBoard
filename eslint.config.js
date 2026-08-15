@@ -28,7 +28,13 @@ const BANNED_ICON_PACKAGES = [
   'react-feather',
 ]
 
-const BANNED_ANIMATION_PACKAGES = ['framer-motion', 'motion', 'motion/react', 'gsap', '@gsap/react']
+const BANNED_ANIMATION_PACKAGES = [
+  'framer-motion',
+  'motion',
+  'motion/react',
+  'gsap',
+  '@gsap/react',
+]
 
 export default tseslint.config(
   {

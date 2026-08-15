@@ -52,7 +52,10 @@ function makeObject(i: number, overrides: Partial<BoardObject> = {}): BoardObjec
   } as BoardObject
 }
 
-function build(objects: BoardObject[] = [], viewport: Viewport = { x: 0, y: 0, zoom: 1 }) {
+function build(
+  objects: BoardObject[] = [],
+  viewport: Viewport = { x: 0, y: 0, zoom: 1 },
+) {
   const objectsTarget = stubContext()
   const interactionTarget = stubContext()
   const overlayTarget = stubContext()
@@ -124,7 +127,9 @@ describe('R-CANVAS-002 — layer isolation', () => {
 
 describe('dirty flags', () => {
   it('a clean renderer paints nothing on a second pass', () => {
-    const { renderer, objectsTarget, interactionTarget, overlayTarget } = build([makeObject(1)])
+    const { renderer, objectsTarget, interactionTarget, overlayTarget } = build([
+      makeObject(1),
+    ])
     renderer.renderOnce()
     renderer.renderOnce()
     expect(objectsTarget.calls.clearRect).toBe(1)

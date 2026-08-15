@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef } from 'react'
 import { boardStore } from '../../../stores/boardStore.js'
 import { canChangeTool } from './machine.js'
 import { endPan } from './handlers/pan.js'
+import { cancelDraw } from './handlers/draw.js'
 
 /**
  * Keyboard handling for the canvas. PRD Appendix A.
  *
- * Phase 2 implements the viewport and tool subset: V, H, Space, Cmd+0, Cmd+1,
- * Cmd +/-. The rest arrive with their tools.
+ * Implemented so far: V, H, P, Escape, Space, Cmd+0, Cmd+1, Cmd +/-. The
+ * remaining tool keys (E R O L A N T) are bound by the phases that make those
+ * tools do something — see ACTIVE_TOOLS.
  *
  * R-A11Y-009 (Blocking): EVERY shortcut is suppressed while a text input, the
  * on-canvas text overlay, or a modal has focus — except Escape and
@@ -19,11 +21,18 @@ export function isTextEntryTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   if (!el || !el.tagName) return false
   const tag = el.tagName.toLowerCase()
-  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable === true
+  return (
+    tag === 'input' ||
+    tag === 'textarea' ||
+    tag === 'select' ||
+    el.isContentEditable === true
+  )
 }
 
 export interface KeyboardOptions {
   getSize: () => { width: number; height: number }
+  /** The canvas element, so a cancelled interaction can release its pointer. */
+  getElement?: () => Element | null
 }
 
 export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolean } {
@@ -43,6 +52,20 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
 
       const store = boardStore.getState()
       const mod = e.metaKey || e.ctrlKey
+
+      /*
+       * Escape — FLOWS E-09. Handled BEFORE the canChangeTool gate, because
+       * its entire purpose is to escape an in-progress interaction. Gating it
+       * behind IDLE would make the one key that unwinds a stroke work only
+       * when there is no stroke to unwind.
+       */
+      if (e.key === 'Escape') {
+        if (store.interaction.type === 'DRAWING') {
+          e.preventDefault()
+          cancelDraw(optionsRef.current.getElement?.() ?? null)
+        }
+        return
+      }
 
       if (mod) {
         const c = centre()
@@ -79,7 +102,8 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
         return
       }
 
-      // Tool shortcuts. R-CANVAS-055: ignored while an interaction is running.
+      // Tool shortcuts. R-CANVAS-055 / FLOWS E-08: a tool change during an
+      // interaction is ignored, not queued into a half-finished stroke.
       if (!canChangeTool(store.interaction.type)) return
       switch (e.key.toLowerCase()) {
         case 'v':
@@ -88,6 +112,10 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
         case 'h':
           store.setActiveTool('hand')
           break
+        case 'p':
+          store.setActiveTool('pen')
+          break
+        // E R O L A N T are bound by the phases that implement those tools.
         default:
           break
       }

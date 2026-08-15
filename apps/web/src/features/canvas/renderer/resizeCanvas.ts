@@ -6,7 +6,11 @@ import { MAX_DPR } from '@coboard/shared'
  * R-CANVAS-020: cap DPR at 2. 3x DPR quadruples the fill cost for no visible
  * gain and is ruinous on some phones (anti-pattern A-14).
  */
-export function resizeCanvas(canvas: HTMLCanvasElement, cssW: number, cssH: number): number {
+export function resizeCanvas(
+  canvas: HTMLCanvasElement,
+  cssW: number,
+  cssH: number,
+): number {
   const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR)
   canvas.width = Math.floor(cssW * dpr)
   canvas.height = Math.floor(cssH * dpr)

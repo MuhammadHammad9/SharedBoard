@@ -38,8 +38,12 @@ describe('R-SEC-004 — reject NaN and Infinity, never coerce', () => {
   it('rejects Infinity in a coordinate', () => {
     // An Infinity here propagates through the renderer and blanks the canvas
     // for EVERY user in the room. Both a bug and a DoS vector.
-    expect(StrokeObjectSchema.safeParse({ ...validStroke, x: Infinity }).success).toBe(false)
-    expect(StrokeObjectSchema.safeParse({ ...validStroke, y: -Infinity }).success).toBe(false)
+    expect(StrokeObjectSchema.safeParse({ ...validStroke, x: Infinity }).success).toBe(
+      false,
+    )
+    expect(StrokeObjectSchema.safeParse({ ...validStroke, y: -Infinity }).success).toBe(
+      false,
+    )
   })
 
   it('rejects NaN in a coordinate', () => {
@@ -48,12 +52,15 @@ describe('R-SEC-004 — reject NaN and Infinity, never coerce', () => {
 
   it('rejects Infinity inside the stroke point array', () => {
     expect(
-      StrokeObjectSchema.safeParse({ ...validStroke, points: [0, 0, 0, Infinity, 1, 1] }).success,
+      StrokeObjectSchema.safeParse({ ...validStroke, points: [0, 0, 0, Infinity, 1, 1] })
+        .success,
     ).toBe(false)
   })
 
   it('rejects coordinates beyond the ±1,000,000 clamp — FLOWS E-04', () => {
-    expect(StrokeObjectSchema.safeParse({ ...validStroke, x: 2_000_000 }).success).toBe(false)
+    expect(StrokeObjectSchema.safeParse({ ...validStroke, x: 2_000_000 }).success).toBe(
+      false,
+    )
   })
 })
 
@@ -63,21 +70,33 @@ describe('object schemas', () => {
   })
 
   it('requires at least two points (stride 3)', () => {
-    expect(StrokeObjectSchema.safeParse({ ...validStroke, points: [0, 0, 1] }).success).toBe(false)
+    expect(
+      StrokeObjectSchema.safeParse({ ...validStroke, points: [0, 0, 1] }).success,
+    ).toBe(false)
   })
 
   it('enforces stroke width bounds 1–24', () => {
-    expect(StrokeObjectSchema.safeParse({ ...validStroke, strokeWidth: 0 }).success).toBe(false)
-    expect(StrokeObjectSchema.safeParse({ ...validStroke, strokeWidth: 25 }).success).toBe(false)
+    expect(StrokeObjectSchema.safeParse({ ...validStroke, strokeWidth: 0 }).success).toBe(
+      false,
+    )
+    expect(
+      StrokeObjectSchema.safeParse({ ...validStroke, strokeWidth: 25 }).success,
+    ).toBe(false)
   })
 
   it('requires #RRGGBB colours', () => {
-    expect(StrokeObjectSchema.safeParse({ ...validStroke, color: 'red' }).success).toBe(false)
-    expect(StrokeObjectSchema.safeParse({ ...validStroke, color: '#FFF' }).success).toBe(false)
+    expect(StrokeObjectSchema.safeParse({ ...validStroke, color: 'red' }).success).toBe(
+      false,
+    )
+    expect(StrokeObjectSchema.safeParse({ ...validStroke, color: '#FFF' }).success).toBe(
+      false,
+    )
   })
 
   it('requires zIndex to be a STRING — fractional indexing, TRD §6.4', () => {
-    expect(StrokeObjectSchema.safeParse({ ...validStroke, zIndex: 5 }).success).toBe(false)
+    expect(StrokeObjectSchema.safeParse({ ...validStroke, zIndex: 5 }).success).toBe(
+      false,
+    )
   })
 
   it('restricts sticky colours to the frozen palette — R-UI-014', () => {
@@ -90,7 +109,9 @@ describe('object schemas', () => {
       textAlign: 'center' as const,
     }
     expect(BoardObjectSchema.safeParse(sticky).success).toBe(true)
-    expect(BoardObjectSchema.safeParse({ ...sticky, color: '#123456' }).success).toBe(false)
+    expect(BoardObjectSchema.safeParse({ ...sticky, color: '#123456' }).success).toBe(
+      false,
+    )
   })
 })
 
@@ -152,7 +173,9 @@ describe('protocol — TRD §5.2', () => {
   })
 
   it('rejects a non-finite cursor coordinate', () => {
-    expect(ClientMessageSchema.safeParse({ t: 'cursor', x: Infinity, y: 0 }).success).toBe(false)
+    expect(
+      ClientMessageSchema.safeParse({ t: 'cursor', x: Infinity, y: 0 }).success,
+    ).toBe(false)
   })
 
   it('validates a nack, which is never batched — R-SYNC-016', () => {
@@ -167,7 +190,8 @@ describe('protocol — TRD §5.2', () => {
   })
 
   it('classifies presence vs ops correctly — R-SYNC-001', () => {
-    for (const t of ['cursor', 'sel', 'stroke', 'xform']) expect(isPresenceMessage(t)).toBe(true)
+    for (const t of ['cursor', 'sel', 'stroke', 'xform'])
+      expect(isPresenceMessage(t)).toBe(true)
     for (const t of ['op', 'op_batch', 'join']) expect(isPresenceMessage(t)).toBe(false)
   })
 })
@@ -176,7 +200,9 @@ describe('auth schemas — FR-AUTH-001', () => {
   it('requires a letter and a number in the password', () => {
     const ok = { email: 'priya@example.com', password: 'goodpass1', displayName: 'Priya' }
     expect(RegisterSchema.safeParse(ok).success).toBe(true)
-    expect(RegisterSchema.safeParse({ ...ok, password: 'allletters' }).success).toBe(false)
+    expect(RegisterSchema.safeParse({ ...ok, password: 'allletters' }).success).toBe(
+      false,
+    )
     expect(RegisterSchema.safeParse({ ...ok, password: '12345678' }).success).toBe(false)
     expect(RegisterSchema.safeParse({ ...ok, password: 'short1' }).success).toBe(false)
   })
@@ -191,8 +217,11 @@ describe('auth schemas — FR-AUTH-001', () => {
     if (parsed.success) expect(parsed.data.displayName).toBe('Marcus')
 
     expect(
-      RegisterSchema.safeParse({ email: 'a@b.co', password: 'goodpass1', displayName: '   ' })
-        .success,
+      RegisterSchema.safeParse({
+        email: 'a@b.co',
+        password: 'goodpass1',
+        displayName: '   ',
+      }).success,
     ).toBe(false)
   })
 })

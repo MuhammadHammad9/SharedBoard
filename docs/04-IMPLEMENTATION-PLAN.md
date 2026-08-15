@@ -1,15 +1,15 @@
 # CoBoard — Implementation Plan
 
-| Field | Value |
-|---|---|
-| Document type | Implementation Plan |
-| Version | 1.0 |
-| Status | Approved for build |
-| Audience | Engineering team (frontend + backend), QA, design |
-| Source documents | [`01-PRD.md`](./01-PRD.md), [`02-FLOWS.md`](./02-FLOWS.md), [`03-TRD.md`](./03-TRD.md) |
-| Governing documents | [`../CLAUDE.md`](../CLAUDE.md), [`../RULES.md`](../RULES.md) |
-| Duration | 45 working days · 9 weeks |
-| Structure | 15 phases nested under 5 milestones |
+| Field               | Value                                                                                  |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| Document type       | Implementation Plan                                                                    |
+| Version             | 1.0                                                                                    |
+| Status              | Approved for build                                                                     |
+| Audience            | Engineering team (frontend + backend), QA, design                                      |
+| Source documents    | [`01-PRD.md`](./01-PRD.md), [`02-FLOWS.md`](./02-FLOWS.md), [`03-TRD.md`](./03-TRD.md) |
+| Governing documents | [`../CLAUDE.md`](../CLAUDE.md), [`../RULES.md`](../RULES.md)                           |
+| Duration            | 45 working days · 9 weeks                                                              |
+| Structure           | 15 phases nested under 5 milestones                                                    |
 
 ---
 
@@ -47,12 +47,12 @@ This document does that. It is the fusion of all three, sequenced into 15 depend
 
 ## 0.4 Priority labels
 
-| Label | Meaning |
-|---|---|
-| `[P0]` | Product does not function without this. Ship-blocking |
-| `[P1]` | Product functions but is embarrassing without this. Ship-blocking for v1.0 |
-| `[P2]` | Nice to have. Build only if P0 and P1 are complete and stable |
-| `[Stretch]` | Do not build. Listed so you know it was considered and deferred |
+| Label       | Meaning                                                                    |
+| ----------- | -------------------------------------------------------------------------- |
+| `[P0]`      | Product does not function without this. Ship-blocking                      |
+| `[P1]`      | Product functions but is embarrassing without this. Ship-blocking for v1.0 |
+| `[P2]`      | Nice to have. Build only if P0 and P1 are complete and stable              |
+| `[Stretch]` | Do not build. Listed so you know it was considered and deferred            |
 
 The 15 phases cover **P0 and P1 only**. Everything deferred is catalogued in Appendix N.
 
@@ -60,19 +60,19 @@ The 15 phases cover **P0 and P1 only**. Everything deferred is catalogued in App
 
 Each phase in §7 has eleven parts:
 
-| Part | Contents |
-|---|---|
-| 1 | **Header** — days, milestone, dependencies, owner module |
-| 2 | **Objective** — what is demoable at the end |
-| 3 | **Requirements** — explicit `FR-*` IDs |
-| 4 | **Flows** — FLOWS sections and step sequences |
-| 5 | **Technical contract** — the TRD material, inlined |
-| 6 | **UI/UX workstream** — zone, skills that fire, commands, tokens |
-| 7 | **Motion workstream** — what animates at all, curves, durations |
-| 8 | **Tasks** — numbered, roughly a day each |
-| 9 | **Files** — concrete paths |
-| 10 | **Tests** — including which `AT-*` become testable |
-| 11 | **Exit gate** — the binary condition to proceed |
+| Part | Contents                                                        |
+| ---- | --------------------------------------------------------------- |
+| 1    | **Header** — days, milestone, dependencies, owner module        |
+| 2    | **Objective** — what is demoable at the end                     |
+| 3    | **Requirements** — explicit `FR-*` IDs                          |
+| 4    | **Flows** — FLOWS sections and step sequences                   |
+| 5    | **Technical contract** — the TRD material, inlined              |
+| 6    | **UI/UX workstream** — zone, skills that fire, commands, tokens |
+| 7    | **Motion workstream** — what animates at all, curves, durations |
+| 8    | **Tasks** — numbered, roughly a day each                        |
+| 9    | **Files** — concrete paths                                      |
+| 10   | **Tests** — including which `AT-*` become testable              |
+| 11   | **Exit gate** — the binary condition to proceed                 |
 
 ---
 
@@ -108,30 +108,30 @@ If all six hold, we shipped.
 
 ## 2.1 Product goals
 
-| ID | Goal | Success measure | Proven in |
-|---|---|---|---|
-| G-1 | Real-time collaboration that feels instantaneous | p95 end-to-end latency under 250 ms | Phase 9 |
-| G-2 | Zero data loss | No committed operation is ever lost, across disconnects, refreshes and server restarts | Phase 11 |
-| G-3 | Smooth drawing | 60 fps local stroke rendering with 5,000 objects | Phases 3, 15 |
-| G-4 | Frictionless entry | A guest can join and draw without an account | Phase 12 |
-| G-5 | Convergence | Any two clients with the same op set render identically | Phase 11 |
-| G-6 | Graceful degradation | Usable offline, self-heals on reconnect | Phase 11 |
+| ID  | Goal                                             | Success measure                                                                        | Proven in    |
+| --- | ------------------------------------------------ | -------------------------------------------------------------------------------------- | ------------ |
+| G-1 | Real-time collaboration that feels instantaneous | p95 end-to-end latency under 250 ms                                                    | Phase 9      |
+| G-2 | Zero data loss                                   | No committed operation is ever lost, across disconnects, refreshes and server restarts | Phase 11     |
+| G-3 | Smooth drawing                                   | 60 fps local stroke rendering with 5,000 objects                                       | Phases 3, 15 |
+| G-4 | Frictionless entry                               | A guest can join and draw without an account                                           | Phase 12     |
+| G-5 | Convergence                                      | Any two clients with the same op set render identically                                | Phase 11     |
+| G-6 | Graceful degradation                             | Usable offline, self-heals on reconnect                                                | Phase 11     |
 
 ## 2.2 Non-goals — binding
 
 Do not build these. If you find yourself building one, stop.
 
-| Non-goal | Reason |
-|---|---|
-| Video or voice chat | Enormous scope, adds nothing to the thesis |
-| Mobile native apps | Web only. Responsive web is in scope; native is not |
-| Offline-first PWA with full local persistence | We handle short disconnects, not multi-day offline work |
-| Rich document editing | Different problem domain |
-| Payments, billing, subscriptions | No monetization in v1 |
-| Real-time collaborative code editing | Different data model |
-| SSO / SAML / enterprise identity | Email + password + Google OAuth only |
-| AI features of any kind | Out of scope |
-| Version history with time-travel scrubbing | `[Stretch]` — the op log makes it possible later; do not build the UI |
+| Non-goal                                      | Reason                                                                |
+| --------------------------------------------- | --------------------------------------------------------------------- |
+| Video or voice chat                           | Enormous scope, adds nothing to the thesis                            |
+| Mobile native apps                            | Web only. Responsive web is in scope; native is not                   |
+| Offline-first PWA with full local persistence | We handle short disconnects, not multi-day offline work               |
+| Rich document editing                         | Different problem domain                                              |
+| Payments, billing, subscriptions              | No monetization in v1                                                 |
+| Real-time collaborative code editing          | Different data model                                                  |
+| SSO / SAML / enterprise identity              | Email + password + Google OAuth only                                  |
+| AI features of any kind                       | Out of scope                                                          |
+| Version history with time-travel scrubbing    | `[Stretch]` — the op log makes it possible later; do not build the UI |
 
 ## 2.3 The scope boundary
 
@@ -145,21 +145,21 @@ PRD risk `R-5` rates scope creep "High" likelihood. §2.2 is binding. New scope 
 
 Everyone uses these words to mean exactly these things. Using them loosely causes bugs.
 
-| Term | Definition |
-|---|---|
-| **Board** | A single infinite canvas with a unique ID and URL |
-| **Object** | Anything on the board: stroke, rectangle, sticky note, text block, image. **We standardize on `object`** — not "shape", not "element" |
-| **Operation (op)** | An atomic, immutable change: create, update, delete. What travels over the wire and gets stored |
-| **Op log** | The append-only ordered list of every operation applied to a board. Board state is a pure function of it. **The source of truth** |
-| **Snapshot** | Materialized board state at a sequence number, so we don't replay 50,000 ops on load |
-| **Session** | One user's active connection to one board |
-| **Presence** | Ephemeral non-persisted data about a live session: cursor, selection, viewport, name, colour. **Never** written to the database |
-| **Viewport** | The visible rectangle: pan offset `(x, y)` and `zoom` |
-| **Canvas coordinates** | The board's own infinite space. Object positions are always stored in these |
-| **Screen coordinates** | Pixel positions in the browser window. **Never stored** |
-| **Local echo / optimistic apply** | Applying an op to your own screen before the server confirms |
-| **Convergence** | All clients end in the same state given the same ops, regardless of arrival order |
-| **Room** | The server-side grouping of all sessions connected to one board |
+| Term                              | Definition                                                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Board**                         | A single infinite canvas with a unique ID and URL                                                                                     |
+| **Object**                        | Anything on the board: stroke, rectangle, sticky note, text block, image. **We standardize on `object`** — not "shape", not "element" |
+| **Operation (op)**                | An atomic, immutable change: create, update, delete. What travels over the wire and gets stored                                       |
+| **Op log**                        | The append-only ordered list of every operation applied to a board. Board state is a pure function of it. **The source of truth**     |
+| **Snapshot**                      | Materialized board state at a sequence number, so we don't replay 50,000 ops on load                                                  |
+| **Session**                       | One user's active connection to one board                                                                                             |
+| **Presence**                      | Ephemeral non-persisted data about a live session: cursor, selection, viewport, name, colour. **Never** written to the database       |
+| **Viewport**                      | The visible rectangle: pan offset `(x, y)` and `zoom`                                                                                 |
+| **Canvas coordinates**            | The board's own infinite space. Object positions are always stored in these                                                           |
+| **Screen coordinates**            | Pixel positions in the browser window. **Never stored**                                                                               |
+| **Local echo / optimistic apply** | Applying an op to your own screen before the server confirms                                                                          |
+| **Convergence**                   | All clients end in the same state given the same ops, regardless of arrival order                                                     |
+| **Room**                          | The server-side grouping of all sessions connected to one board                                                                       |
 
 ---
 
@@ -213,11 +213,11 @@ Everyone uses these words to mean exactly these things. Using them loosely cause
 
 ## 4.2 The three-layer client split
 
-| Layer | Technology | Owns | Re-renders React? |
-|---|---|---|---|
-| **UI** | React components | Header, toolbar, panels, modals, toasts | Only on UI-relevant state |
-| **Render** | Plain TS + `requestAnimationFrame` | Drawing pixels | **Never** |
-| **Sync** | Plain TS classes | Socket, outbox, sequence numbers, reconnection | Only connection status |
+| Layer      | Technology                         | Owns                                           | Re-renders React?         |
+| ---------- | ---------------------------------- | ---------------------------------------------- | ------------------------- |
+| **UI**     | React components                   | Header, toolbar, panels, modals, toasts        | Only on UI-relevant state |
+| **Render** | Plain TS + `requestAnimationFrame` | Drawing pixels                                 | **Never**                 |
+| **Sync**   | Plain TS classes                   | Socket, outbox, sequence numbers, reconnection | Only connection status    |
 
 ```ts
 // GOOD — re-renders only when the tool changes
@@ -283,44 +283,44 @@ apps/server/src/
 
 Four boundaries chosen so people rarely edit the same file — the practical answer to PRD risk `R-9`.
 
-| Module | Owner | Active in phases |
-|---|---|---|
-| `features/canvas/renderer` | Renderer owner | 2, 3, 5, 10, 15 |
-| `features/canvas/interaction` | Interaction owner | 2, 4, 5, 6 |
-| `features/sync` | Sync owner | 9, 10, 11 |
-| `features/boards` + `features/auth` | Product owner | 7, 8, 12, 13, 14 |
+| Module                              | Owner             | Active in phases |
+| ----------------------------------- | ----------------- | ---------------- |
+| `features/canvas/renderer`          | Renderer owner    | 2, 3, 5, 10, 15  |
+| `features/canvas/interaction`       | Interaction owner | 2, 4, 5, 6       |
+| `features/sync`                     | Sync owner        | 9, 10, 11        |
+| `features/boards` + `features/auth` | Product owner     | 7, 8, 12, 13, 14 |
 
 ---
 
 # 6. Master phase table
 
-| # | Days | Milestone | Title | Deliverable | Exit gate |
-|---|---|---|---|---|---|
-| 1 | 1–2 | M1 | Monorepo, shared package, Docker, CI | Workspace runs, tokens wired, gates green | `pnpm dev` runs both apps; CI passes on an empty PR |
-| 2 | 3–5 | M1 | Canvas layers, viewport, pan, zoom | Four layers, one rAF loop, coordinate conversion | Pan and zoom at 60 fps on an empty board |
-| 3 | 6–9 | M1 | Pen tool, stroke rendering, simplification | Draw smooth strokes, local object store | A 3-second scribble commits ~60 points, renders smoothly |
-| 4 | 10–12 | M1 | Select, hit test, move, resize, marquee | Full transform toolkit | All transforms work at every zoom level |
-| 5 | 13–15 | M1 | Shapes, sticky notes, text overlay | Every object type renders and edits | All 7 non-image object types work |
-| 6 | 16–17 | M1 | Local undo/redo | Inverse-op history | 100-step undo/redo works; `AT-42`–`AT-44` pass |
-| 7 | 18–20 | M2 | Auth REST, guards, token rotation | Full auth flow | Sign up, log in, refresh, deep-link preserved |
-| 8 | 21–23 | M2 | Boards CRUD, dashboard, op persistence | Boards persist | Draw, refresh, work is still there — `AT-10` |
-| 9 | 24–27 | M3 | WebSocket gateway, rooms, seq ordering | Live sync | Two windows sync live and converge — `AT-01`–`AT-05` |
-| 10 | 28–30 | M3 | Presence: cursors, avatars, live strokes | Live collaboration feel | Cursors move smoothly; `AT-06`, `AT-07` |
-| 11 | 31–33 | M4 | Reconnection, outbox, gap fill, conflicts | Survives the network | Chaos tests `AT-30`–`AT-35` pass |
-| 12 | 34–36 | M5 | Sharing, guest flow, permission enforcement | Guests can join and draw | Guest joins in under 10 s; `AT-20`–`AT-24` |
-| 13 | 37–38 | M5 | Export, thumbnails, trash, duplicate | Feature complete | Every P0/P1 feature exists |
-| 14 | 39–42 | M5 | States, responsive, accessibility, polish | Definition of Done met throughout | Every state, breakpoint and a11y requirement passes |
-| 15 | 43–45 | M5 | Performance, e2e, deployment, monitoring | Shipped | All budgets met; deployed; monitoring live |
+| #   | Days  | Milestone | Title                                       | Deliverable                                      | Exit gate                                                |
+| --- | ----- | --------- | ------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------- |
+| 1   | 1–2   | M1        | Monorepo, shared package, Docker, CI        | Workspace runs, tokens wired, gates green        | `pnpm dev` runs both apps; CI passes on an empty PR      |
+| 2   | 3–5   | M1        | Canvas layers, viewport, pan, zoom          | Four layers, one rAF loop, coordinate conversion | Pan and zoom at 60 fps on an empty board                 |
+| 3   | 6–9   | M1        | Pen tool, stroke rendering, simplification  | Draw smooth strokes, local object store          | A 3-second scribble commits ~60 points, renders smoothly |
+| 4   | 10–12 | M1        | Select, hit test, move, resize, marquee     | Full transform toolkit                           | All transforms work at every zoom level                  |
+| 5   | 13–15 | M1        | Shapes, sticky notes, text overlay          | Every object type renders and edits              | All 7 non-image object types work                        |
+| 6   | 16–17 | M1        | Local undo/redo                             | Inverse-op history                               | 100-step undo/redo works; `AT-42`–`AT-44` pass           |
+| 7   | 18–20 | M2        | Auth REST, guards, token rotation           | Full auth flow                                   | Sign up, log in, refresh, deep-link preserved            |
+| 8   | 21–23 | M2        | Boards CRUD, dashboard, op persistence      | Boards persist                                   | Draw, refresh, work is still there — `AT-10`             |
+| 9   | 24–27 | M3        | WebSocket gateway, rooms, seq ordering      | Live sync                                        | Two windows sync live and converge — `AT-01`–`AT-05`     |
+| 10  | 28–30 | M3        | Presence: cursors, avatars, live strokes    | Live collaboration feel                          | Cursors move smoothly; `AT-06`, `AT-07`                  |
+| 11  | 31–33 | M4        | Reconnection, outbox, gap fill, conflicts   | Survives the network                             | Chaos tests `AT-30`–`AT-35` pass                         |
+| 12  | 34–36 | M5        | Sharing, guest flow, permission enforcement | Guests can join and draw                         | Guest joins in under 10 s; `AT-20`–`AT-24`               |
+| 13  | 37–38 | M5        | Export, thumbnails, trash, duplicate        | Feature complete                                 | Every P0/P1 feature exists                               |
+| 14  | 39–42 | M5        | States, responsive, accessibility, polish   | Definition of Done met throughout                | Every state, breakpoint and a11y requirement passes      |
+| 15  | 43–45 | M5        | Performance, e2e, deployment, monitoring    | Shipped                                          | All budgets met; deployed; monitoring live               |
 
 ## 6.1 Milestone mapping
 
-| Milestone | Phases | Days | "Done when" |
-|---|---|---|---|
-| **M1 — It draws** | 1–6 | 1–17 | Every tool works at 60 fps with 1,000 objects. Refreshing loses everything, and that is fine at this stage |
-| **M2 — It persists** | 7–8 | 18–23 | A user can sign up, create a board, draw, refresh, and see their work |
-| **M3 — It syncs** | 9–10 | 24–30 | Two browser windows show each other's strokes and cursors live, and both converge to identical state |
-| **M4 — It survives** | 11 | 31–33 | The chaos tests pass |
-| **M5 — It's finished** | 12–15 | 34–45 | Every P0 and P1 requirement has a passing test and a reviewed PR |
+| Milestone              | Phases | Days  | "Done when"                                                                                                |
+| ---------------------- | ------ | ----- | ---------------------------------------------------------------------------------------------------------- |
+| **M1 — It draws**      | 1–6    | 1–17  | Every tool works at 60 fps with 1,000 objects. Refreshing loses everything, and that is fine at this stage |
+| **M2 — It persists**   | 7–8    | 18–23 | A user can sign up, create a board, draw, refresh, and see their work                                      |
+| **M3 — It syncs**      | 9–10   | 24–30 | Two browser windows show each other's strokes and cursors live, and both converge to identical state       |
+| **M4 — It survives**   | 11     | 31–33 | The chaos tests pass                                                                                       |
+| **M5 — It's finished** | 12–15  | 34–45 | Every P0 and P1 requirement has a passing test and a reviewed PR                                           |
 
 ## 6.2 The warning about Phase 9
 
@@ -336,12 +336,12 @@ From TRD §16, and it is the most important scheduling note in the project:
 
 ## Phase 1 — Monorepo, shared package, Docker, CI
 
-| | |
-|---|---|
-| **Days** | 1–2 |
-| **Milestone** | M1 — It draws |
-| **Depends on** | Nothing |
-| **Owner** | Whole team, pairing |
+|                |                     |
+| -------------- | ------------------- |
+| **Days**       | 1–2                 |
+| **Milestone**  | M1 — It draws       |
+| **Depends on** | Nothing             |
+| **Owner**      | Whole team, pairing |
 
 ### Objective
 
@@ -361,25 +361,25 @@ None.
 
 **Stack** — TRD §1.1, §1.2. Versions are fixed:
 
-| Concern | Choice | Version |
-|---|---|---|
-| Framework | React | 18.3 |
-| Language | TypeScript | 5.4+, `strict: true` |
-| Build | Vite | ~~5.x~~ **6.4.3+** — see defect `D-4` |
-| Routing | React Router | 6.x |
-| Client state | Zustand | 4.x |
-| Server state | TanStack Query | 5.x |
-| Styling | **Tailwind CSS 3.x** — not v4 (`R-PREC-017`) | 3.x |
-| Sockets | Native `WebSocket` | — |
-| Forms | React Hook Form + Zod | latest |
-| Testing | Vitest, Testing Library, Playwright | latest |
-| Runtime | Node.js | 20 LTS |
-| HTTP | Express | 4 |
-| WebSocket | `ws` | — |
-| Database | PostgreSQL | 15 |
-| ORM | Prisma | 5 |
-| Cache / pub-sub | Redis | 7 |
-| Logging | Pino | — |
+| Concern         | Choice                                       | Version                               |
+| --------------- | -------------------------------------------- | ------------------------------------- |
+| Framework       | React                                        | 18.3                                  |
+| Language        | TypeScript                                   | 5.4+, `strict: true`                  |
+| Build           | Vite                                         | ~~5.x~~ **6.4.3+** — see defect `D-4` |
+| Routing         | React Router                                 | 6.x                                   |
+| Client state    | Zustand                                      | 4.x                                   |
+| Server state    | TanStack Query                               | 5.x                                   |
+| Styling         | **Tailwind CSS 3.x** — not v4 (`R-PREC-017`) | 3.x                                   |
+| Sockets         | Native `WebSocket`                           | —                                     |
+| Forms           | React Hook Form + Zod                        | latest                                |
+| Testing         | Vitest, Testing Library, Playwright          | latest                                |
+| Runtime         | Node.js                                      | 20 LTS                                |
+| HTTP            | Express                                      | 4                                     |
+| WebSocket       | `ws`                                         | —                                     |
+| Database        | PostgreSQL                                   | 15                                    |
+| ORM             | Prisma                                       | 5                                     |
+| Cache / pub-sub | Redis                                        | 7                                     |
+| Logging         | Pino                                         | —                                     |
 
 **Why native WebSocket over Socket.IO** (TRD §1.4, D-1): Socket.IO is ~40 KB gzipped and provides reconnection and rooms — which is precisely the logic this project exists to demonstrate. Writing it ourselves is the point. Modern browser support for WebSocket is universal, so the long-polling fallback buys nothing.
 
@@ -391,9 +391,9 @@ export type CanvasPoint = { x: number; y: number; __brand: 'canvas' }
 export type ScreenPoint = { x: number; y: number; __brand: 'screen' }
 
 export const canvasPoint = (x: number, y: number): CanvasPoint =>
-  ({ x, y } as CanvasPoint)
+  ({ x, y }) as CanvasPoint
 export const screenPoint = (x: number, y: number): ScreenPoint =>
-  ({ x, y } as ScreenPoint)
+  ({ x, y }) as ScreenPoint
 ```
 
 **Environment variables** — TRD §15.3. `.env` is git-ignored; `.env.example` is committed (`R-SEC-016`):
@@ -419,16 +419,16 @@ SNAPSHOT_INTERVAL_OPS=500
 
 **CI gates** — TRD §14.3 plus two additions from conflict `C-4`:
 
-| Gate | Blocking | Source |
-|---|---|---|
-| `tsc --noEmit` | Yes | TRD §14.3 |
-| ESLint, zero warnings | Yes | TRD §14.3 |
-| Unit + integration tests | Yes | TRD §14.3 |
-| **Bundle size budget** | Yes | `R-PERF-020` |
-| **Board-route animation-library import check** | Yes | `R-PERF-021` — new |
-| `npm audit` high/critical | Yes | TRD §14.3 |
-| Playwright e2e | Yes on `main`, advisory on PRs | TRD §14.3 |
-| Lighthouse CI | Advisory | TRD §14.3 |
+| Gate                                           | Blocking                       | Source             |
+| ---------------------------------------------- | ------------------------------ | ------------------ |
+| `tsc --noEmit`                                 | Yes                            | TRD §14.3          |
+| ESLint, zero warnings                          | Yes                            | TRD §14.3          |
+| Unit + integration tests                       | Yes                            | TRD §14.3          |
+| **Bundle size budget**                         | Yes                            | `R-PERF-020`       |
+| **Board-route animation-library import check** | Yes                            | `R-PERF-021` — new |
+| `npm audit` high/critical                      | Yes                            | TRD §14.3          |
+| Playwright e2e                                 | Yes on `main`, advisory on PRs | TRD §14.3          |
+| Lighthouse CI                                  | Advisory                       | TRD §14.3          |
 
 The ESLint config must include a `no-restricted-syntax` rule banning `dangerouslySetInnerHTML` (`R-SEC-010`).
 
@@ -447,11 +447,13 @@ Create `apps/web/src/lib/strings.ts` as an empty typed constant map. Every user-
 Define the four curves and three durations as CSS custom properties and Tailwind theme entries. Nothing animates yet.
 
 ```css
---ease-out:        cubic-bezier(0.23, 1, 0.32, 1);
---ease-in-out:     cubic-bezier(0.77, 0, 0.175, 1);
---ease-drawer:     cubic-bezier(0.32, 0.72, 0, 1);
---easing-standard: cubic-bezier(0.2, 0, 0, 1);   /* PRD §15 */
---duration-fast: 120ms;  --duration-base: 200ms;  --duration-slow: 320ms;
+--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+--easing-standard: cubic-bezier(0.2, 0, 0, 1); /* PRD §15 */
+--duration-fast: 120ms;
+--duration-base: 200ms;
+--duration-slow: 320ms;
 ```
 
 Add the global `prefers-reduced-motion` block now so no component has to remember it later (`R-MOTION-060`).
@@ -464,13 +466,13 @@ Add the global `prefers-reduced-motion` block now so no component has to remembe
 4. Prisma initialized against the Docker Postgres. Empty initial migration to prove the connection.
 5. Tailwind 3.x with the full PRD §15 token mapping. Both frozen palettes into `packages/shared/src/constants.ts`.
 6. Branded coordinate types and the first Zod schemas in `packages/shared`. Import one from each side to prove the wiring.
-7. ESLint + Prettier. Rules: no `dangerouslySetInnerHTML`, no icon package except Phosphor, no `framer-motion` import from board-route paths. *(Uses `eslint.config.js` flat config — ESLint 9's format — rather than the `.eslintrc.cjs` named above, which is the ESLint 8 format. Same rules.)*
+7. ESLint + Prettier. Rules: no `dangerouslySetInnerHTML`, no icon package except Phosphor, no `framer-motion` import from board-route paths. _(Uses `eslint.config.js` flat config — ESLint 9's format — rather than the `.eslintrc.cjs` named above, which is the ESLint 8 format. Same rules.)_
 8. Vitest configured for all three packages. Playwright configured with two browser contexts (needed from Phase 9).
 9. CI pipeline with all eight gates. The bundle-size gate needs `rollup-plugin-visualizer` plus a size assertion.
 10. `.env.example`, README bootstrap section, `pnpm db:seed` stub.
 11. **Commit the 10,000-object stress board as a FIXTURE**, at `fixtures/stress-board.json`, with the deterministic generator that produced it (`scripts/generate-stress-board.ts`). Required from week 1 by PRD risk `R-2`; every later performance claim is measured against it (`R-PERF-025`).
 
-    > **Correction to the original plan.** This task previously read "seed the 10,000-object stress board". It cannot be a *database* seed at Phase 1 — the `Board` and `Operation` models do not exist until Phase 8. What PRD risk `R-2` actually requires is a stress board *"committed to the repo from week 1"*, which is a fixture. Phase 8 adds the DB seed that loads it.
+    > **Correction to the original plan.** This task previously read "seed the 10,000-object stress board". It cannot be a _database_ seed at Phase 1 — the `Board` and `Operation` models do not exist until Phase 8. What PRD risk `R-2` actually requires is a stress board _"committed to the repo from week 1"_, which is a fixture. Phase 8 adds the DB seed that loads it.
 
 ### Files
 
@@ -505,12 +507,12 @@ scripts/check-board-chunk-imports.ts
 
 ## Phase 2 — Canvas layers, viewport, pan, zoom
 
-| | |
-|---|---|
-| **Days** | 3–5 |
-| **Milestone** | M1 |
-| **Depends on** | Phase 1 |
-| **Owner** | Renderer owner + Interaction owner |
+|                |                                    |
+| -------------- | ---------------------------------- |
+| **Days**       | 3–5                                |
+| **Milestone**  | M1                                 |
+| **Depends on** | Phase 1                            |
+| **Owner**      | Renderer owner + Interaction owner |
 
 ### Objective
 
@@ -520,11 +522,11 @@ This phase creates the foundation every visual feature sits on. Get the layering
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-CANVAS-001` | P0 | Infinite canvas, coordinates clamped to ±1,000,000 |
-| `FR-CANVAS-002` | P0 | Pan — space+drag, middle-mouse, two-finger trackpad, Hand tool |
-| `FR-CANVAS-003` | P0 | Zoom — 10%–500%, pointer-anchored, with controls |
+| ID              | Priority | Requirement                                                    |
+| --------------- | -------- | -------------------------------------------------------------- |
+| `FR-CANVAS-001` | P0       | Infinite canvas, coordinates clamped to ±1,000,000             |
+| `FR-CANVAS-002` | P0       | Pan — space+drag, middle-mouse, two-finger trackpad, Hand tool |
+| `FR-CANVAS-003` | P0       | Zoom — 10%–500%, pointer-anchored, with controls               |
 
 ### Flows
 
@@ -534,13 +536,13 @@ FLOWS §8.2.4 (pan and zoom), §14.3 (layer stack), §15.1 (the `PANNING` state)
 
 **The four layers** — FLOWS §14.3. Contents and redraw triggers are fixed (`R-CANVAS-001`):
 
-| Layer | Element | Contents | Redraws on |
-|---|---|---|---|
-| 0 | `<canvas id="grid">` `[P2]` | Dot grid | Viewport change only |
-| 1 | `<canvas id="objects">` | All committed objects | Object change, viewport change |
-| 2 | `<canvas id="interaction">` | In-progress stroke, marquee, drag preview, guides | Every `pointermove` during an interaction |
-| 3 | `<canvas id="overlay">` | Selection boxes, handles, remote cursors and selections | Every frame while presence is active |
-| 4 | `<div id="text-overlay">` | The DOM textarea for text editing | Only while editing |
+| Layer | Element                     | Contents                                                | Redraws on                                |
+| ----- | --------------------------- | ------------------------------------------------------- | ----------------------------------------- |
+| 0     | `<canvas id="grid">` `[P2]` | Dot grid                                                | Viewport change only                      |
+| 1     | `<canvas id="objects">`     | All committed objects                                   | Object change, viewport change            |
+| 2     | `<canvas id="interaction">` | In-progress stroke, marquee, drag preview, guides       | Every `pointermove` during an interaction |
+| 3     | `<canvas id="overlay">`     | Selection boxes, handles, remote cursors and selections | Every frame while presence is active      |
+| 4     | `<div id="text-overlay">`   | The DOM textarea for text editing                       | Only while editing                        |
 
 > **The single most important performance rule in this project:** a remote cursor moving must never cause layer 1 to redraw. If moving a mouse in one window drops the frame rate in another, your layering is wrong. (`R-CANVAS-002`)
 
@@ -549,9 +551,9 @@ FLOWS §8.2.4 (pan and zoom), §14.3 (layer stack), §15.1 (the `PANNING` state)
 ```ts
 function resizeCanvas(canvas: HTMLCanvasElement, cssW: number, cssH: number) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2)
-  canvas.width  = Math.floor(cssW * dpr)
+  canvas.width = Math.floor(cssW * dpr)
   canvas.height = Math.floor(cssH * dpr)
-  canvas.style.width  = `${cssW}px`
+  canvas.style.width = `${cssW}px`
   canvas.style.height = `${cssH}px`
   canvas.getContext('2d')!.setTransform(dpr, 0, 0, dpr, 0, 0)
 }
@@ -564,15 +566,30 @@ class Renderer {
   private dirty = { objects: true, interaction: true, overlay: true }
   private rafId = 0
 
-  start() { this.rafId = requestAnimationFrame(this.tick) }
-  stop()  { cancelAnimationFrame(this.rafId) }
+  start() {
+    this.rafId = requestAnimationFrame(this.tick)
+  }
+  stop() {
+    cancelAnimationFrame(this.rafId)
+  }
 
-  markDirty(layer: keyof typeof this.dirty) { this.dirty[layer] = true }
+  markDirty(layer: keyof typeof this.dirty) {
+    this.dirty[layer] = true
+  }
 
   private tick = () => {
-    if (this.dirty.objects)     { this.drawObjects();     this.dirty.objects = false }
-    if (this.dirty.interaction) { this.drawInteraction(); this.dirty.interaction = false }
-    if (this.dirty.overlay)     { this.drawOverlay();     this.dirty.overlay = false }
+    if (this.dirty.objects) {
+      this.drawObjects()
+      this.dirty.objects = false
+    }
+    if (this.dirty.interaction) {
+      this.drawInteraction()
+      this.dirty.interaction = false
+    }
+    if (this.dirty.overlay) {
+      this.drawOverlay()
+      this.dirty.overlay = false
+    }
     this.rafId = requestAnimationFrame(this.tick)
   }
 }
@@ -583,7 +600,11 @@ Rules: never draw synchronously from an event handler — handlers mutate state 
 **Coordinate conversion** — TRD §7.3:
 
 ```ts
-interface Viewport { x: number; y: number; zoom: number }
+interface Viewport {
+  x: number
+  y: number
+  zoom: number
+}
 
 const canvasToScreen = (p: CanvasPoint, v: Viewport): ScreenPoint => ({
   x: p.x * v.zoom + v.x,
@@ -612,7 +633,7 @@ ctx.restore()
 
 ```ts
 const worldPos = screenToCanvas(pointerScreenPos, viewport)
-const newZoom  = clamp(viewport.zoom * factor, 0.1, 5)
+const newZoom = clamp(viewport.zoom * factor, 0.1, 5)
 viewport.x = pointerScreenPos.x - worldPos.x * newZoom
 viewport.y = pointerScreenPos.y - worldPos.y * newZoom
 viewport.zoom = newZoom
@@ -635,9 +656,13 @@ function getVisibleObjects(objects: BoardObject[], v: Viewport, w: number, h: nu
     maxX: (w - v.x) / v.zoom + pad,
     maxY: (h - v.y) / v.zoom + pad,
   }
-  return objects.filter(o =>
-    o.x + o.width  >= view.minX && o.x <= view.maxX &&
-    o.y + o.height >= view.minY && o.y <= view.maxY)
+  return objects.filter(
+    o =>
+      o.x + o.width >= view.minX &&
+      o.x <= view.maxX &&
+      o.y + o.height >= view.minY &&
+      o.y <= view.maxY,
+  )
 }
 ```
 
@@ -682,8 +707,9 @@ Cursor changes are instant: crosshair for draw tools, `grab`/`grabbing` for pan.
 12. A debug overlay (`?debug=1`) showing viewport, zoom, visible-object count and live frame timing, plus a dev-only `?stress=1` loader for the fixture.
 
 > **Corrections applied during implementation.**
+>
 > - **Geometry lives in `@coboard/shared`** (task 4 above). No `transform.ts` was created.
-> - **A blockout object renderer is required here.** The exit gate measures fps against 10,000 objects, which needs *something* drawn for them, but real stroke rendering is Phase 3 and shapes are Phase 5. Phase 2 draws each object as its tinted bounding box — enough to exercise culling, the once-per-frame transform and style batching honestly. Phase 3 replaces the stroke path.
+> - **A blockout object renderer is required here.** The exit gate measures fps against 10,000 objects, which needs _something_ drawn for them, but real stroke rendering is Phase 3 and shapes are Phase 5. Phase 2 draws each object as its tinted bounding box — enough to exercise culling, the once-per-frame transform and style batching honestly. Phase 3 replaces the stroke path.
 > - **Layer 0 (grid) is `[P2]` and was not built.** Layers 1–3 plus the text-overlay div are mounted; the grid slot is reserved so z-order will not shift.
 > - **No router yet.** `App.tsx` renders `<Canvas />` directly. React Router arrives in Phase 7 with the auth guards.
 
@@ -719,12 +745,12 @@ Pan and zoom hold 60 fps on an empty board and ≥55 fps on the stress board. Po
 
 ## Phase 3 — Pen tool, stroke rendering, simplification, object store
 
-| | |
-|---|---|
-| **Days** | 6–9 |
-| **Milestone** | M1 |
-| **Depends on** | Phase 2 |
-| **Owner** | Renderer owner |
+|                |                |
+| -------------- | -------------- |
+| **Days**       | 6–9            |
+| **Milestone**  | M1             |
+| **Depends on** | Phase 2        |
+| **Owner**      | Renderer owner |
 
 ### Objective
 
@@ -732,10 +758,10 @@ Draw a freehand stroke that feels instant, renders smoothly, simplifies on commi
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-CANVAS-005` | P0 | Pen / freehand tool (`P`), smoothing and simplification, colour/thickness/opacity |
-| `FR-CANVAS-005` | P1 | Pressure sensitivity from `PointerEvent.pressure` where available |
+| ID              | Priority | Requirement                                                                       |
+| --------------- | -------- | --------------------------------------------------------------------------------- |
+| `FR-CANVAS-005` | P0       | Pen / freehand tool (`P`), smoothing and simplification, colour/thickness/opacity |
+| `FR-CANVAS-005` | P1       | Pressure sensitivity from `PointerEvent.pressure` where available                 |
 
 ### Flows
 
@@ -748,14 +774,16 @@ FLOWS §8.2.1 (draw a freehand stroke, all six steps), §14.4 (pen properties pa
 ```ts
 interface StrokeObject extends BaseObject {
   type: 'stroke'
-  points: number[]        // [x0,y0,p0, x1,y1,p1, …]
-  color: string           // #RRGGBB
-  strokeWidth: number     // 1–24
+  points: number[] // [x0,y0,p0, x1,y1,p1, …]
+  color: string // #RRGGBB
+  strokeWidth: number // 1–24
   simplified: boolean
 }
 
 for (let i = 0; i < points.length; i += 3) {
-  const x = points[i], y = points[i + 1], pressure = points[i + 2]
+  const x = points[i],
+    y = points[i + 1],
+    pressure = points[i + 2]
 }
 ```
 
@@ -765,17 +793,17 @@ for (let i = 0; i < points.length; i += 3) {
 
 ```ts
 interface BaseObject {
-  id: ObjectId         // uuid v4, generated client-side
+  id: ObjectId // uuid v4, generated client-side
   type: 'stroke' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'sticky' | 'text' | 'image'
-  x: number            // canvas coords, top-left of the bounding box
+  x: number // canvas coords, top-left of the bounding box
   y: number
   width: number
   height: number
-  rotation: number     // degrees, 0–359.99
-  zIndex: string       // FRACTIONAL index — a string, see Phase 9
-  opacity: number      // 0–1
+  rotation: number // degrees, 0–359.99
+  zIndex: string // FRACTIONAL index — a string, see Phase 9
+  opacity: number // 0–1
   createdBy: string
-  createdAt: number    // client ms timestamp, DISPLAY ONLY, never for ordering
+  createdAt: number // client ms timestamp, DISPLAY ONLY, never for ordering
   updatedAt: number
 }
 ```
@@ -785,13 +813,13 @@ interface BaseObject {
 ```ts
 function drawStroke(ctx: CanvasRenderingContext2D, s: StrokeObject) {
   const p = s.points
-  if (p.length < 6) return                       // fewer than 2 points
+  if (p.length < 6) return // fewer than 2 points
 
   ctx.beginPath()
   ctx.strokeStyle = s.color
-  ctx.lineWidth   = s.strokeWidth
-  ctx.lineCap     = 'round'
-  ctx.lineJoin    = 'round'
+  ctx.lineWidth = s.strokeWidth
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
   ctx.globalAlpha = s.opacity
 
   ctx.moveTo(p[0], p[1])
@@ -844,7 +872,7 @@ function drawStroke(ctx: CanvasRenderingContext2D, s: StrokeObject) {
 interface BoardStore {
   objects: Map<ObjectId, BoardObject>
   tombstones: Set<ObjectId>
-  sortedIds: ObjectId[]          // cached z-order, invalidated on change
+  sortedIds: ObjectId[] // cached z-order, invalidated on change
   viewport: Viewport
   activeTool: Tool
   toolSettings: Record<Tool, ToolSettings>
@@ -882,12 +910,12 @@ Icons are Phosphor, one weight (`R-UI-011`). Every button needs `aria-label` —
 
 Permitted in this phase:
 
-| Element | Animation | Duration | Curve |
-|---|---|---|---|
-| Tool button `:active` | `scale(0.97)` | 120 ms | `--ease-out` |
-| Tool button hover | background colour | 120 ms | `ease` |
-| Tooltip appear | `opacity` + `scale(0.97)`→`1`, origin-aware | 125 ms | `--ease-out` |
-| Properties panel swap | `opacity` crossfade only, no slide | 120 ms | `--ease-out` |
+| Element               | Animation                                   | Duration | Curve        |
+| --------------------- | ------------------------------------------- | -------- | ------------ |
+| Tool button `:active` | `scale(0.97)`                               | 120 ms   | `--ease-out` |
+| Tool button hover     | background colour                           | 120 ms   | `ease`       |
+| Tooltip appear        | `opacity` + `scale(0.97)`→`1`, origin-aware | 125 ms   | `--ease-out` |
+| Properties panel swap | `opacity` crossfade only, no slide          | 120 ms   | `--ease-out` |
 
 Tooltips delay before the first appearance, then open instantly for adjacent triggers with no animation (§8.6 of `CLAUDE.md`). Hover animations gated behind `@media (hover: hover) and (pointer: fine)` (`R-MOTION-061`).
 
@@ -908,27 +936,43 @@ Tooltips delay before the first appearance, then open instantly for adjacent tri
 11. Below-25%-zoom polyline fallback.
 12. Object-layer drawing with style batching and culling.
 
+> **Corrections applied during implementation.**
+>
+> - **RDP lives in `@coboard/shared`, not `features/canvas/geometry/simplify.ts`.** It is pure geometry over a stride-3 array with no DOM dependency, §5 puts pure geometry helpers in the shared package, and the server needs the same function in Phase 9 to bound op payloads. A client-side copy would breach `R-ARCH-007`. `simplifyStroke` and `strokeBounds` were added to `packages/shared/src/geometry.ts`. Same correction shape as Phase 2's `transform.ts`.
+> - **`packages/shared/src/schemas/object.ts` already existed.** Phase 1 shipped `StrokeObjectSchema` with the stride-3 `points` array and finite bounds on every field. Phase 3 consumes it unchanged; the file list above was stale.
+> - **Style batching preserves z-order — defect `D-5`.** TRD §7.6's "sort visible objects by `strokeStyle`/`fillStyle`" breaks the painter's algorithm and contradicts `R-CONV-009`: two overlapping opaque strokes would resolve differently from the data. Implemented as **run-length batching in z-order** — context state is written only when the style key differs from the previous object, and nothing is reordered. Recorded in `RULES.md` §2.4.
+> - **Layer 1 now iterates `sortedIds`.** Phase 2's renderer read `objects.values()`, i.e. insertion order. Invisible while every object was a blockout tint; a visible z-order bug the moment real overlapping strokes exist.
+> - **Only implemented tools get keyboard shortcuts.** All eleven tools render (FLOWS §14.2), but the eight without an implementation are **disabled** and unbound. A shortcut that selects a tool which then draws nothing is worse than no shortcut. `ACTIVE_TOOLS` is now `['select', 'hand', 'pen']`.
+> - **Component tests run on `happy-dom`, not `jsdom`.** jsdom 30 declares `engines: ^22.22.2 || ^24.15.0 || >=26`, excluding the Node 20 LTS that TRD §1.1 pins. It installs silently, passes on a Node 22 dev machine, then fails in CI inside `undici` with `webidl.util.markAsUncloneable is not a function`. happy-dom declares `>=20` and has no undici dependency. `engine-strict=true` was added to `.npmrc` so the next such mismatch fails at install with a package name rather than at runtime with a stack trace.
+> - **Pressure is captured, not rendered as variable width** — agreed scope decision on the `[P1]` sub-item. `PointerEvent.pressure` is normalised, stored in the stride-3 array, carried through simplification and persisted. It is not drawn as taper: TRD §7.5 sets one `lineWidth` for the whole path, and visible taper needs either a filled outline polygon or one `stroke()` per segment — the second is `R-CANVAS-022`'s failure mode multiplied by every point in every object, and both contradict explicit Tier 2 spec code. The data is stored, so a later phase can render it without a migration.
+
 ### Files
 
 ```
+packages/shared/src/geometry.ts                          # simplifyStroke + strokeBounds (NOT a client copy)
 apps/web/src/features/canvas/renderer/shapes/stroke.ts
-apps/web/src/features/canvas/geometry/simplify.ts
+apps/web/src/features/canvas/renderer/{drawObjects,drawInteraction,Renderer}.ts
 apps/web/src/features/canvas/interaction/handlers/draw.ts
-apps/web/src/features/canvas/interaction/useKeyboard.ts
+apps/web/src/features/canvas/interaction/{usePointer,useKeyboard}.ts
 apps/web/src/components/board/{Toolbar.tsx,PropertiesPanel.tsx}
 apps/web/src/components/board/properties/PenProperties.tsx
 apps/web/src/components/ui/{Tooltip.tsx,ColorSwatch.tsx,Slider.tsx}
-packages/shared/src/schemas/object.ts
+apps/web/src/lib/persist.ts                              # validated localStorage
+apps/web/src/stores/boardStore.ts
+tests/e2e/canvas-draw.spec.ts
 ```
 
 ### Tests
 
 - Unit: RDP reduces ~400 points to ~60 at ε = 0.5, and preserves endpoints exactly.
 - Unit: RDP on a straight line reduces to two points.
+- Unit: RDP is iterative — `STROKE_POINTS_MAX` input must not overflow the stack. A crash in the shared package takes the _server_ down in Phase 9, not just a tab.
 - Unit: stroke bounding box accounts for `strokeWidth`.
+- Unit: run-length batching writes `strokeStyle` once per run **and never reorders** (the `D-5` regression test).
+- Unit: `localStorage` reads are validated — a hostile or stale value falls back to defaults.
 - Component: selecting the pen tool swaps the properties panel and persists to `localStorage`.
-- Manual: draw continuously for 30 seconds on the stress board; frame rate stays ≥55 fps.
-- Manual: input-to-pixel latency ≤16 ms, measured by instrumentation.
+- E2E: drawing does not repaint layer 1 (`R-CANVAS-002`), asserted from the renderer's own paint counters.
+- E2E perf: a scripted drag on the stress board, reporting frame p50/p95 **and input-to-pixel p50/p95** from the renderer's instrumentation. Loose CI floors; the real figures are printed to the log and recorded in the PR.
 
 ### Exit gate
 
@@ -938,12 +982,12 @@ A 3-second scribble renders smoothly with no visible polygonal segments, commits
 
 ## Phase 4 — Select, hit test, move, resize, delete, marquee
 
-| | |
-|---|---|
-| **Days** | 10–12 |
-| **Milestone** | M1 |
-| **Depends on** | Phase 3 |
-| **Owner** | Interaction owner |
+|                |                   |
+| -------------- | ----------------- |
+| **Days**       | 10–12             |
+| **Milestone**  | M1                |
+| **Depends on** | Phase 3           |
+| **Owner**      | Interaction owner |
 
 ### Objective
 
@@ -951,15 +995,15 @@ The complete selection and transformation toolkit, driven by a rigorous state ma
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-CANVAS-004` | P0 | Select tool (`V`) — click, shift+click, marquee, bounding box with 8 resize + 1 rotate handle |
-| `FR-CANVAS-011` | P0 | Move objects — drag, arrow-key nudge 1 px, shift+arrow 10 px |
-| `FR-CANVAS-012` | P0 | Resize — corner and edge handles, Shift aspect, Alt from centre, min 8×8 |
-| `FR-CANVAS-014` | P0 | Delete — `Delete`/`Backspace`, undoable |
-| `FR-CANVAS-022` | P0 | Select all (`Cmd+A`) / deselect (`Escape`) |
-| `FR-CANVAS-006` | P0 | Eraser tool (`E`) — object eraser, red highlight on hover, delete on drag |
-| `FR-CANVAS-013` | P1 | Rotate — handle above the box, Shift snaps to 15° |
+| ID              | Priority | Requirement                                                                                   |
+| --------------- | -------- | --------------------------------------------------------------------------------------------- |
+| `FR-CANVAS-004` | P0       | Select tool (`V`) — click, shift+click, marquee, bounding box with 8 resize + 1 rotate handle |
+| `FR-CANVAS-011` | P0       | Move objects — drag, arrow-key nudge 1 px, shift+arrow 10 px                                  |
+| `FR-CANVAS-012` | P0       | Resize — corner and edge handles, Shift aspect, Alt from centre, min 8×8                      |
+| `FR-CANVAS-014` | P0       | Delete — `Delete`/`Backspace`, undoable                                                       |
+| `FR-CANVAS-022` | P0       | Select all (`Cmd+A`) / deselect (`Escape`)                                                    |
+| `FR-CANVAS-006` | P0       | Eraser tool (`E`) — object eraser, red highlight on hover, delete on drag                     |
+| `FR-CANVAS-013` | P1       | Rotate — handle above the box, Shift snaps to 15°                                             |
 
 ### Flows
 
@@ -1013,20 +1057,20 @@ Four rules, all `Blocking`:
 function hitTest(point: CanvasPoint, objects: BoardObject[]): BoardObject | null {
   for (let i = objects.length - 1; i >= 0; i--) {
     const o = objects[i]
-    if (!pointInBounds(point, o)) continue      // cheap AABB rejection
-    if (preciseHitTest(point, o)) return o      // precise per-type test
+    if (!pointInBounds(point, o)) continue // cheap AABB rejection
+    if (preciseHitTest(point, o)) return o // precise per-type test
   }
   return null
 }
 ```
 
-| Type | Precise test |
-|---|---|
-| rect, sticky, image | Bounding box, with a corner-radius check when the radius is large |
-| ellipse | `((dx/rx)² + (dy/ry)²) ≤ 1` |
-| line, arrow | Distance to the segment ≤ `strokeWidth/2 + 4/zoom` |
-| stroke | Distance to any segment ≤ `strokeWidth/2 + 4/zoom`, early-exit on first hit |
-| text | Bounding box |
+| Type                | Precise test                                                                |
+| ------------------- | --------------------------------------------------------------------------- |
+| rect, sticky, image | Bounding box, with a corner-radius check when the radius is large           |
+| ellipse             | `((dx/rx)² + (dy/ry)²) ≤ 1`                                                 |
+| line, arrow         | Distance to the segment ≤ `strokeWidth/2 + 4/zoom`                          |
+| stroke              | Distance to any segment ≤ `strokeWidth/2 + 4/zoom`, early-exit on first hit |
+| text                | Bounding box                                                                |
 
 The `+ 4/zoom` term is a constant 4-pixel screen-space tolerance so thin lines stay clickable at any zoom. Without it, a 1 px line at 10% zoom is impossible to select (`R-CANVAS-041`).
 
@@ -1070,7 +1114,7 @@ ROTATE
 
 ### UI/UX workstream
 
-**Zone:** Board chrome and the overlay layer. Overlay rendering is renderer work, not design work — but the *visual specification* of handles comes from the tokens.
+**Zone:** Board chrome and the overlay layer. Overlay rendering is renderer work, not design work — but the _visual specification_ of handles comes from the tokens.
 
 **Skills:** `ui-ux-pro-max` for the selection affordances.
 
@@ -1140,12 +1184,12 @@ Every transform works correctly at 10% and 500% zoom. The machine cannot be forc
 
 ## Phase 5 — Shapes, sticky notes, text overlay editing
 
-| | |
-|---|---|
-| **Days** | 13–15 |
-| **Milestone** | M1 |
-| **Depends on** | Phase 4 |
-| **Owner** | Renderer owner + Product owner |
+|                |                                |
+| -------------- | ------------------------------ |
+| **Days**       | 13–15                          |
+| **Milestone**  | M1                             |
+| **Depends on** | Phase 4                        |
+| **Owner**      | Renderer owner + Product owner |
 
 ### Objective
 
@@ -1153,14 +1197,14 @@ Every remaining object type renders, is created by its tool, and edits correctly
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-CANVAS-007` | P0 | Shape tools — `R` rect, `O` ellipse, `L` line, `A` arrow; Shift constrains, Alt from centre |
-| `FR-CANVAS-008` | P0 | Sticky note (`N`) — 200×200 default, 8 colours, immediate edit mode, auto-shrink text |
-| `FR-CANVAS-009` | P0 | Text (`T`) — click to place, 8–128 px, bold/italic/alignment, discard if empty |
-| `FR-CANVAS-015` | P0 | Copy / cut / paste / duplicate, with new IDs |
-| `FR-CANVAS-019` | P1 | Context menu |
-| `FR-CANVAS-020` | P1 | Alignment guides — pink snap guides within 6 screen px, Ctrl disables |
+| ID              | Priority | Requirement                                                                                 |
+| --------------- | -------- | ------------------------------------------------------------------------------------------- |
+| `FR-CANVAS-007` | P0       | Shape tools — `R` rect, `O` ellipse, `L` line, `A` arrow; Shift constrains, Alt from centre |
+| `FR-CANVAS-008` | P0       | Sticky note (`N`) — 200×200 default, 8 colours, immediate edit mode, auto-shrink text       |
+| `FR-CANVAS-009` | P0       | Text (`T`) — click to place, 8–128 px, bold/italic/alignment, discard if empty              |
+| `FR-CANVAS-015` | P0       | Copy / cut / paste / duplicate, with new IDs                                                |
+| `FR-CANVAS-019` | P1       | Context menu                                                                                |
+| `FR-CANVAS-020` | P1       | Alignment guides — pink snap guides within 6 screen px, Ctrl disables                       |
 
 ### Flows
 
@@ -1176,24 +1220,24 @@ interface ShapeObject extends BaseObject {
   stroke: string
   strokeWidth: number
   fill: string | 'none'
-  cornerRadius?: number     // rect only
-  arrowStart?: boolean      // arrow only
+  cornerRadius?: number // rect only
+  arrowStart?: boolean // arrow only
   arrowEnd?: boolean
 }
 
 interface StickyObject extends BaseObject {
   type: 'sticky'
-  text: string              // max 2000 chars
-  color: string             // one of the 8 palette colours
+  text: string // max 2000 chars
+  color: string // one of the 8 palette colours
   fontSize: number | 'auto'
   textAlign: 'left' | 'center' | 'right'
 }
 
 interface TextObject extends BaseObject {
   type: 'text'
-  text: string              // max 5000 chars
+  text: string // max 5000 chars
   color: string
-  fontSize: number          // 8–128
+  fontSize: number // 8–128
   bold: boolean
   italic: boolean
   textAlign: 'left' | 'center' | 'right'
@@ -1263,11 +1307,11 @@ The text overlay textarea must be visually invisible but functionally complete �
 
 Permitted:
 
-| Element | Animation | Duration | Curve |
-|---|---|---|---|
-| Context menu | `opacity` + `scale(0.95)`→`1`, **origin at the pointer** | 150 ms | `--ease-out` |
-| Colour swatch `:active` | `scale(0.97)` | 120 ms | `--ease-out` |
-| Alignment guide | **none** — appears instantly | — | — |
+| Element                 | Animation                                                | Duration | Curve        |
+| ----------------------- | -------------------------------------------------------- | -------- | ------------ |
+| Context menu            | `opacity` + `scale(0.95)`→`1`, **origin at the pointer** | 150 ms   | `--ease-out` |
+| Colour swatch `:active` | `scale(0.97)`                                            | 120 ms   | `--ease-out` |
+| Alignment guide         | **none** — appears instantly                             | —        | —            |
 
 The context menu is origin-aware — it scales from where the user right-clicked, not from its centre (`R-MOTION-034`).
 
@@ -1324,24 +1368,24 @@ All seven non-image object types render, create, edit and transform correctly. A
 
 ## Phase 6 — Local undo and redo
 
-| | |
-|---|---|
-| **Days** | 16–17 |
-| **Milestone** | M1 |
-| **Depends on** | Phase 5 |
-| **Owner** | Interaction owner |
+|                |                   |
+| -------------- | ----------------- |
+| **Days**       | 16–17             |
+| **Milestone**  | M1                |
+| **Depends on** | Phase 5           |
+| **Owner**      | Interaction owner |
 
 ### Objective
 
 Per-user undo built on inverse ops, structured now so that when remote operations arrive in Phase 9 the "undo reverted my teammate's work" bug is structurally impossible rather than merely avoided.
 
-PRD risk `R-3` rates this High/High: *"Implement the inverse-op model in TRD §8 exactly. Do not invent a variant."*
+PRD risk `R-3` rates this High/High: _"Implement the inverse-op model in TRD §8 exactly. Do not invent a variant."_
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-CANVAS-018` | P0 | Undo / redo, per-user and local, 100-entry depth, cleared on reload, no-op on stale entries |
+| ID              | Priority | Requirement                                                                                 |
+| --------------- | -------- | ------------------------------------------------------------------------------------------- |
+| `FR-CANVAS-018` | P0       | Undo / redo, per-user and local, 100-entry depth, cleared on reload, no-op on stale entries |
 
 ### Flows
 
@@ -1353,9 +1397,9 @@ FLOWS §8.2.5 (undo/redo user-facing behaviour).
 
 ```ts
 interface HistoryEntry {
-  forward: ClientOp[]       // what the user did
-  inverse: ClientOp[]       // what undoes it
-  label: string             // for debugging and a future history panel
+  forward: ClientOp[] // what the user did
+  inverse: ClientOp[] // what undoes it
+  label: string // for debugging and a future history panel
 }
 
 class HistoryManager {
@@ -1366,36 +1410,37 @@ class HistoryManager {
   push(entry: HistoryEntry) {
     this.undoStack.push(entry)
     if (this.undoStack.length > this.MAX) this.undoStack.shift()
-    this.redoStack = []              // ANY new action clears redo. Always.
+    this.redoStack = [] // ANY new action clears redo. Always.
   }
 
   undo() {
     let attempts = 0
     while (this.undoStack.length && attempts++ < 10) {
       const entry = this.undoStack.pop()!
-      if (!this.isApplicable(entry.inverse)) continue   // stale: skip silently
+      if (!this.isApplicable(entry.inverse)) continue // stale: skip silently
       applyAndEmit(entry.inverse)
       this.redoStack.push(entry)
       return
     }
   }
 
-  redo() { /* symmetric */ }
+  redo() {
+    /* symmetric */
+  }
 
   private isApplicable(ops: ClientOp[]) {
-    return ops.every(op =>
-      op.type === 'CREATE' || store.objects.has(op.objectId))
+    return ops.every(op => op.type === 'CREATE' || store.objects.has(op.objectId))
   }
 }
 ```
 
 **Inverse op construction** — TRD §8.2:
 
-| Forward op | Inverse op |
-|---|---|
-| `CREATE(obj)` | `DELETE(obj.id)` |
-| `DELETE(obj)` | `CREATE(snapshot of obj taken BEFORE deletion)` |
-| `UPDATE(id, {fill:'red'})` | `UPDATE(id, {fill: <previous value>})` |
+| Forward op                 | Inverse op                                      |
+| -------------------------- | ----------------------------------------------- |
+| `CREATE(obj)`              | `DELETE(obj.id)`                                |
+| `DELETE(obj)`              | `CREATE(snapshot of obj taken BEFORE deletion)` |
+| `UPDATE(id, {fill:'red'})` | `UPDATE(id, {fill: <previous value>})`          |
 
 **You must capture the previous values before applying the update.** This is the step everyone forgets (`R-UNDO-007`):
 
@@ -1405,7 +1450,7 @@ function updateObject(id: string, changes: Partial<BoardObject>) {
   if (!before) return
   // Capture ONLY the keys being changed — not the whole object
   const inverseChanges = Object.fromEntries(
-    Object.keys(changes).map(k => [k, (before as any)[k]])
+    Object.keys(changes).map(k => [k, (before as any)[k]]),
   )
   const forward = { id: uuid(), type: 'UPDATE', objectId: id, payload: changes }
   const inverse = { id: uuid(), type: 'UPDATE', objectId: id, payload: inverseChanges }
@@ -1414,7 +1459,7 @@ function updateObject(id: string, changes: Partial<BoardObject>) {
 }
 ```
 
-Capturing only the changed keys — rather than the whole object — is what keeps undo from clobbering a teammate's concurrent edit to a *different* field.
+Capturing only the changed keys — rather than the whole object — is what keeps undo from clobbering a teammate's concurrent edit to a _different_ field.
 
 **The five rules of collaborative undo** — TRD §8.3. This is the section PRD risk `R-3` refers to:
 
@@ -1426,14 +1471,14 @@ Capturing only the changed keys — rather than the whole object — is what kee
 
 **Grouping rules** — TRD §8.4:
 
-| Action | Entries |
-|---|---|
-| One stroke | 1 |
-| Drag 10 objects | 1, containing 10 ops |
-| Delete a multi-selection | 1 |
-| Typing in a sticky note | 1 per burst — coalesce updates within 1 s on the same object |
-| Resize | 1, pushed on `pointerup`, never on `pointermove` |
-| Paste 5 objects | 1 |
+| Action                   | Entries                                                      |
+| ------------------------ | ------------------------------------------------------------ |
+| One stroke               | 1                                                            |
+| Drag 10 objects          | 1, containing 10 ops                                         |
+| Delete a multi-selection | 1                                                            |
+| Typing in a sticky note  | 1 per burst — coalesce updates within 1 s on the same object |
+| Resize                   | 1, pushed on `pointerup`, never on `pointermove`             |
+| Paste 5 objects          | 1                                                            |
 
 **Redo clearing:** any new user action clears the redo stack. Always. No exceptions (`R-UNDO-008`).
 
@@ -1499,12 +1544,12 @@ apps/web/src/stores/boardStore.ts        # applyAndEmit / applyRemoteOp split
 
 ## Phase 7 — Auth REST, guards, token rotation
 
-| | |
-|---|---|
-| **Days** | 18–20 |
-| **Milestone** | M2 — It persists |
+|                |                                              |
+| -------------- | -------------------------------------------- |
+| **Days**       | 18–20                                        |
+| **Milestone**  | M2 — It persists                             |
 | **Depends on** | Phase 1 (Phases 2–6 are independent of this) |
-| **Owner** | Product owner |
+| **Owner**      | Product owner                                |
 
 ### Objective
 
@@ -1512,15 +1557,15 @@ A complete authentication system: registration, login, silent refresh with rotat
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-AUTH-001` | P0 | Email + password registration |
-| `FR-AUTH-002` | P0 | Login, generic errors, 5-attempt lockout per 15 min |
-| `FR-AUTH-005` | P0 | Session persistence, 30 days, silent refresh |
-| `FR-AUTH-003` | P1 | Google OAuth, linking to an existing password account |
-| `FR-AUTH-004` | P1 | Password reset, single-use 60-minute token, invalidates all sessions |
-| `FR-AUTH-007` | P1 | Logout |
-| `FR-SET-001` | P1 | Profile settings — name, avatar, password, delete account |
+| ID            | Priority | Requirement                                                          |
+| ------------- | -------- | -------------------------------------------------------------------- |
+| `FR-AUTH-001` | P0       | Email + password registration                                        |
+| `FR-AUTH-002` | P0       | Login, generic errors, 5-attempt lockout per 15 min                  |
+| `FR-AUTH-005` | P0       | Session persistence, 30 days, silent refresh                         |
+| `FR-AUTH-003` | P1       | Google OAuth, linking to an existing password account                |
+| `FR-AUTH-004` | P1       | Password reset, single-use 60-minute token, invalidates all sessions |
+| `FR-AUTH-007` | P1       | Logout                                                               |
+| `FR-SET-001`  | P1       | Profile settings — name, avatar, password, delete account            |
 
 Also implements **`E-17`**, which is the real requirement behind the dangling `FR-BOARD-041` reference (defect `D-1`, `RULES.md` §2.4).
 
@@ -1532,39 +1577,39 @@ FLOWS §2.1 (route table), §2.2 (`requireAuth`, exact sequence), §3 (signup, a
 
 **Endpoints** — TRD §4.1:
 
-| Method | Path | Body | Success | Errors |
-|---|---|---|---|---|
-| POST | `/auth/register` | `{email, password, displayName}` | 201 `{user, accessToken}` + refresh cookie | 409 `EMAIL_TAKEN`, 422, 429 |
-| POST | `/auth/login` | `{email, password}` | 200 `{user, accessToken}` + cookie | 401 `INVALID_CREDENTIALS`, 429 |
-| POST | `/auth/refresh` | — (cookie) | 200 `{accessToken}` + rotated cookie | 401 `INVALID_REFRESH` |
-| POST | `/auth/logout` | — | 204 | — |
-| GET | `/auth/me` | — | 200 `{user}` | 401 |
-| GET | `/auth/google` | — | 302 to Google | — |
-| GET | `/auth/google/callback` | `?code` | 302 to client | 302 `?error=` |
-| POST | `/auth/forgot-password` | `{email}` | **200 always** | 429 |
-| GET | `/auth/reset/validate` | `?token` | 200 `{valid:true}` | 400 `TOKEN_INVALID`/`TOKEN_EXPIRED`/`TOKEN_USED` |
-| POST | `/auth/reset` | `{token, password}` | 200 | 400, 422 |
+| Method | Path                    | Body                             | Success                                    | Errors                                           |
+| ------ | ----------------------- | -------------------------------- | ------------------------------------------ | ------------------------------------------------ |
+| POST   | `/auth/register`        | `{email, password, displayName}` | 201 `{user, accessToken}` + refresh cookie | 409 `EMAIL_TAKEN`, 422, 429                      |
+| POST   | `/auth/login`           | `{email, password}`              | 200 `{user, accessToken}` + cookie         | 401 `INVALID_CREDENTIALS`, 429                   |
+| POST   | `/auth/refresh`         | — (cookie)                       | 200 `{accessToken}` + rotated cookie       | 401 `INVALID_REFRESH`                            |
+| POST   | `/auth/logout`          | —                                | 204                                        | —                                                |
+| GET    | `/auth/me`              | —                                | 200 `{user}`                               | 401                                              |
+| GET    | `/auth/google`          | —                                | 302 to Google                              | —                                                |
+| GET    | `/auth/google/callback` | `?code`                          | 302 to client                              | 302 `?error=`                                    |
+| POST   | `/auth/forgot-password` | `{email}`                        | **200 always**                             | 429                                              |
+| GET    | `/auth/reset/validate`  | `?token`                         | 200 `{valid:true}`                         | 400 `TOKEN_INVALID`/`TOKEN_EXPIRED`/`TOKEN_USED` |
+| POST   | `/auth/reset`           | `{token, password}`              | 200                                        | 400, 422                                         |
 
 **Error envelope** — TRD §4, used by every endpoint in the product:
 
 ```jsonc
 {
   "error": {
-    "code": "BOARD_NOT_FOUND",       // stable machine-readable code
-    "message": "Board not found",    // developer-facing, never shown raw
-    "details": { },                  // optional field-level errors
-    "correlationId": "8f3a2b91"      // matches the server log entry
-  }
+    "code": "BOARD_NOT_FOUND", // stable machine-readable code
+    "message": "Board not found", // developer-facing, never shown raw
+    "details": {}, // optional field-level errors
+    "correlationId": "8f3a2b91", // matches the server log entry
+  },
 }
 ```
 
 **Token strategy** — TRD §11.1, decision D-11:
 
-| Token | Storage | Lifetime |
-|---|---|---|
-| Access | **In memory only** — a module variable, never `localStorage` | 15 min |
-| Refresh | `httpOnly`, `Secure`, `SameSite=Lax` cookie, rotated on use | 30 days |
-| WS ticket | In memory | 60 s, single use |
+| Token     | Storage                                                      | Lifetime         |
+| --------- | ------------------------------------------------------------ | ---------------- |
+| Access    | **In memory only** — a module variable, never `localStorage` | 15 min           |
+| Refresh   | `httpOnly`, `Secure`, `SameSite=Lax` cookie, rotated on use  | 30 days          |
+| WS ticket | In memory                                                    | 60 s, single use |
 
 **Refresh rotation with reuse detection:** each refresh issues a new token and revokes the old one. If a revoked token is presented, that indicates theft — **revoke the entire token family and force re-login** (`R-SEC-006`).
 
@@ -1627,7 +1672,7 @@ model RefreshToken {
    and navigate there. If invalid or absent → /dashboard.
 ```
 
-**Deep-link preservation** — FLOWS §4: a user sent to `/login?next=/board/abc123` lands on that board after login, not on the dashboard. *"Test this explicitly — it is the single most common regression in auth work."*
+**Deep-link preservation** — FLOWS §4: a user sent to `/login?next=/board/abc123` lands on that board after login, not on the dashboard. _"Test this explicitly — it is the single most common regression in auth work."_
 
 **Password rules** — `FR-AUTH-001`: minimum 8 characters, at least one letter and one number, maximum 128 (to bound bcrypt cost). Display name 1–40 characters, trimmed, non-empty after trim. Email unique, case-insensitive, RFC 5322 pragmatic subset. bcrypt cost 12.
 
@@ -1661,12 +1706,12 @@ python3 $S "focus states keyboard navigation" --domain web -n 5
 
 **Validation copy** — must match FLOWS §3.2 exactly:
 
-| Field | Rule | Timing | Copy |
-|---|---|---|---|
-| Email | Non-empty | On submit | "Enter your email." |
-| Email | Valid format | On blur + submit | "That doesn't look like an email address." |
-| Password | ≥ 8 chars, ≥1 letter, ≥1 number | Live checklist | "Password needs at least 8 characters, including a letter and a number." |
-| Display name | 1–40 after trim | On blur | "Enter a name so others know who you are." |
+| Field        | Rule                            | Timing           | Copy                                                                     |
+| ------------ | ------------------------------- | ---------------- | ------------------------------------------------------------------------ |
+| Email        | Non-empty                       | On submit        | "Enter your email."                                                      |
+| Email        | Valid format                    | On blur + submit | "That doesn't look like an email address."                               |
+| Password     | ≥ 8 chars, ≥1 letter, ≥1 number | Live checklist   | "Password needs at least 8 characters, including a letter and a number." |
+| Display name | 1–40 after trim                 | On blur          | "Enter a name so others know who you are."                               |
 
 Signup shows a live strength meter and a checklist: "8+ characters ✓ / a letter ✓ / a number ✗" — rendered with Phosphor `Check`/`X` glyphs, not emoji (`R-UI-012`).
 
@@ -1680,14 +1725,14 @@ All copy comes from `strings.ts` (`R-UI-052`).
 
 **Frequency gate:** logging in happens rarely — a few times a month. This is the "occasional" band, so standard animation is appropriate. But these are also anxiety-adjacent moments, so motion stays restrained.
 
-| Element | Animation | Duration | Curve |
-|---|---|---|---|
-| Inline field error | `opacity` + `translateY(-4px)`→`0` | 150 ms | `--ease-out` |
-| Form-level error banner | `opacity` + `translateY(-8px)`→`0` | 200 ms | `--ease-out` |
-| Submit button → loading | Content crossfade with `blur(2px)` mask | 200 ms | `ease` |
-| Button `:active` | `scale(0.97)` | 120 ms | `--ease-out` |
-| Route transition | **None** | — | — |
-| Strength meter fill | `transform: scaleX()` | 200 ms | `--ease-out` |
+| Element                 | Animation                               | Duration | Curve        |
+| ----------------------- | --------------------------------------- | -------- | ------------ |
+| Inline field error      | `opacity` + `translateY(-4px)`→`0`      | 150 ms   | `--ease-out` |
+| Form-level error banner | `opacity` + `translateY(-8px)`→`0`      | 200 ms   | `--ease-out` |
+| Submit button → loading | Content crossfade with `blur(2px)` mask | 200 ms   | `ease`       |
+| Button `:active`        | `scale(0.97)`                           | 120 ms   | `--ease-out` |
+| Route transition        | **None**                                | —        | —            |
+| Strength meter fill     | `transform: scaleX()`                   | 200 ms   | `--ease-out` |
 
 The button loading transition uses `emil-design-eng`'s blur-mask technique — without it you see two distinct states overlapping during the crossfade.
 
@@ -1755,12 +1800,12 @@ Sign up, log out, log in, refresh the page, and remain logged in. A cold load wi
 
 ## Phase 8 — Boards CRUD, dashboard, op persistence, snapshots
 
-| | |
-|---|---|
-| **Days** | 21–23 |
-| **Milestone** | M2 |
-| **Depends on** | Phases 6, 7 |
-| **Owner** | Product owner |
+|                |               |
+| -------------- | ------------- |
+| **Days**       | 21–23         |
+| **Milestone**  | M2            |
+| **Depends on** | Phases 6, 7   |
+| **Owner**      | Product owner |
 
 ### Objective
 
@@ -1768,15 +1813,15 @@ Boards persist. A user creates a board, draws, refreshes, and their work is stil
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-BOARD-001` | P0 | Create board, no naming dialog, straight into it |
-| `FR-BOARD-002` | P0 | Dashboard list with cards, sort, filter tabs |
-| `FR-BOARD-004` | P0 | Rename, inline, 1–80 chars, broadcasts |
-| `FR-BOARD-005` | P0 | Soft delete with confirmation, ejects connected sessions |
-| `FR-BOARD-003` | P1 | Thumbnails, 640×400 JPEG q0.7 |
-| `FR-BOARD-006` | P1 | Trash and restore, 30 days |
-| `FR-BOARD-007` | P1 | Duplicate, no members or links copied |
+| ID             | Priority | Requirement                                              |
+| -------------- | -------- | -------------------------------------------------------- |
+| `FR-BOARD-001` | P0       | Create board, no naming dialog, straight into it         |
+| `FR-BOARD-002` | P0       | Dashboard list with cards, sort, filter tabs             |
+| `FR-BOARD-004` | P0       | Rename, inline, 1–80 chars, broadcasts                   |
+| `FR-BOARD-005` | P0       | Soft delete with confirmation, ejects connected sessions |
+| `FR-BOARD-003` | P1       | Thumbnails, 640×400 JPEG q0.7                            |
+| `FR-BOARD-006` | P1       | Trash and restore, 30 days                               |
+| `FR-BOARD-007` | P1       | Duplicate, no members or links copied                    |
 
 ### Flows
 
@@ -1786,13 +1831,13 @@ FLOWS §6 (dashboard: layout, card anatomy, all seven states, role-gated menu, a
 
 **Why an op log and not a mutable objects table** — TRD §3.2, decision D-3. You will be tempted to add an `Object` table and `UPDATE` rows. Do not:
 
-| Property | Op log | Mutable table |
-|---|---|---|
-| "What did I miss since seq 412?" | One indexed query | Impossible without extra bookkeeping |
-| Idempotent replay of an outbox | Free — unique op id | Requires separate dedupe |
-| Ordering authority | Built in (`seq`) | Needs a version column anyway |
-| Auditability / future history | Free | Lost |
-| Write pattern | Append-only, no lock contention | Row-level contention on hot objects |
+| Property                         | Op log                          | Mutable table                        |
+| -------------------------------- | ------------------------------- | ------------------------------------ |
+| "What did I miss since seq 412?" | One indexed query               | Impossible without extra bookkeeping |
+| Idempotent replay of an outbox   | Free — unique op id             | Requires separate dedupe             |
+| Ordering authority               | Built in (`seq`)                | Needs a version column anyway        |
+| Auditability / future history    | Free                            | Lost                                 |
+| Write pattern                    | Append-only, no lock contention | Row-level contention on hot objects  |
 
 The cost is that reading a board means replaying ops. Snapshots solve that — a well-understood trade.
 
@@ -1857,31 +1902,31 @@ model Snapshot {
 
 **Board endpoints** — TRD §4.2:
 
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/boards` | `?filter=all\|owned\|shared\|starred&sort=&q=&cursor=` — cursor pagination, 24/page |
-| POST | `/boards` | Creator becomes OWNER |
-| GET | `/boards/:id` | 200 `{board, myRole, members[]}` |
-| PATCH | `/boards/:id` | Owner only. Broadcasts `board:renamed` |
-| DELETE | `/boards/:id` | Soft delete. Broadcasts `board:deleted` |
-| POST | `/boards/:id/restore` | Owner only, within 30 days |
-| DELETE | `/boards/:id/permanent` | `{confirmName}` must match exactly |
-| POST | `/boards/:id/duplicate` | No members or links copied |
-| GET | `/boards/:id/access` | Drives the FLOWS §2.3 guard |
-| GET | `/boards/:id/snapshot` | Snapshot + tail ops, merged server-side |
-| GET | `/boards/:id/operations` | `?sinceSeq=&limit=` — reconnect gap-fill fallback |
-| PUT | `/boards/:id/thumbnail` | multipart, client-rendered JPEG |
+| Method | Path                     | Notes                                                                               |
+| ------ | ------------------------ | ----------------------------------------------------------------------------------- |
+| GET    | `/boards`                | `?filter=all\|owned\|shared\|starred&sort=&q=&cursor=` — cursor pagination, 24/page |
+| POST   | `/boards`                | Creator becomes OWNER                                                               |
+| GET    | `/boards/:id`            | 200 `{board, myRole, members[]}`                                                    |
+| PATCH  | `/boards/:id`            | Owner only. Broadcasts `board:renamed`                                              |
+| DELETE | `/boards/:id`            | Soft delete. Broadcasts `board:deleted`                                             |
+| POST   | `/boards/:id/restore`    | Owner only, within 30 days                                                          |
+| DELETE | `/boards/:id/permanent`  | `{confirmName}` must match exactly                                                  |
+| POST   | `/boards/:id/duplicate`  | No members or links copied                                                          |
+| GET    | `/boards/:id/access`     | Drives the FLOWS §2.3 guard                                                         |
+| GET    | `/boards/:id/snapshot`   | Snapshot + tail ops, merged server-side                                             |
+| GET    | `/boards/:id/operations` | `?sinceSeq=&limit=` — reconnect gap-fill fallback                                   |
+| PUT    | `/boards/:id/thumbnail`  | multipart, client-rendered JPEG                                                     |
 
 **Snapshot strategy** — TRD §3.4:
 
-| Rule | Value |
-|---|---|
-| When to create | Every 500 ops, and on the last client leaving |
-| How | Replay from the previous snapshot forward, never from seq 0 |
-| Retention | Latest 3 per board |
-| Op retention | Keep all ops. They are small and cheap |
-| Load path | `latest snapshot` + `ops WHERE seq > snapshot.seq` |
-| Generation | **Background job, not on the request path.** If it fails, loading still works — just slower |
+| Rule           | Value                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| When to create | Every 500 ops, and on the last client leaving                                               |
+| How            | Replay from the previous snapshot forward, never from seq 0                                 |
+| Retention      | Latest 3 per board                                                                          |
+| Op retention   | Keep all ops. They are small and cheap                                                      |
+| Load path      | `latest snapshot` + `ops WHERE seq > snapshot.seq`                                          |
+| Generation     | **Background job, not on the request path.** If it fails, loading still works — just slower |
 
 **Create board flow** — FLOWS §6.5:
 
@@ -1918,15 +1963,15 @@ python3 $S "list virtualization" --domain web -n 5
 
 **All seven dashboard states** — FLOWS §6.3, and every one is required (`R-UI-050`):
 
-| State | Rendering |
-|---|---|
-| Loading | **8 skeleton cards with correct dimensions and shimmer. No spinner** — skeletons prevent layout shift (`R-UI-051`) |
-| Loaded | Grid of cards |
-| Empty, never had boards | "Nothing here yet" + "Create your first board and invite your team." + "New board" |
-| Empty, filter | "No boards match that filter" + "Clear filter" |
-| Empty, search | "No boards found for '{query}'" + "Clear search" |
-| Error | Inline error card + "Retry". Sidebar and header stay functional |
-| Partial error | Cards render with placeholder thumbnails. **Do not fail the whole page for a thumbnail** |
+| State                   | Rendering                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Loading                 | **8 skeleton cards with correct dimensions and shimmer. No spinner** — skeletons prevent layout shift (`R-UI-051`) |
+| Loaded                  | Grid of cards                                                                                                      |
+| Empty, never had boards | "Nothing here yet" + "Create your first board and invite your team." + "New board"                                 |
+| Empty, filter           | "No boards match that filter" + "Clear filter"                                                                     |
+| Empty, search           | "No boards found for '{query}'" + "Clear search"                                                                   |
+| Error                   | Inline error card + "Retry". Sidebar and header stay functional                                                    |
+| Partial error           | Cards render with placeholder thumbnails. **Do not fail the whole page for a thumbnail**                           |
 
 **Role-gated card menu** — FLOWS §6.4: Rename, Share and Move-to-trash are owner-only; Leave board is non-owner-only.
 
@@ -1936,15 +1981,15 @@ Seed data uses realistic board names — "Q3 Retrospective", "Onboarding Flow v2
 
 **Frequency gate:** the dashboard is visited occasionally, a few times a day. This is the band where standard animation is appropriate, and it is the one place in the product where Framer Motion earns its bundle cost.
 
-| Element | Animation | Duration | Curve |
-|---|---|---|---|
-| Card grid entry | Stagger, `opacity` + `translateY(8px)`→`0` | 300 ms, 40 ms stagger | `--ease-out` |
-| Card hover | `box-shadow` + `border-color` only — **no scale** (`R-UI-021`) | 150 ms | `ease` |
-| Card delete | `opacity` + collapse | 200 ms | `--ease-out` |
-| Card restore | Reverse of delete | 200 ms | `--ease-out` |
-| Menu popover | `opacity` + `scale(0.95)`→`1`, **origin at the trigger** | 150 ms | `--ease-out` |
-| Modal | `opacity` + `translateY(8px)`, **origin centre** (modals are exempt from origin-awareness) | 200 ms | `--ease-out` |
-| Skeleton shimmer | `transform: translateX()` loop | 1.2 s | `linear` |
+| Element          | Animation                                                                                  | Duration              | Curve        |
+| ---------------- | ------------------------------------------------------------------------------------------ | --------------------- | ------------ |
+| Card grid entry  | Stagger, `opacity` + `translateY(8px)`→`0`                                                 | 300 ms, 40 ms stagger | `--ease-out` |
+| Card hover       | `box-shadow` + `border-color` only — **no scale** (`R-UI-021`)                             | 150 ms                | `ease`       |
+| Card delete      | `opacity` + collapse                                                                       | 200 ms                | `--ease-out` |
+| Card restore     | Reverse of delete                                                                          | 200 ms                | `--ease-out` |
+| Menu popover     | `opacity` + `scale(0.95)`→`1`, **origin at the trigger**                                   | 150 ms                | `--ease-out` |
+| Modal            | `opacity` + `translateY(8px)`, **origin centre** (modals are exempt from origin-awareness) | 200 ms                | `--ease-out` |
+| Skeleton shimmer | `transform: translateX()` loop                                                             | 1.2 s                 | `linear`     |
 
 Stagger caps at the first ~12 cards; beyond that everything appears at once. A 50-card stagger at 40 ms is a two-second wait (`R-MOTION-039`).
 
@@ -2008,12 +2053,12 @@ A user signs up, creates a board, draws, refreshes, and their work is intact —
 
 ## Phase 9 — WebSocket gateway, rooms, op broadcast, sequence ordering
 
-| | |
-|---|---|
-| **Days** | 24–27 |
-| **Milestone** | M3 — It syncs |
+|                |                                         |
+| -------------- | --------------------------------------- |
+| **Days**       | 24–27                                   |
+| **Milestone**  | M3 — It syncs                           |
 | **Depends on** | Phase 8, and genuinely solid Phases 2–6 |
-| **Owner** | Sync owner |
+| **Owner**      | Sync owner                              |
 
 > ### Read this before starting
 >
@@ -2027,13 +2072,13 @@ Two browser windows show each other's changes live and converge to identical sta
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-RT-001` | P0 | Live object sync, p95 250 ms, hard ceiling 500 ms |
-| `FR-RT-002` | P0 | Optimistic local application with rollback on rejection |
-| `FR-RT-007` | P0 | Concurrent edit resolution |
-| `FR-RT-012` | P0 | Persistence guarantee — ack only after durable persistence |
-| `FR-CANVAS-016` | P1 | Z-order — fractional index, not array position |
+| ID              | Priority | Requirement                                                |
+| --------------- | -------- | ---------------------------------------------------------- |
+| `FR-RT-001`     | P0       | Live object sync, p95 250 ms, hard ceiling 500 ms          |
+| `FR-RT-002`     | P0       | Optimistic local application with rollback on rejection    |
+| `FR-RT-007`     | P0       | Concurrent edit resolution                                 |
+| `FR-RT-012`     | P0       | Persistence guarantee — ack only after durable persistence |
+| `FR-CANVAS-016` | P1       | Z-order — fractional index, not array position             |
 
 ### Flows
 
@@ -2068,38 +2113,44 @@ Client                                    Server
 
 ```ts
 type ClientMessage =
-  | { t: 'join';     boardId: string; sinceSeq: number }
-  | { t: 'op';       op: ClientOp }
+  | { t: 'join'; boardId: string; sinceSeq: number }
+  | { t: 'op'; op: ClientOp }
   | { t: 'op_batch'; ops: ClientOp[] }
-  | { t: 'cursor';   x: number; y: number }
-  | { t: 'sel';      ids: string[] }
-  | { t: 'stroke';   id: string; pts: number[]; done: boolean }
-  | { t: 'xform';    ids: string[]; dx: number; dy: number }
+  | { t: 'cursor'; x: number; y: number }
+  | { t: 'sel'; ids: string[] }
+  | { t: 'stroke'; id: string; pts: number[]; done: boolean }
+  | { t: 'xform'; ids: string[]; dx: number; dy: number }
   | { t: 'ping' }
 
 type ServerMessage =
-  | { t: 'join_ack'; seq: number; role: Role; sessionId: string
-      colour: string; users: PresenceUser[] }
+  | {
+      t: 'join_ack'
+      seq: number
+      role: Role
+      sessionId: string
+      colour: string
+      users: PresenceUser[]
+    }
   | { t: 'op_batch'; ops: ServerOp[] }
-  | { t: 'ack';      ids: string[]; seqs: number[] }
-  | { t: 'nack';     id: string; code: string; message: string }
-  | { t: 'presence_join';  user: PresenceUser }
+  | { t: 'ack'; ids: string[]; seqs: number[] }
+  | { t: 'nack'; id: string; code: string; message: string }
+  | { t: 'presence_join'; user: PresenceUser }
   | { t: 'presence_leave'; sessionId: string }
-  | { t: 'cursor';   sessionId: string; x: number; y: number }
-  | { t: 'sel';      sessionId: string; ids: string[] }
-  | { t: 'stroke';   sessionId: string; id: string; pts: number[]; done: boolean }
-  | { t: 'xform';    sessionId: string; ids: string[]; dx: number; dy: number }
-  | { t: 'board_renamed';  name: string }
+  | { t: 'cursor'; sessionId: string; x: number; y: number }
+  | { t: 'sel'; sessionId: string; ids: string[] }
+  | { t: 'stroke'; sessionId: string; id: string; pts: number[]; done: boolean }
+  | { t: 'xform'; sessionId: string; ids: string[]; dx: number; dy: number }
+  | { t: 'board_renamed'; name: string }
   | { t: 'board_deleted' }
-  | { t: 'role_changed';   role: Role }
+  | { t: 'role_changed'; role: Role }
   | { t: 'access_revoked' }
   | { t: 'pong' }
 
 interface ClientOp {
-  id: string          // client-generated uuid — the idempotency key
+  id: string // client-generated uuid — the idempotency key
   type: 'CREATE' | 'UPDATE' | 'DELETE'
   objectId: string
-  payload: unknown    // full object for CREATE, PARTIAL for UPDATE, {} for DELETE
+  payload: unknown // full object for CREATE, PARTIAL for UPDATE, {} for DELETE
 }
 
 interface ServerOp extends ClientOp {
@@ -2114,21 +2165,33 @@ interface ServerOp extends ClientOp {
 async function handleOp(session: Session, op: ClientOp) {
   // 1. AUTHORIZE — every single message, no exceptions
   if (session.role === 'VIEWER') {
-    return send(session, { t: 'nack', id: op.id, code: 'FORBIDDEN',
-                           message: 'View-only access' })
+    return send(session, {
+      t: 'nack',
+      id: op.id,
+      code: 'FORBIDDEN',
+      message: 'View-only access',
+    })
   }
 
   // 2. VALIDATE against the Zod schema for op.type
   const parsed = OpSchema.safeParse(op)
   if (!parsed.success) {
-    return send(session, { t: 'nack', id: op.id, code: 'INVALID_OP',
-                           message: 'Malformed operation' })
+    return send(session, {
+      t: 'nack',
+      id: op.id,
+      code: 'INVALID_OP',
+      message: 'Malformed operation',
+    })
   }
 
   // 3. RATE LIMIT — token bucket in Redis, 100 ops/sec per session
   if (!(await rateLimiter.consume(session.id))) {
-    return send(session, { t: 'nack', id: op.id, code: 'RATE_LIMITED',
-                           message: 'Slow down' })
+    return send(session, {
+      t: 'nack',
+      id: op.id,
+      code: 'RATE_LIMITED',
+      message: 'Slow down',
+    })
   }
 
   // 4. IDEMPOTENCY — the client may resend after a reconnect
@@ -2145,9 +2208,16 @@ async function handleOp(session: Session, op: ClientOp) {
       select: { currentSeq: true },
     })
     await tx.operation.create({
-      data: { id: op.id, boardId: session.boardId, seq: board.currentSeq,
-              type: op.type, objectId: op.objectId, payload: op.payload,
-              actorId: session.userId, actorGuest: session.guestId },
+      data: {
+        id: op.id,
+        boardId: session.boardId,
+        seq: board.currentSeq,
+        type: op.type,
+        objectId: op.objectId,
+        payload: op.payload,
+        actorId: session.userId,
+        actorGuest: session.guestId,
+      },
     })
     return board.currentSeq
   })
@@ -2157,8 +2227,10 @@ async function handleOp(session: Session, op: ClientOp) {
 
   // 7. BROADCAST to everyone else in the room (and via Redis pub/sub to
   //    sessions on other server instances)
-  broadcastExcept(session.boardId, session.id,
-                  { t: 'op_batch', ops: [{ ...op, seq, actorSessionId: session.id }] })
+  broadcastExcept(session.boardId, session.id, {
+    t: 'op_batch',
+    ops: [{ ...op, seq, actorSessionId: session.id }],
+  })
 }
 ```
 
@@ -2168,15 +2240,15 @@ async function handleOp(session: Session, op: ClientOp) {
 
 **Close codes** — TRD §5.6:
 
-| Code | Meaning | Client reaction |
-|---|---|---|
-| 1000 | Normal | No reconnect |
-| 1001 | Going away (page unload) | No reconnect |
-| 1006 | Abnormal (network) | Reconnect with backoff |
-| 4001 | Unauthorized | Do **not** reconnect. Refresh the token, then reconnect **once** |
-| 4003 | Forbidden (role revoked) | Do not reconnect. Show S-17 |
-| 4004 | Board not found / deleted | Do not reconnect. Show S-18/S-19 |
-| 4029 | Rate limited / too many connections | Reconnect after 30 s |
+| Code | Meaning                             | Client reaction                                                  |
+| ---- | ----------------------------------- | ---------------------------------------------------------------- |
+| 1000 | Normal                              | No reconnect                                                     |
+| 1001 | Going away (page unload)            | No reconnect                                                     |
+| 1006 | Abnormal (network)                  | Reconnect with backoff                                           |
+| 4001 | Unauthorized                        | Do **not** reconnect. Refresh the token, then reconnect **once** |
+| 4003 | Forbidden (role revoked)            | Do not reconnect. Show S-17                                      |
+| 4004 | Board not found / deleted           | Do not reconnect. Show S-18/S-19                                 |
+| 4029 | Rate limited / too many connections | Reconnect after 30 s                                             |
 
 **The resolution algorithm** — TRD §6.2:
 
@@ -2281,15 +2353,15 @@ Deleted objects keep a tombstone in memory for the session so a late-arriving up
 
 **Concurrent edit matrix** — `FR-RT-007`, FLOWS §9.3. These outcomes are correct behaviour, not errors:
 
-| A does | B does | Result | User sees an error? |
-|---|---|---|---|
-| Moves X | Moves Y | Both apply | No conflict |
-| Moves X | Recolours X | Both apply — different fields | No |
-| Sets X fill red | Sets X fill blue | Later server seq wins | The loser sees the colour change. **Accepted** |
-| Deletes X | Moves X | X stays deleted, the move is dropped | The object vanishes mid-drag. Snap the drag to an end, show **no error** |
-| Deletes X | Deletes X | Idempotent no-op | No |
-| Creates a stroke | Creates a stroke | Both exist, ordered by seq | No |
-| Reorders z | Reorders z | Fractional indexing keeps both valid | No |
+| A does           | B does           | Result                               | User sees an error?                                                      |
+| ---------------- | ---------------- | ------------------------------------ | ------------------------------------------------------------------------ |
+| Moves X          | Moves Y          | Both apply                           | No conflict                                                              |
+| Moves X          | Recolours X      | Both apply — different fields        | No                                                                       |
+| Sets X fill red  | Sets X fill blue | Later server seq wins                | The loser sees the colour change. **Accepted**                           |
+| Deletes X        | Moves X          | X stays deleted, the move is dropped | The object vanishes mid-drag. Snap the drag to an end, show **no error** |
+| Deletes X        | Deletes X        | Idempotent no-op                     | No                                                                       |
+| Creates a stroke | Creates a stroke | Both exist, ordered by seq           | No                                                                       |
+| Reorders z       | Reorders z       | Fractional indexing keeps both valid | No                                                                       |
 
 ### UI/UX workstream
 
@@ -2371,12 +2443,12 @@ Two browser windows sync live and converge. `AT-01` through `AT-05` pass, plus `
 
 ## Phase 10 — Presence: cursors, avatars, remote selection, live strokes
 
-| | |
-|---|---|
-| **Days** | 28–30 |
-| **Milestone** | M3 |
-| **Depends on** | Phase 9 |
-| **Owner** | Renderer owner + Sync owner |
+|                |                             |
+| -------------- | --------------------------- |
+| **Days**       | 28–30                       |
+| **Milestone**  | M3                          |
+| **Depends on** | Phase 9                     |
+| **Owner**      | Renderer owner + Sync owner |
 
 ### Objective
 
@@ -2384,14 +2456,14 @@ The board feels inhabited. Cursors glide, avatars appear, remote selections are 
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-RT-003` | P0 | Live cursors — 20 Hz, interpolated, fade at 5 s, hide at 15 s |
-| `FR-RT-004` | P0 | Presence list — stacked avatars, max 5 + "+N", 12-colour palette |
-| `FR-RT-008` | P0 | Join/leave toasts, 3 s, max 3 stacked |
-| `FR-RT-005` | P1 | Remote selection indicators |
-| `FR-RT-006` | P1 | Live in-progress strokes |
-| `FR-RT-011` | P1 | Room capacity — soft limit 50 |
+| ID          | Priority | Requirement                                                      |
+| ----------- | -------- | ---------------------------------------------------------------- |
+| `FR-RT-003` | P0       | Live cursors — 20 Hz, interpolated, fade at 5 s, hide at 15 s    |
+| `FR-RT-004` | P0       | Presence list — stacked avatars, max 5 + "+N", 12-colour palette |
+| `FR-RT-008` | P0       | Join/leave toasts, 3 s, max 3 stacked                            |
+| `FR-RT-005` | P1       | Remote selection indicators                                      |
+| `FR-RT-006` | P1       | Live in-progress strokes                                         |
+| `FR-RT-011` | P1       | Room capacity — soft limit 50                                    |
 
 ### Flows
 
@@ -2401,15 +2473,15 @@ FLOWS §9.1 (join sequence), §9.2 (cursor rendering rules), §12.5 `E-01`, `E-2
 
 **Ops versus presence** — TRD §5.3. The distinction that governs this entire phase:
 
-| | Ops | Presence |
-|---|---|---|
-| Examples | create/update/delete | cursor, selection, in-progress stroke, drag preview |
-| Persisted | **Yes**, to Postgres | **Never** |
-| Sequence number | Yes | No |
-| Acknowledged | Yes | No |
-| Queued in the outbox when offline | Yes | **No — dropped** |
-| Rate | Low | High — 20 Hz per user |
-| Lost message consequence | Data loss, unacceptable | A cursor stutters, irrelevant |
+|                                   | Ops                     | Presence                                            |
+| --------------------------------- | ----------------------- | --------------------------------------------------- |
+| Examples                          | create/update/delete    | cursor, selection, in-progress stroke, drag preview |
+| Persisted                         | **Yes**, to Postgres    | **Never**                                           |
+| Sequence number                   | Yes                     | No                                                  |
+| Acknowledged                      | Yes                     | No                                                  |
+| Queued in the outbox when offline | Yes                     | **No — dropped**                                    |
+| Rate                              | Low                     | High — 20 Hz per user                               |
+| Lost message consequence          | Data loss, unacceptable | A cursor stutters, irrelevant                       |
 
 > If you find yourself writing a cursor position to the database, stop. If you find yourself dropping a create-object message because the outbox was full, stop.
 
@@ -2447,15 +2519,15 @@ function interpolateCursor(c: RemoteCursor, now: number) {
 
 **Cursor rendering rules** — FLOWS §9.2:
 
-| Rule | Value |
-|---|---|
-| Send rate | 20 Hz (every 50 ms), only on actual change |
-| Send format | Canvas coordinates, rounded to 1 decimal |
-| Receive | Interpolate over 50 ms, linear easing |
-| Layer | **Overlay layer (3), never the object layer** |
-| Idle 5 s | Fade to 40% opacity |
-| Idle 15 s | Hide entirely; the avatar remains in the header |
-| Own cursor | **Never render your own remote cursor.** Obvious, and everyone builds this bug once |
+| Rule        | Value                                                                               |
+| ----------- | ----------------------------------------------------------------------------------- |
+| Send rate   | 20 Hz (every 50 ms), only on actual change                                          |
+| Send format | Canvas coordinates, rounded to 1 decimal                                            |
+| Receive     | Interpolate over 50 ms, linear easing                                               |
+| Layer       | **Overlay layer (3), never the object layer**                                       |
+| Idle 5 s    | Fade to 40% opacity                                                                 |
+| Idle 15 s   | Hide entirely; the avatar remains in the header                                     |
+| Own cursor  | **Never render your own remote cursor.** Obvious, and everyone builds this bug once |
 
 **Presence colours:** the 12-colour palette from PRD §15, assigned round-robin per room at join, chosen to minimize collision. Assigned **server-side** so every participant sees the same colour for the same user (`R-UI-013`).
 
@@ -2492,17 +2564,17 @@ This phase contains the product's most important motion decision, and it is a su
 
 **Everything else about presence is instant:**
 
-| Element | Animation | Duration | Curve |
-|---|---|---|---|
-| Cursor position | 50 ms linear interpolation (data smoothing) | 50 ms | `linear` |
-| Cursor idle fade at 5 s | `opacity` → 0.4 | 300 ms | `--ease-out` |
-| Cursor hide at 15 s | `opacity` → 0 | 300 ms | `--ease-out` |
-| Avatar enters the stack | `opacity` + `scale(0.9)`→`1` | 200 ms | `--ease-out` |
-| Avatar leaves | `opacity` → 0 | 150 ms | `--ease-out` |
-| Toast enter | `translateY(100%)`→`0` + `opacity` | 200 ms | `--ease-out` |
-| Toast exit | Same direction as entry | 150 ms | `--ease-out` |
-| Remote selection outline | **None — instant** | — | — |
-| Remote stroke | **None — it draws as the points arrive** | — | — |
+| Element                  | Animation                                   | Duration | Curve        |
+| ------------------------ | ------------------------------------------- | -------- | ------------ |
+| Cursor position          | 50 ms linear interpolation (data smoothing) | 50 ms    | `linear`     |
+| Cursor idle fade at 5 s  | `opacity` → 0.4                             | 300 ms   | `--ease-out` |
+| Cursor hide at 15 s      | `opacity` → 0                               | 300 ms   | `--ease-out` |
+| Avatar enters the stack  | `opacity` + `scale(0.9)`→`1`                | 200 ms   | `--ease-out` |
+| Avatar leaves            | `opacity` → 0                               | 150 ms   | `--ease-out` |
+| Toast enter              | `translateY(100%)`→`0` + `opacity`          | 200 ms   | `--ease-out` |
+| Toast exit               | Same direction as entry                     | 150 ms   | `--ease-out` |
+| Remote selection outline | **None — instant**                          | —        | —            |
+| Remote stroke            | **None — it draws as the points arrive**    | —        | —            |
 
 Toast enter and exit share a direction so swipe-to-dismiss feels intuitive — `emil-design-eng`'s spatial-consistency principle. Exit is faster than entry (`R-MOTION-023`). Percentage translation so the toast height does not matter (`R-MOTION-037`).
 
@@ -2559,12 +2631,12 @@ Cursors glide smoothly at 20 Hz with no stutter. Moving a cursor in one window p
 
 ## Phase 11 — Reconnection, outbox, gap fill, conflict rules
 
-| | |
-|---|---|
-| **Days** | 31–33 |
-| **Milestone** | M4 — It survives |
-| **Depends on** | Phase 10 |
-| **Owner** | Sync owner |
+|                |                  |
+| -------------- | ---------------- |
+| **Days**       | 31–33            |
+| **Milestone**  | M4 — It survives |
+| **Depends on** | Phase 10         |
+| **Owner**      | Sync owner       |
 
 ### Objective
 
@@ -2574,11 +2646,11 @@ The convergence debug harness is built **here**, not in the polish phase. PRD ri
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-RT-009` | P0 | Connection status indicator — exactly five states |
-| `FR-RT-010` | P0 | Offline editing and reconnection with outbox and replay |
-| `FR-RT-012` | P0 | Persistence guarantee |
+| ID          | Priority | Requirement                                             |
+| ----------- | -------- | ------------------------------------------------------- |
+| `FR-RT-009` | P0       | Connection status indicator — exactly five states       |
+| `FR-RT-010` | P0       | Offline editing and reconnection with outbox and replay |
+| `FR-RT-012` | P0       | Persistence guarantee                                   |
 
 ### Flows
 
@@ -2615,13 +2687,13 @@ FLOWS §9.4 (disconnect and reconnect, the full state flow), §15.2 (connection 
 
 **Every state maps to exactly one header indicator** (`FR-RT-009`). The user always knows which state they are in without opening the console:
 
-| State | Indicator | Copy |
-|---|---|---|
-| Connected | Green dot, no text | — |
-| Connecting | Amber pulsing dot | "Connecting…" |
-| Reconnecting | Amber | "Reconnecting… (attempt {N})" |
-| Offline | Red | "Offline — changes saved locally" |
-| Syncing | Blue | "Syncing {N} changes…" |
+| State        | Indicator          | Copy                              |
+| ------------ | ------------------ | --------------------------------- |
+| Connected    | Green dot, no text | —                                 |
+| Connecting   | Amber pulsing dot  | "Connecting…"                     |
+| Reconnecting | Amber              | "Reconnecting… (attempt {N})"     |
+| Offline      | Red                | "Offline — changes saved locally" |
+| Syncing      | Blue               | "Syncing {N} changes…"            |
 
 **The outbox** — TRD §10.1:
 
@@ -2638,7 +2710,7 @@ class Outbox {
 
   flush(socket: SocketClient) {
     if (!socket.isOpen) return
-    const batch = this.queue.splice(0, 50)              // cap the batch size
+    const batch = this.queue.splice(0, 50) // cap the batch size
     for (const op of batch) this.inflight.set(op.id, op)
     socket.send({ t: 'op_batch', ops: batch })
     this.persist()
@@ -2650,7 +2722,7 @@ class Outbox {
   }
 
   onNack(id: string) {
-    this.inflight.delete(id)                             // do NOT retry a nack
+    this.inflight.delete(id) // do NOT retry a nack
     this.persist()
   }
 
@@ -2663,11 +2735,16 @@ class Outbox {
 
   private persist() {
     try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify({
-        boardId: this.boardId,
-        ops: [...this.inflight.values(), ...this.queue],
-      }))
-    } catch { /* quota or private mode — degrade silently */ }
+      localStorage.setItem(
+        this.STORAGE_KEY,
+        JSON.stringify({
+          boardId: this.boardId,
+          ops: [...this.inflight.values(), ...this.queue],
+        }),
+      )
+    } catch {
+      /* quota or private mode — degrade silently */
+    }
   }
 }
 ```
@@ -2748,13 +2825,13 @@ All copy verbatim from PRD §8.2 via `strings.ts`:
 
 ### Motion workstream
 
-| Element | Animation | Duration | Curve |
-|---|---|---|---|
-| Connecting / reconnecting dot | `opacity` pulse loop | 1.2 s | `ease-in-out` |
-| Indicator state change | Colour + width transition | 200 ms | `--easing-standard` |
-| Syncing count | Text swap, no animation | — | — |
-| Presence "stale" desaturation | `filter: saturate()` | 300 ms | `--ease-out` |
-| Offline banner | `translateY(-100%)`→`0` | 200 ms | `--ease-out` |
+| Element                       | Animation                 | Duration | Curve               |
+| ----------------------------- | ------------------------- | -------- | ------------------- |
+| Connecting / reconnecting dot | `opacity` pulse loop      | 1.2 s    | `ease-in-out`       |
+| Indicator state change        | Colour + width transition | 200 ms   | `--easing-standard` |
+| Syncing count                 | Text swap, no animation   | —        | —                   |
+| Presence "stale" desaturation | `filter: saturate()`      | 300 ms   | `--ease-out`        |
+| Offline banner                | `translateY(-100%)`→`0`   | 200 ms   | `--ease-out`        |
 
 The pulsing dot is the only continuous animation permitted in the board chrome. It communicates "work is happening", which is a valid purpose under `R-MOTION-003`.
 
@@ -2816,12 +2893,12 @@ All six chaos tests `AT-30`–`AT-35` pass, plus `AT-12`. The convergence harnes
 
 ## Phase 12 — Sharing, share links, guest flow, permission enforcement
 
-| | |
-|---|---|
-| **Days** | 34–36 |
-| **Milestone** | M5 — It's finished |
-| **Depends on** | Phase 11 |
-| **Owner** | Product owner |
+|                |                    |
+| -------------- | ------------------ |
+| **Days**       | 34–36              |
+| **Milestone**  | M5 — It's finished |
+| **Depends on** | Phase 11           |
+| **Owner**      | Product owner      |
 
 ### Objective
 
@@ -2829,15 +2906,15 @@ A stranger clicks a link in Slack and is drawing within 10 seconds without an ac
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-SHARE-001` | P0 | Permission model — exactly four roles |
-| `FR-SHARE-002` | P0 | Share link with ≥128-bit token |
-| `FR-SHARE-005` | P0 | Access denial screen |
-| `FR-SHARE-006` | P0 | Viewer mode enforced on client **and** server |
-| `FR-AUTH-006` | P0 | Guest identity |
-| `FR-SHARE-003` | P1 | Revoke and regenerate link |
-| `FR-SHARE-004` | P1 | Invite by email |
+| ID             | Priority | Requirement                                   |
+| -------------- | -------- | --------------------------------------------- |
+| `FR-SHARE-001` | P0       | Permission model — exactly four roles         |
+| `FR-SHARE-002` | P0       | Share link with ≥128-bit token                |
+| `FR-SHARE-005` | P0       | Access denial screen                          |
+| `FR-SHARE-006` | P0       | Viewer mode enforced on client **and** server |
+| `FR-AUTH-006`  | P0       | Guest identity                                |
+| `FR-SHARE-003` | P1       | Revoke and regenerate link                    |
+| `FR-SHARE-004` | P1       | Invite by email                               |
 
 ### Flows
 
@@ -2847,12 +2924,12 @@ FLOWS §2.3 (`requireBoardAccess`, the most important guard in the app), §2.4 (
 
 **The permission model** — `FR-SHARE-001`. Exactly four roles, no others. One Owner per board:
 
-| Role | View | Edit objects | Invite | Change settings | Delete board |
-|---|---|:--:|:--:|:--:|:--:|
-| **Owner** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Editor** | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Commenter** `[P2]` | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Viewer** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Role                 | View | Edit objects | Invite | Change settings | Delete board |
+| -------------------- | ---- | :----------: | :----: | :-------------: | :----------: |
+| **Owner**            | ✅   |      ✅      |   ✅   |       ✅        |      ✅      |
+| **Editor**           | ✅   |      ✅      |   ❌   |       ❌        |      ❌      |
+| **Commenter** `[P2]` | ✅   |      ❌      |   ❌   |       ❌        |      ❌      |
+| **Viewer**           | ✅   |      ❌      |   ❌   |       ❌        |      ❌      |
 
 **Models** — TRD §3.1:
 
@@ -2967,14 +3044,14 @@ STEP 6 — Remove the spinner, enable the toolbar per role, render presence,
 
 **S-11 failure branches** — FLOWS §7.3:
 
-| Response | Screen | Copy |
-|---|---|---|
-| 404 token | S-17 | "This link isn't valid. Ask whoever shared it for a new one." |
-| 410 revoked | S-17 | "This link has been turned off." |
-| 410 board deleted | S-18 | "This board no longer exists." |
-| 403 board full | S-11 error | "This board is full right now. Try again in a few minutes." + Retry |
-| Name empty | S-11 | "Enter a name so others know who you are." |
-| Name > 40 chars | S-11 | Hard-stop at 40, counter shown from 30 onward |
+| Response          | Screen     | Copy                                                                |
+| ----------------- | ---------- | ------------------------------------------------------------------- |
+| 404 token         | S-17       | "This link isn't valid. Ask whoever shared it for a new one."       |
+| 410 revoked       | S-17       | "This link has been turned off."                                    |
+| 410 board deleted | S-18       | "This board no longer exists."                                      |
+| 403 board full    | S-11 error | "This board is full right now. Try again in a few minutes." + Retry |
+| Name empty        | S-11       | "Enter a name so others know who you are."                          |
+| Name > 40 chars   | S-11       | Hard-stop at 40, counter shown from 30 onward                       |
 
 **Guest → account conversion** — FLOWS §7.4:
 
@@ -2992,13 +3069,13 @@ Dismissing the bar hides it for that board for 7 days.
 
 **Ejection flows** — FLOWS §9.5:
 
-| Event | Client behaviour |
-|---|---|
-| `board:deleted` | Freeze the canvas, close the socket, full-screen **S-19**. **Do not attempt to sync the outbox — the target is gone** |
-| `access:revoked` | Same treatment, **S-17** copy |
+| Event                    | Client behaviour                                                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `board:deleted`          | Freeze the canvas, close the socket, full-screen **S-19**. **Do not attempt to sync the outbox — the target is gone** |
+| `access:revoked`         | Same treatment, **S-17** copy                                                                                         |
 | `role:changed` to viewer | **Do not eject.** Disable the toolbar, cancel any in-progress interaction, toast "You're now a viewer on this board." |
-| `board:renamed` | Header updates live. No toast |
-| Server shutdown | Normal reconnect. Ideally a brief amber flicker and nothing more |
+| `board:renamed`          | Header updates live. No toast                                                                                         |
+| Server shutdown          | Normal reconnect. Ideally a brief amber flicker and nothing more                                                      |
 
 **Share tokens:** 32 bytes from `crypto.randomBytes`, base64url. Never sequential (`R-SEC-009`).
 
@@ -3030,16 +3107,16 @@ Copy button: label swaps to "Copied!" with a check icon for 2 s. **If the Clipbo
 
 **The guest join is the one place a first-impression flourish is justified.** It happens once per user per board — the "rare" band, where `emil-design-eng` permits delight.
 
-| Element | Animation | Duration | Curve |
-|---|---|---|---|
-| Join card entry | `opacity` + `scale(0.96)`→`1` + `translateY(8px)`→`0` | 400 ms | `--ease-out` |
-| Presence avatars on the card | Stagger in | 200 ms, 60 ms stagger | `--ease-out` |
-| "Join board" `:active` | `scale(0.97)` | 120 ms | `--ease-out` |
-| Board reveal after join | `opacity` fade-in of the whole shell | 250 ms | `--ease-out` |
-| Share modal | `opacity` + `translateY(8px)`, origin centre | 200 ms | `--ease-out` |
-| Copy → "Copied!" | Content crossfade with `blur(2px)` mask | 150 ms | `ease` |
-| Member row role change | Background flash to `--color-success` at 10% then out | 400 ms | `--ease-out` |
-| S-17 / S-19 full-screen state | `opacity` only, no movement | 200 ms | `--ease-out` |
+| Element                       | Animation                                             | Duration              | Curve        |
+| ----------------------------- | ----------------------------------------------------- | --------------------- | ------------ |
+| Join card entry               | `opacity` + `scale(0.96)`→`1` + `translateY(8px)`→`0` | 400 ms                | `--ease-out` |
+| Presence avatars on the card  | Stagger in                                            | 200 ms, 60 ms stagger | `--ease-out` |
+| "Join board" `:active`        | `scale(0.97)`                                         | 120 ms                | `--ease-out` |
+| Board reveal after join       | `opacity` fade-in of the whole shell                  | 250 ms                | `--ease-out` |
+| Share modal                   | `opacity` + `translateY(8px)`, origin centre          | 200 ms                | `--ease-out` |
+| Copy → "Copied!"              | Content crossfade with `blur(2px)` mask               | 150 ms                | `ease`       |
+| Member row role change        | Background flash to `--color-success` at 10% then out | 400 ms                | `--ease-out` |
+| S-17 / S-19 full-screen state | `opacity` only, no movement                           | 200 ms                | `--ease-out` |
 
 Ejection states fade without movement. Being removed from a board is already jarring; a bouncy entrance would be tonally wrong.
 
@@ -3106,12 +3183,12 @@ A guest joins via a link and is drawing in under 10 seconds. `AT-20` through `AT
 
 ## Phase 13 — Export, thumbnails, trash, duplicate
 
-| | |
-|---|---|
-| **Days** | 37–38 |
-| **Milestone** | M5 |
-| **Depends on** | Phase 12 |
-| **Owner** | Product owner |
+|                |               |
+| -------------- | ------------- |
+| **Days**       | 37–38         |
+| **Milestone**  | M5            |
+| **Depends on** | Phase 12      |
+| **Owner**      | Product owner |
 
 ### Objective
 
@@ -3119,13 +3196,13 @@ Feature completeness. Everything in the P0/P1 set that is not yet built.
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-EXPORT-001` | P1 | Export as PNG — whole board, selection or visible area |
-| `FR-BOARD-003` | P1 | Thumbnails (completing Phase 8) |
-| `FR-BOARD-006` | P1 | Trash and restore (completing Phase 8) |
-| `FR-BOARD-007` | P1 | Duplicate (completing Phase 8) |
-| `FR-CANVAS-010` | P1 | Image upload |
+| ID              | Priority | Requirement                                            |
+| --------------- | -------- | ------------------------------------------------------ |
+| `FR-EXPORT-001` | P1       | Export as PNG — whole board, selection or visible area |
+| `FR-BOARD-003`  | P1       | Thumbnails (completing Phase 8)                        |
+| `FR-BOARD-006`  | P1       | Trash and restore (completing Phase 8)                 |
+| `FR-BOARD-007`  | P1       | Duplicate (completing Phase 8)                         |
+| `FR-CANVAS-010` | P1       | Image upload                                           |
 
 ### Flows
 
@@ -3154,10 +3231,10 @@ Options: scope (whole board / current selection / visible area — selection dis
 
 **Image upload** — `FR-CANVAS-010`, TRD §4.4:
 
-| Method | Path | Notes |
-|---|---|---|
-| POST | `/uploads/presign` | Validates type and size **before** issuing a URL |
-| POST | `/uploads/confirm` | Verifies the object exists; sanitizes SVG |
+| Method | Path               | Notes                                            |
+| ------ | ------------------ | ------------------------------------------------ |
+| POST   | `/uploads/presign` | Validates type and size **before** issuing a URL |
+| POST   | `/uploads/confirm` | Verifies the object exists; sanitizes SVG        |
 
 > **Do not proxy image bytes through the Node server.** Presigned direct-to-S3 uploads keep the event loop free (decision D-12).
 
@@ -3184,14 +3261,14 @@ Trash rows: thumbnail, name, "deleted 3 days ago", "28 days left", Restore, Dele
 
 ### Motion workstream
 
-| Element | Animation | Duration | Curve |
-|---|---|---|---|
-| Export modal | `opacity` + `translateY(8px)`, origin centre | 200 ms | `--ease-out` |
-| Preview update | Crossfade | 150 ms | `ease` |
-| Export progress ring | `stroke-dashoffset` | Continuous | `linear` |
-| Upload progress ring | `stroke-dashoffset` | Continuous | `linear` |
-| Image placeholder → loaded | Crossfade | 200 ms | `--ease-out` |
-| Trash row restore | `opacity` + collapse | 200 ms | `--ease-out` |
+| Element                    | Animation                                    | Duration   | Curve        |
+| -------------------------- | -------------------------------------------- | ---------- | ------------ |
+| Export modal               | `opacity` + `translateY(8px)`, origin centre | 200 ms     | `--ease-out` |
+| Preview update             | Crossfade                                    | 150 ms     | `ease`       |
+| Export progress ring       | `stroke-dashoffset`                          | Continuous | `linear`     |
+| Upload progress ring       | `stroke-dashoffset`                          | Continuous | `linear`     |
+| Image placeholder → loaded | Crossfade                                    | 200 ms     | `--ease-out` |
+| Trash row restore          | `opacity` + collapse                         | 200 ms     | `--ease-out` |
 
 Progress indicators use `linear` — a progress bar with easing misrepresents progress.
 
@@ -3246,28 +3323,28 @@ Export produces a correct PNG at both scales for all three scopes. Uploads work 
 
 ## Phase 14 — Empty states, error states, responsive, accessibility, polish
 
-| | |
-|---|---|
-| **Days** | 39–42 |
-| **Milestone** | M5 |
-| **Depends on** | Phase 13 |
-| **Owner** | Whole team |
+|                |            |
+| -------------- | ---------- |
+| **Days**       | 39–42      |
+| **Milestone**  | M5         |
+| **Depends on** | Phase 13   |
+| **Owner**      | Whole team |
 
 ### Objective
 
 The largest UI phase. Every state, every breakpoint, every accessibility requirement, every edge case, and a full motion review across the product.
 
-PRD risk `R-4` — *"Interns build the fun canvas parts and skip error/empty states"* — is rated **Very High** likelihood. This phase is the mitigation, and reviewers reject PRs that skip it.
+PRD risk `R-4` — _"Interns build the fun canvas parts and skip error/empty states"_ — is rated **Very High** likelihood. This phase is the mitigation, and reviewers reject PRs that skip it.
 
 ### Requirements
 
-| ID | Priority | Requirement |
-|---|---|---|
-| `FR-SET-003` | P1 | Keyboard shortcuts reference modal (`?`) |
-| — | P1 | PRD §7.5 accessibility |
-| — | P1 | PRD §7.7 responsive behaviour |
-| — | P0/P1 | All 22 edge cases `E-01`–`E-22` |
-| — | P0 | S-19, S-20, S-21 |
+| ID           | Priority | Requirement                              |
+| ------------ | -------- | ---------------------------------------- |
+| `FR-SET-003` | P1       | Keyboard shortcuts reference modal (`?`) |
+| —            | P1       | PRD §7.5 accessibility                   |
+| —            | P1       | PRD §7.7 responsive behaviour            |
+| —            | P0/P1    | All 22 edge cases `E-01`–`E-22`          |
+| —            | P0       | S-19, S-20, S-21                         |
 
 ### Flows
 
@@ -3281,63 +3358,63 @@ Tone rules (PRD §8.1): second person, present tense; never blame the user; ever
 
 **Canonical error strings** — PRD §8.2, verbatim:
 
-| Situation | Message | Action |
-|---|---|---|
-| Wrong credentials | "That email or password didn't match. Try again." | — |
-| Rate limited (login) | "Too many attempts. Try again in {N} minutes." | — |
-| Email already registered | "An account already exists for this email." | "Log in instead" |
-| Weak password | "Password needs at least 8 characters, including a letter and a number." | — |
-| No board access | "You don't have access to this board." | "Ask the owner for access" / "Back to dashboard" |
-| Board not found | "This board doesn't exist, or it was deleted." | "Back to dashboard" |
-| Board deleted while open | "The owner deleted this board." | "Back to dashboard" |
-| Access revoked while open | "Your access to this board was removed." | "Back to dashboard" |
-| Disconnected | "Offline — your changes are saved locally and will sync when you're back." | "Retry now" |
-| Reconnecting | "Reconnecting… (attempt {N})" | — |
-| Syncing | "Syncing {N} changes…" | — |
-| Op rejected | "That change couldn't be saved." | "Undo" |
-| Upload too large | "Images must be under 10 MB." | — |
-| Unsupported file | "We support PNG, JPG, GIF, WebP, and SVG." | — |
-| Upload failed | "Upload failed." | "Retry" / "Remove" |
-| Board too large | "This board is getting large. Consider splitting it up." | "Dismiss" |
-| Generic server error | "Something went wrong on our end. We're looking into it." + `Ref: {8-char id}` | "Retry" |
-| Unsupported browser | "CoBoard needs a modern browser. Try Chrome, Firefox, Edge, or Safari." | — |
+| Situation                 | Message                                                                        | Action                                           |
+| ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------ |
+| Wrong credentials         | "That email or password didn't match. Try again."                              | —                                                |
+| Rate limited (login)      | "Too many attempts. Try again in {N} minutes."                                 | —                                                |
+| Email already registered  | "An account already exists for this email."                                    | "Log in instead"                                 |
+| Weak password             | "Password needs at least 8 characters, including a letter and a number."       | —                                                |
+| No board access           | "You don't have access to this board."                                         | "Ask the owner for access" / "Back to dashboard" |
+| Board not found           | "This board doesn't exist, or it was deleted."                                 | "Back to dashboard"                              |
+| Board deleted while open  | "The owner deleted this board."                                                | "Back to dashboard"                              |
+| Access revoked while open | "Your access to this board was removed."                                       | "Back to dashboard"                              |
+| Disconnected              | "Offline — your changes are saved locally and will sync when you're back."     | "Retry now"                                      |
+| Reconnecting              | "Reconnecting… (attempt {N})"                                                  | —                                                |
+| Syncing                   | "Syncing {N} changes…"                                                         | —                                                |
+| Op rejected               | "That change couldn't be saved."                                               | "Undo"                                           |
+| Upload too large          | "Images must be under 10 MB."                                                  | —                                                |
+| Unsupported file          | "We support PNG, JPG, GIF, WebP, and SVG."                                     | —                                                |
+| Upload failed             | "Upload failed."                                                               | "Retry" / "Remove"                               |
+| Board too large           | "This board is getting large. Consider splitting it up."                       | "Dismiss"                                        |
+| Generic server error      | "Something went wrong on our end. We're looking into it." + `Ref: {8-char id}` | "Retry"                                          |
+| Unsupported browser       | "CoBoard needs a modern browser. Try Chrome, Firefox, Edge, or Safari."        | —                                                |
 
 **Empty states** — PRD §8.3:
 
-| Screen | Headline | Body | CTA |
-|---|---|---|---|
-| Dashboard, no boards | "Nothing here yet" | "Create your first board and invite your team." | "New board" |
-| Dashboard, filter empty | "No boards match that filter" | — | "Clear filter" |
-| Trash empty | "Trash is empty" | "Deleted boards appear here for 30 days." | — |
-| Board with no objects | Faint centred hint: "Pick a tool and start drawing" with an arrow pointing at the toolbar. **Fades out permanently after the first object is created** | — | — |
-| Search no results | "No boards found for '{query}'" | — | "Clear search" |
+| Screen                  | Headline                                                                                                                                               | Body                                            | CTA            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- | -------------- |
+| Dashboard, no boards    | "Nothing here yet"                                                                                                                                     | "Create your first board and invite your team." | "New board"    |
+| Dashboard, filter empty | "No boards match that filter"                                                                                                                          | —                                               | "Clear filter" |
+| Trash empty             | "Trash is empty"                                                                                                                                       | "Deleted boards appear here for 30 days."       | —              |
+| Board with no objects   | Faint centred hint: "Pick a tool and start drawing" with an arrow pointing at the toolbar. **Fades out permanently after the first object is created** | —                                               | —              |
+| Search no results       | "No boards found for '{query}'"                                                                                                                        | —                                               | "Clear search" |
 
 **The full edge-case register** — FLOWS §12.5. All 22 are requirements, not suggestions:
 
-| # | Situation | Behaviour |
-|---|---|---|
-| `E-01` | Two tabs, same user | Both work. One avatar (dedupe by user id), two cursors |
-| `E-02` | Tab backgrounded 30 min | On `visibilitychange` → visible, force a reconnect check immediately |
-| `E-03` | User's clock is wrong | Never trust client timestamps. Server seq is the only ordering authority |
-| `E-04` | Extreme coordinates | Clamp to ±1,000,000 on creation; reject out-of-range server-side |
-| `E-05` | 50 MB image pasted | Reject before upload. Check `File.size` client-side first |
-| `E-06` | Non-image clipboard data | Plain text → create a text object. Otherwise ignore silently |
-| `E-07` | Dragging 500 objects | Batch into one op message. Throttle presence to 10 Hz above 100 selected |
-| `E-08` | Tool switch during a drag | Ignore tool changes while an interaction is in progress |
-| `E-09` | `Escape` during a stroke | Cancel entirely. Nothing committed, nothing broadcast |
-| `E-10` | Window resized mid-drag | Recompute backing store, preserve viewport centre, keep the drag alive |
-| `E-11` | 2 px object at 500% zoom | Still hit-testable; handles keep an 8 px minimum touch target |
-| `E-12` | 5,000 objects at 10% zoom | Cull off-screen; below 25% render strokes as simplified paths |
-| `E-13` | Op for an unknown object id | Log, ignore; request a fresh snapshot after 3 in a minute |
-| `E-14` | `seq <= lastAppliedSeq` | Ignore — duplicate |
-| `E-15` | `seq > lastAppliedSeq + 1` | Buffer, request the missing range, never apply out of order |
-| `E-16` | Double-click "New board" | Button disables on first click. One board |
+| #      | Situation                         | Behaviour                                                                                    |
+| ------ | --------------------------------- | -------------------------------------------------------------------------------------------- |
+| `E-01` | Two tabs, same user               | Both work. One avatar (dedupe by user id), two cursors                                       |
+| `E-02` | Tab backgrounded 30 min           | On `visibilitychange` → visible, force a reconnect check immediately                         |
+| `E-03` | User's clock is wrong             | Never trust client timestamps. Server seq is the only ordering authority                     |
+| `E-04` | Extreme coordinates               | Clamp to ±1,000,000 on creation; reject out-of-range server-side                             |
+| `E-05` | 50 MB image pasted                | Reject before upload. Check `File.size` client-side first                                    |
+| `E-06` | Non-image clipboard data          | Plain text → create a text object. Otherwise ignore silently                                 |
+| `E-07` | Dragging 500 objects              | Batch into one op message. Throttle presence to 10 Hz above 100 selected                     |
+| `E-08` | Tool switch during a drag         | Ignore tool changes while an interaction is in progress                                      |
+| `E-09` | `Escape` during a stroke          | Cancel entirely. Nothing committed, nothing broadcast                                        |
+| `E-10` | Window resized mid-drag           | Recompute backing store, preserve viewport centre, keep the drag alive                       |
+| `E-11` | 2 px object at 500% zoom          | Still hit-testable; handles keep an 8 px minimum touch target                                |
+| `E-12` | 5,000 objects at 10% zoom         | Cull off-screen; below 25% render strokes as simplified paths                                |
+| `E-13` | Op for an unknown object id       | Log, ignore; request a fresh snapshot after 3 in a minute                                    |
+| `E-14` | `seq <= lastAppliedSeq`           | Ignore — duplicate                                                                           |
+| `E-15` | `seq > lastAppliedSeq + 1`        | Buffer, request the missing range, never apply out of order                                  |
+| `E-16` | Double-click "New board"          | Button disables on first click. One board                                                    |
 | `E-17` | Session expires with a board open | Keep the socket alive, refresh silently; on failure show a banner. **Never lose their work** |
-| `E-18` | `localStorage` blocked | Fall back to in-memory. App works; preferences do not persist. **Show no error** |
-| `E-19` | Simultaneous board rename | Last write wins. Both see the final name |
-| `E-20` | Very long display name | Truncate to 20 chars with ellipsis; full name on hover |
-| `E-21` | Slow 3G board load | 30 s snapshot timeout, then an inline retry. **Never leave a spinner forever** |
-| `E-22` | Export an empty board | Block it: "There's nothing to export yet." |
+| `E-18` | `localStorage` blocked            | Fall back to in-memory. App works; preferences do not persist. **Show no error**             |
+| `E-19` | Simultaneous board rename         | Last write wins. Both see the final name                                                     |
+| `E-20` | Very long display name            | Truncate to 20 chars with ellipsis; full name on hover                                       |
+| `E-21` | Slow 3G board load                | 30 s snapshot timeout, then an inline retry. **Never leave a spinner forever**               |
+| `E-22` | Export an empty board             | Block it: "There's nothing to export yet."                                                   |
 
 **Toast conventions** — FLOWS §13.1: bottom-left on the board (never covering the properties panel), bottom-centre elsewhere. Max 3 visible, older collapse to "+2 more". Info/success 3 s, error 6 s, error-with-action 8 s. **Never use a toast for anything requiring a decision — that is a modal.** `aria-live="polite"` for info/success, `"assertive"` for errors.
 
@@ -3347,12 +3424,12 @@ Tone rules (PRD §8.1): second person, present tense; never blame the user; ever
 
 **Responsive** — PRD §7.7:
 
-| Breakpoint | Behaviour |
-|---|---|
-| ≥ 1280 px | Full layout: left toolbar, right properties panel, header |
-| 1024–1279 px | Properties panel collapses to a popover triggered by selection |
-| 768–1023 px | Toolbar becomes a bottom bar; dashboard grid drops to 2 columns |
-| < 768 px | Mobile: bottom toolbar with 5 core tools, pinch/pan, no properties panel, no marquee. Dashboard is a single-column list |
+| Breakpoint   | Behaviour                                                                                                               |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| ≥ 1280 px    | Full layout: left toolbar, right properties panel, header                                                               |
+| 1024–1279 px | Properties panel collapses to a popover triggered by selection                                                          |
+| 768–1023 px  | Toolbar becomes a bottom bar; dashboard grid drops to 2 columns                                                         |
+| < 768 px     | Mobile: bottom toolbar with 5 core tools, pinch/pan, no properties panel, no marquee. Dashboard is a single-column list |
 
 **Mobile specifics** — FLOWS §14.5: 5 primary tools with `⋯` opening a sheet for the rest; properties as a bottom sheet on selection; one-finger drag pans, tap to select, long-press to multi-select; 44 px touch targets; share modal becomes a full-screen sheet; text editing scrolls the canvas so the edited object sits above the keyboard.
 
@@ -3458,12 +3535,12 @@ Every P0 and P1 requirement has a passing test. All 22 edge cases verified. Zero
 
 ## Phase 15 — Performance pass, e2e suite, deployment, monitoring
 
-| | |
-|---|---|
-| **Days** | 43–45 |
-| **Milestone** | M5 |
-| **Depends on** | Phase 14 |
-| **Owner** | Whole team |
+|                |            |
+| -------------- | ---------- |
+| **Days**       | 43–45      |
+| **Milestone**  | M5         |
+| **Depends on** | Phase 14   |
+| **Owner**      | Whole team |
 
 ### Objective
 
@@ -3477,43 +3554,43 @@ All of PRD §7.1 (performance budgets), §7.2 (scalability), §7.3 (reliability)
 
 **The budgets** — PRD §7.1. A PR that regresses one does not merge:
 
-| Metric | Budget | Measured how |
-|---|---|---|
-| Landing page LCP | ≤ 1.5 s on 4G | Lighthouse |
-| Dashboard interactive | ≤ 2.0 s | Lighthouse |
-| Board first paint (500 objects) | ≤ 1.5 s | Custom perf mark |
-| Board first paint (5,000 objects) | ≤ 3.0 s | Custom perf mark |
-| Drawing frame rate | ≥ 55 fps with 5,000 objects | Chrome perf panel |
-| Pan/zoom frame rate | ≥ 55 fps | Chrome perf panel |
-| Input-to-local-pixel latency | ≤ 16 ms | Manual + instrumented |
-| Local-input-to-remote-render p95 | ≤ 250 ms | Instrumented, same-region |
-| Cursor update rate | 20 Hz send, interpolated render | Code review |
-| Initial JS bundle (gzipped) | ≤ 250 KB | Bundle analyzer, CI gate |
-| Board route chunk (gzipped) | ≤ 200 KB | Bundle analyzer |
-| Memory with 5,000 objects | ≤ 300 MB heap | Chrome memory profiler |
-| WebSocket message size (typical op) | ≤ 2 KB | Network tab |
+| Metric                              | Budget                          | Measured how              |
+| ----------------------------------- | ------------------------------- | ------------------------- |
+| Landing page LCP                    | ≤ 1.5 s on 4G                   | Lighthouse                |
+| Dashboard interactive               | ≤ 2.0 s                         | Lighthouse                |
+| Board first paint (500 objects)     | ≤ 1.5 s                         | Custom perf mark          |
+| Board first paint (5,000 objects)   | ≤ 3.0 s                         | Custom perf mark          |
+| Drawing frame rate                  | ≥ 55 fps with 5,000 objects     | Chrome perf panel         |
+| Pan/zoom frame rate                 | ≥ 55 fps                        | Chrome perf panel         |
+| Input-to-local-pixel latency        | ≤ 16 ms                         | Manual + instrumented     |
+| Local-input-to-remote-render p95    | ≤ 250 ms                        | Instrumented, same-region |
+| Cursor update rate                  | 20 Hz send, interpolated render | Code review               |
+| Initial JS bundle (gzipped)         | ≤ 250 KB                        | Bundle analyzer, CI gate  |
+| Board route chunk (gzipped)         | ≤ 200 KB                        | Bundle analyzer           |
+| Memory with 5,000 objects           | ≤ 300 MB heap                   | Chrome memory profiler    |
+| WebSocket message size (typical op) | ≤ 2 KB                          | Network tab               |
 
 **Scalability targets** — PRD §7.2: 1,000 registered users · 50 concurrent per board · 200 concurrent boards · 50,000 objects max per board with a soft warning at 10,000 · 100 ops/second sustained per board.
 
 **Bundle splitting** — TRD §12.2. The landing and auth routes must not pull in the canvas engine:
 
 ```ts
-const Board     = lazy(() => import('./routes/Board'))
+const Board = lazy(() => import('./routes/Board'))
 const Dashboard = lazy(() => import('./routes/Dashboard'))
-const Settings  = lazy(() => import('./routes/Settings'))
+const Settings = lazy(() => import('./routes/Settings'))
 ```
 
 **Memory leak prevention** — TRD §12.3:
 
-| Leak source | Prevention |
-|---|---|
-| Socket listeners | Every `addEventListener` has a matching remove in cleanup |
-| `requestAnimationFrame` | `cancelAnimationFrame` on unmount |
-| Image cache | Cap at 100 entries with LRU eviction |
-| Presence maps | Delete on `presence_leave`; sweep entries idle over 60 s |
-| Tombstones | Cleared on board unload; capped at 10,000 FIFO |
-| Undo history | Hard cap at 100 |
-| Detached canvases | Null the refs on unmount |
+| Leak source             | Prevention                                                |
+| ----------------------- | --------------------------------------------------------- |
+| Socket listeners        | Every `addEventListener` has a matching remove in cleanup |
+| `requestAnimationFrame` | `cancelAnimationFrame` on unmount                         |
+| Image cache             | Cap at 100 entries with LRU eviction                      |
+| Presence maps           | Delete on `presence_leave`; sweep entries idle over 60 s  |
+| Tombstones              | Cleared on board unload; capped at 10,000 FIFO            |
+| Undo history            | Hard cap at 100                                           |
+| Detached canvases       | Null the refs on unmount                                  |
 
 Test: open a board, use it for 30 minutes, heap snapshot, close and reopen 10 times, force GC, snapshot again. **Growth should be near zero.**
 
@@ -3523,16 +3600,16 @@ Test: open a board, use it for 30 minutes, heap snapshot, close and reopen 10 ti
 
 **Monitoring** — TRD §15.4:
 
-| Signal | Alert threshold |
-|---|---|
-| Error rate | > 1% of requests over 5 min |
-| Op persist latency p95 | > 100 ms |
-| WebSocket connection failure rate | > 5% |
-| Connected sockets | Sudden drop > 50% |
-| Postgres pool utilization | > 80% |
-| Redis memory | > 80% |
-| Client `op_rejected` rate | > 0.1% of ops |
-| Snapshot job failures | Any |
+| Signal                            | Alert threshold             |
+| --------------------------------- | --------------------------- |
+| Error rate                        | > 1% of requests over 5 min |
+| Op persist latency p95            | > 100 ms                    |
+| WebSocket connection failure rate | > 5%                        |
+| Connected sockets                 | Sudden drop > 50%           |
+| Postgres pool utilization         | > 80%                       |
+| Redis memory                      | > 80%                       |
+| Client `op_rejected` rate         | > 0.1% of ops               |
+| Snapshot job failures             | Any                         |
 
 Log every op rejection with code, board, actor and correlation ID. A spike in rejections is the earliest signal that something is wrong with permissions or validation.
 
@@ -3605,124 +3682,124 @@ Every one of the 63 defined requirements, its priority, and the phase that deliv
 
 ### Authentication and identity
 
-| ID | Pri | Requirement | Phase |
-|---|---|---|---|
-| `FR-AUTH-001` | P0 | Email + password registration | 7 |
-| `FR-AUTH-002` | P0 | Email + password login, generic errors, lockout | 7 |
-| `FR-AUTH-003` | P1 | Google OAuth sign-in with account linking | 7 |
-| `FR-AUTH-004` | P1 | Password reset, single-use 60 min token | 7 |
-| `FR-AUTH-005` | P0 | Session persistence, 30 days, silent refresh | 7 |
-| `FR-AUTH-006` | P0 | Guest identity | 12 |
-| `FR-AUTH-007` | P1 | Logout | 7 |
+| ID            | Pri | Requirement                                     | Phase |
+| ------------- | --- | ----------------------------------------------- | ----- |
+| `FR-AUTH-001` | P0  | Email + password registration                   | 7     |
+| `FR-AUTH-002` | P0  | Email + password login, generic errors, lockout | 7     |
+| `FR-AUTH-003` | P1  | Google OAuth sign-in with account linking       | 7     |
+| `FR-AUTH-004` | P1  | Password reset, single-use 60 min token         | 7     |
+| `FR-AUTH-005` | P0  | Session persistence, 30 days, silent refresh    | 7     |
+| `FR-AUTH-006` | P0  | Guest identity                                  | 12    |
+| `FR-AUTH-007` | P1  | Logout                                          | 7     |
 
 ### Board management
 
-| ID | Pri | Requirement | Phase |
-|---|---|---|---|
-| `FR-BOARD-001` | P0 | Create board, no naming dialog | 8 |
-| `FR-BOARD-002` | P0 | Board list / dashboard | 8 |
-| `FR-BOARD-003` | P1 | Board thumbnails | 8 → 13 |
-| `FR-BOARD-004` | P0 | Rename board | 8 |
-| `FR-BOARD-005` | P0 | Delete board (soft) | 8 |
-| `FR-BOARD-006` | P1 | Trash and restore | 8 → 13 |
-| `FR-BOARD-007` | P1 | Duplicate board | 8 → 13 |
-| `FR-BOARD-008` | P2 | Star / favourite | **Deferred** — App. N |
-| `FR-BOARD-009` | P2 | Templates | **Deferred** — App. N |
+| ID             | Pri | Requirement                    | Phase                 |
+| -------------- | --- | ------------------------------ | --------------------- |
+| `FR-BOARD-001` | P0  | Create board, no naming dialog | 8                     |
+| `FR-BOARD-002` | P0  | Board list / dashboard         | 8                     |
+| `FR-BOARD-003` | P1  | Board thumbnails               | 8 → 13                |
+| `FR-BOARD-004` | P0  | Rename board                   | 8                     |
+| `FR-BOARD-005` | P0  | Delete board (soft)            | 8                     |
+| `FR-BOARD-006` | P1  | Trash and restore              | 8 → 13                |
+| `FR-BOARD-007` | P1  | Duplicate board                | 8 → 13                |
+| `FR-BOARD-008` | P2  | Star / favourite               | **Deferred** — App. N |
+| `FR-BOARD-009` | P2  | Templates                      | **Deferred** — App. N |
 
 ### Sharing and permissions
 
-| ID | Pri | Requirement | Phase |
-|---|---|---|---|
-| `FR-SHARE-001` | P0 | Permission model, four roles | 12 |
-| `FR-SHARE-002` | P0 | Share link, ≥128-bit token | 12 |
-| `FR-SHARE-003` | P1 | Revoke and regenerate link | 12 |
-| `FR-SHARE-004` | P1 | Invite by email | 12 |
-| `FR-SHARE-005` | P0 | Access denial screen | 12 |
-| `FR-SHARE-006` | P0 | Viewer mode enforcement, client **and** server | 12 |
+| ID             | Pri | Requirement                                    | Phase |
+| -------------- | --- | ---------------------------------------------- | ----- |
+| `FR-SHARE-001` | P0  | Permission model, four roles                   | 12    |
+| `FR-SHARE-002` | P0  | Share link, ≥128-bit token                     | 12    |
+| `FR-SHARE-003` | P1  | Revoke and regenerate link                     | 12    |
+| `FR-SHARE-004` | P1  | Invite by email                                | 12    |
+| `FR-SHARE-005` | P0  | Access denial screen                           | 12    |
+| `FR-SHARE-006` | P0  | Viewer mode enforcement, client **and** server | 12    |
 
 ### Canvas — objects and tools
 
-| ID | Pri | Requirement | Phase |
-|---|---|---|---|
-| `FR-CANVAS-001` | P0 | Infinite canvas, ±1,000,000 clamp | 2 |
-| `FR-CANVAS-002` | P0 | Pan | 2 |
-| `FR-CANVAS-003` | P0 | Zoom, 10–500%, pointer-anchored | 2 |
-| `FR-CANVAS-004` | P0 | Select tool | 4 |
-| `FR-CANVAS-005` | P0 | Pen / freehand tool | 3 |
-| `FR-CANVAS-006` | P0 | Eraser tool | 4 |
-| `FR-CANVAS-007` | P0 | Shape tools | 5 |
-| `FR-CANVAS-008` | P0 | Sticky note tool | 5 |
-| `FR-CANVAS-009` | P0 | Text tool | 5 |
-| `FR-CANVAS-010` | P1 | Image upload | 13 |
-| `FR-CANVAS-011` | P0 | Move objects | 4 |
-| `FR-CANVAS-012` | P0 | Resize objects | 4 |
-| `FR-CANVAS-013` | P1 | Rotate objects | 4 |
-| `FR-CANVAS-014` | P0 | Delete objects | 4 |
-| `FR-CANVAS-015` | P0 | Copy / cut / paste / duplicate | 5 |
-| `FR-CANVAS-016` | P1 | Z-order, fractional index | 9 |
-| `FR-CANVAS-017` | P2 | Grouping — see defect `D-2` | **Deferred** — App. N |
-| `FR-CANVAS-018` | P0 | Undo / redo | 6 |
-| `FR-CANVAS-019` | P1 | Context menu | 5 |
-| `FR-CANVAS-020` | P1 | Alignment guides | 5 |
-| `FR-CANVAS-021` | P2 | Grid and snap-to-grid | **Deferred** — App. N |
-| `FR-CANVAS-022` | P0 | Select all / deselect | 4 |
+| ID              | Pri | Requirement                       | Phase                 |
+| --------------- | --- | --------------------------------- | --------------------- |
+| `FR-CANVAS-001` | P0  | Infinite canvas, ±1,000,000 clamp | 2                     |
+| `FR-CANVAS-002` | P0  | Pan                               | 2                     |
+| `FR-CANVAS-003` | P0  | Zoom, 10–500%, pointer-anchored   | 2                     |
+| `FR-CANVAS-004` | P0  | Select tool                       | 4                     |
+| `FR-CANVAS-005` | P0  | Pen / freehand tool               | 3                     |
+| `FR-CANVAS-006` | P0  | Eraser tool                       | 4                     |
+| `FR-CANVAS-007` | P0  | Shape tools                       | 5                     |
+| `FR-CANVAS-008` | P0  | Sticky note tool                  | 5                     |
+| `FR-CANVAS-009` | P0  | Text tool                         | 5                     |
+| `FR-CANVAS-010` | P1  | Image upload                      | 13                    |
+| `FR-CANVAS-011` | P0  | Move objects                      | 4                     |
+| `FR-CANVAS-012` | P0  | Resize objects                    | 4                     |
+| `FR-CANVAS-013` | P1  | Rotate objects                    | 4                     |
+| `FR-CANVAS-014` | P0  | Delete objects                    | 4                     |
+| `FR-CANVAS-015` | P0  | Copy / cut / paste / duplicate    | 5                     |
+| `FR-CANVAS-016` | P1  | Z-order, fractional index         | 9                     |
+| `FR-CANVAS-017` | P2  | Grouping — see defect `D-2`       | **Deferred** — App. N |
+| `FR-CANVAS-018` | P0  | Undo / redo                       | 6                     |
+| `FR-CANVAS-019` | P1  | Context menu                      | 5                     |
+| `FR-CANVAS-020` | P1  | Alignment guides                  | 5                     |
+| `FR-CANVAS-021` | P2  | Grid and snap-to-grid             | **Deferred** — App. N |
+| `FR-CANVAS-022` | P0  | Select all / deselect             | 4                     |
 
 ### Real-time collaboration
 
-| ID | Pri | Requirement | Phase |
-|---|---|---|---|
-| `FR-RT-001` | P0 | Live object sync, p95 250 ms | 9 |
-| `FR-RT-002` | P0 | Optimistic local application | 9 |
-| `FR-RT-003` | P0 | Live cursors | 10 |
-| `FR-RT-004` | P0 | Presence list | 10 |
-| `FR-RT-005` | P1 | Remote selection indicators | 10 |
-| `FR-RT-006` | P1 | Live in-progress strokes | 10 |
-| `FR-RT-007` | P0 | Concurrent edit resolution | 9 |
-| `FR-RT-008` | P0 | Join / leave notifications | 10 |
-| `FR-RT-009` | P0 | Connection status indicator | 11 |
-| `FR-RT-010` | P0 | Offline editing and reconnection | 11 |
-| `FR-RT-011` | P1 | Room capacity | 10 |
-| `FR-RT-012` | P0 | Persistence guarantee | 9 |
+| ID          | Pri | Requirement                      | Phase |
+| ----------- | --- | -------------------------------- | ----- |
+| `FR-RT-001` | P0  | Live object sync, p95 250 ms     | 9     |
+| `FR-RT-002` | P0  | Optimistic local application     | 9     |
+| `FR-RT-003` | P0  | Live cursors                     | 10    |
+| `FR-RT-004` | P0  | Presence list                    | 10    |
+| `FR-RT-005` | P1  | Remote selection indicators      | 10    |
+| `FR-RT-006` | P1  | Live in-progress strokes         | 10    |
+| `FR-RT-007` | P0  | Concurrent edit resolution       | 9     |
+| `FR-RT-008` | P0  | Join / leave notifications       | 10    |
+| `FR-RT-009` | P0  | Connection status indicator      | 11    |
+| `FR-RT-010` | P0  | Offline editing and reconnection | 11    |
+| `FR-RT-011` | P1  | Room capacity                    | 10    |
+| `FR-RT-012` | P0  | Persistence guarantee            | 9     |
 
 ### Comments, export, settings
 
-| ID | Pri | Requirement | Phase |
-|---|---|---|---|
-| `FR-COMMENT-001` | P2 | Comment threads | **Deferred** — App. N |
-| `FR-EXPORT-001` | P1 | Export as PNG | 13 |
-| `FR-EXPORT-002` | P2 | Export as SVG | **Deferred** — App. N |
-| `FR-EXPORT-003` | P2 | Export board JSON | **Deferred** — App. N |
-| `FR-SET-001` | P1 | Profile settings | 7 |
-| `FR-SET-002` | P2 | Appearance / theme | **Deferred** — App. N |
-| `FR-SET-003` | P1 | Keyboard shortcuts reference | 14 |
+| ID               | Pri | Requirement                  | Phase                 |
+| ---------------- | --- | ---------------------------- | --------------------- |
+| `FR-COMMENT-001` | P2  | Comment threads              | **Deferred** — App. N |
+| `FR-EXPORT-001`  | P1  | Export as PNG                | 13                    |
+| `FR-EXPORT-002`  | P2  | Export as SVG                | **Deferred** — App. N |
+| `FR-EXPORT-003`  | P2  | Export board JSON            | **Deferred** — App. N |
+| `FR-SET-001`     | P1  | Profile settings             | 7                     |
+| `FR-SET-002`     | P2  | Appearance / theme           | **Deferred** — App. N |
+| `FR-SET-003`     | P1  | Keyboard shortcuts reference | 14                    |
 
 ### Coverage by phase
 
-| Phase | P0 | P1 | Total |
-|---|---|---|---|
-| 2 | 3 | 0 | 3 |
-| 3 | 1 | 0 | 1 |
-| 4 | 6 | 1 | 7 |
-| 5 | 4 | 2 | 6 |
-| 6 | 1 | 0 | 1 |
-| 7 | 3 | 4 | 7 |
-| 8 | 4 | 3 | 7 |
-| 9 | 4 | 1 | 5 |
-| 10 | 3 | 3 | 6 |
-| 11 | 2 | 0 | 2 |
-| 12 | 5 | 2 | 7 |
-| 13 | 0 | 2 | 2 |
-| 14 | 0 | 1 | 1 |
+| Phase     | P0     | P1     | Total  |
+| --------- | ------ | ------ | ------ |
+| 2         | 3      | 0      | 3      |
+| 3         | 1      | 0      | 1      |
+| 4         | 6      | 1      | 7      |
+| 5         | 4      | 2      | 6      |
+| 6         | 1      | 0      | 1      |
+| 7         | 3      | 4      | 7      |
+| 8         | 4      | 3      | 7      |
+| 9         | 4      | 1      | 5      |
+| 10        | 3      | 3      | 6      |
+| 11        | 2      | 0      | 2      |
+| 12        | 5      | 2      | 7      |
+| 13        | 0      | 2      | 2      |
+| 14        | 0      | 1      | 1      |
 | **Total** | **36** | **19** | **55** |
 
 `FR-BOARD-003`, `-006` and `-007` span two phases (begin in 8, complete in 13). They are counted once, at Phase 8, in the totals above.
 
 ### Dangling references — not requirements
 
-| Reference | Status |
-|---|---|
+| Reference      | Status                                                                          |
+| -------------- | ------------------------------------------------------------------------------- |
 | `FR-BOARD-041` | **Does not exist.** Defect `D-1`. The behaviour is `E-17`, delivered in Phase 7 |
-| `FR-BOARD-012` | Illustrative example in PRD §0, not a requirement. Defect `D-3` |
+| `FR-BOARD-012` | Illustrative example in PRD §0, not a requirement. Defect `D-3`                 |
 
 ---
 
@@ -3730,42 +3807,42 @@ Every one of the 63 defined requirements, its priority, and the phase that deliv
 
 All 22 screens. Each appears exactly once, with both a zone (`RULES.md` §4.2) and a delivering phase.
 
-| # | Screen | Route | Auth | Pri | Zone | Phase |
-|---|---|---|---|---|---|---|
-| S-01 | Landing page | `/` | No | P1 | Marketing | 14 |
-| S-02 | Sign up | `/signup` | No | P0 | Auth | 7 |
-| S-03 | Log in | `/login` | No | P0 | Auth | 7 |
-| S-04 | Forgot password | `/forgot-password` | No | P1 | Auth | 7 |
-| S-05 | Reset password | `/reset-password?token=` | No | P1 | Auth | 7 |
-| S-06 | OAuth callback | `/auth/callback` | No | P1 | Auth | 7 |
-| S-07 | Dashboard | `/dashboard` | Yes | P0 | Product chrome | 8 |
-| S-08 | Trash | `/dashboard/trash` | Yes | P1 | Product chrome | 8 → 13 |
-| S-09 | Template picker | `/dashboard` + modal | Yes | P2 | Product chrome | **Deferred** |
-| S-10 | **Board canvas** | `/board/:boardId` | Conditional | P0 | Board chrome + Canvas | 2–6, 9–11 |
-| S-11 | Guest name entry | `/join/:token` | No | P0 | Guest | 12 |
-| S-12 | Share modal | `/board/:boardId` + modal | Yes | P0 | Board chrome | 12 |
-| S-13 | Board settings modal | `/board/:boardId` + modal | Owner | P1 | Board chrome | 12 |
-| S-14 | Export modal | `/board/:boardId` + modal | Conditional | P1 | Board chrome | 13 |
-| S-15 | Shortcuts modal | any + modal | No | P1 | Board chrome | 14 |
-| S-16 | Profile settings | `/settings` | Yes | P1 | Product chrome | 7 |
-| S-17 | Access denied | `/board/:boardId` 403 | — | P0 | System states | 12 |
-| S-18 | Board not found | `/board/:boardId` 404 | — | P0 | System states | 12 |
-| S-19 | Board deleted (ejected) | in-board full-screen | — | P0 | System states | 12 |
-| S-20 | Generic 404 | `*` | No | P1 | System states | 14 |
-| S-21 | Error boundary | any | — | P0 | System states | 14 |
-| S-22 | Onboarding tour overlay | `/board/:boardId` first visit | — | P2 | Guest | **Deferred** |
+| #    | Screen                  | Route                         | Auth        | Pri | Zone                  | Phase        |
+| ---- | ----------------------- | ----------------------------- | ----------- | --- | --------------------- | ------------ |
+| S-01 | Landing page            | `/`                           | No          | P1  | Marketing             | 14           |
+| S-02 | Sign up                 | `/signup`                     | No          | P0  | Auth                  | 7            |
+| S-03 | Log in                  | `/login`                      | No          | P0  | Auth                  | 7            |
+| S-04 | Forgot password         | `/forgot-password`            | No          | P1  | Auth                  | 7            |
+| S-05 | Reset password          | `/reset-password?token=`      | No          | P1  | Auth                  | 7            |
+| S-06 | OAuth callback          | `/auth/callback`              | No          | P1  | Auth                  | 7            |
+| S-07 | Dashboard               | `/dashboard`                  | Yes         | P0  | Product chrome        | 8            |
+| S-08 | Trash                   | `/dashboard/trash`            | Yes         | P1  | Product chrome        | 8 → 13       |
+| S-09 | Template picker         | `/dashboard` + modal          | Yes         | P2  | Product chrome        | **Deferred** |
+| S-10 | **Board canvas**        | `/board/:boardId`             | Conditional | P0  | Board chrome + Canvas | 2–6, 9–11    |
+| S-11 | Guest name entry        | `/join/:token`                | No          | P0  | Guest                 | 12           |
+| S-12 | Share modal             | `/board/:boardId` + modal     | Yes         | P0  | Board chrome          | 12           |
+| S-13 | Board settings modal    | `/board/:boardId` + modal     | Owner       | P1  | Board chrome          | 12           |
+| S-14 | Export modal            | `/board/:boardId` + modal     | Conditional | P1  | Board chrome          | 13           |
+| S-15 | Shortcuts modal         | any + modal                   | No          | P1  | Board chrome          | 14           |
+| S-16 | Profile settings        | `/settings`                   | Yes         | P1  | Product chrome        | 7            |
+| S-17 | Access denied           | `/board/:boardId` 403         | —           | P0  | System states         | 12           |
+| S-18 | Board not found         | `/board/:boardId` 404         | —           | P0  | System states         | 12           |
+| S-19 | Board deleted (ejected) | in-board full-screen          | —           | P0  | System states         | 12           |
+| S-20 | Generic 404             | `*`                           | No          | P1  | System states         | 14           |
+| S-21 | Error boundary          | any                           | —           | P0  | System states         | 14           |
+| S-22 | Onboarding tour overlay | `/board/:boardId` first visit | —           | P2  | Guest                 | **Deferred** |
 
 ### Route guards
 
-| Route | Guard | Redirect on failure |
-|---|---|---|
-| `/` `/login` `/signup` `/forgot-password` | `redirectIfAuthed` | `/dashboard` |
-| `/reset-password` | requires `?token=` | `/forgot-password` |
-| `/auth/callback` | requires `?code=` | `/login?error=oauth` |
-| `/dashboard` `/dashboard/trash` `/settings` | `requireAuth` | `/login?next=…` |
-| `/board/:boardId` | `requireBoardAccess` | See Phase 12 STEP 4 |
-| `/join/:token` | none | — |
-| `*` | none | — |
+| Route                                       | Guard                | Redirect on failure  |
+| ------------------------------------------- | -------------------- | -------------------- |
+| `/` `/login` `/signup` `/forgot-password`   | `redirectIfAuthed`   | `/dashboard`         |
+| `/reset-password`                           | requires `?token=`   | `/forgot-password`   |
+| `/auth/callback`                            | requires `?code=`    | `/login?error=oauth` |
+| `/dashboard` `/dashboard/trash` `/settings` | `requireAuth`        | `/login?next=…`      |
+| `/board/:boardId`                           | `requireBoardAccess` | See Phase 12 STEP 4  |
+| `/join/:token`                              | none                 | —                    |
+| `*`                                         | none                 | —                    |
 
 ---
 
@@ -3776,68 +3853,68 @@ Base `/api`. All responses JSON. Errors use a single shape:
 ```jsonc
 {
   "error": {
-    "code": "BOARD_NOT_FOUND",       // stable machine-readable code
-    "message": "Board not found",    // developer-facing, never shown raw
-    "details": { },                  // optional field-level errors
-    "correlationId": "8f3a2b91"      // matches the server log entry
-  }
+    "code": "BOARD_NOT_FOUND", // stable machine-readable code
+    "message": "Board not found", // developer-facing, never shown raw
+    "details": {}, // optional field-level errors
+    "correlationId": "8f3a2b91", // matches the server log entry
+  },
 }
 ```
 
 ### Auth
 
-| Method | Path | Body | Success | Errors |
-|---|---|---|---|---|
-| POST | `/auth/register` | `{email, password, displayName}` | 201 `{user, accessToken}` + cookie | 409 `EMAIL_TAKEN`, 422, 429 |
-| POST | `/auth/login` | `{email, password}` | 200 `{user, accessToken}` + cookie | 401 `INVALID_CREDENTIALS`, 429 |
-| POST | `/auth/refresh` | — (cookie) | 200 `{accessToken}` + rotated cookie | 401 `INVALID_REFRESH` |
-| POST | `/auth/logout` | — | 204 | — |
-| GET | `/auth/me` | — | 200 `{user}` | 401 |
-| GET | `/auth/google` | — | 302 to Google | — |
-| GET | `/auth/google/callback` | `?code` | 302 to client | 302 `?error=` |
-| POST | `/auth/forgot-password` | `{email}` | 200 always | 429 |
-| GET | `/auth/reset/validate` | `?token` | 200 `{valid:true}` | 400 `TOKEN_INVALID`/`TOKEN_EXPIRED`/`TOKEN_USED` |
-| POST | `/auth/reset` | `{token, password}` | 200 | 400, 422 |
+| Method | Path                    | Body                             | Success                              | Errors                                           |
+| ------ | ----------------------- | -------------------------------- | ------------------------------------ | ------------------------------------------------ |
+| POST   | `/auth/register`        | `{email, password, displayName}` | 201 `{user, accessToken}` + cookie   | 409 `EMAIL_TAKEN`, 422, 429                      |
+| POST   | `/auth/login`           | `{email, password}`              | 200 `{user, accessToken}` + cookie   | 401 `INVALID_CREDENTIALS`, 429                   |
+| POST   | `/auth/refresh`         | — (cookie)                       | 200 `{accessToken}` + rotated cookie | 401 `INVALID_REFRESH`                            |
+| POST   | `/auth/logout`          | —                                | 204                                  | —                                                |
+| GET    | `/auth/me`              | —                                | 200 `{user}`                         | 401                                              |
+| GET    | `/auth/google`          | —                                | 302 to Google                        | —                                                |
+| GET    | `/auth/google/callback` | `?code`                          | 302 to client                        | 302 `?error=`                                    |
+| POST   | `/auth/forgot-password` | `{email}`                        | 200 always                           | 429                                              |
+| GET    | `/auth/reset/validate`  | `?token`                         | 200 `{valid:true}`                   | 400 `TOKEN_INVALID`/`TOKEN_EXPIRED`/`TOKEN_USED` |
+| POST   | `/auth/reset`           | `{token, password}`              | 200                                  | 400, 422                                         |
 
 ### Boards
 
-| Method | Path | Body / Query | Success | Notes |
-|---|---|---|---|---|
-| GET | `/boards` | `?filter=all\|owned\|shared\|starred&sort=&q=&cursor=` | 200 `{boards[], nextCursor}` | Cursor pagination, 24/page |
-| POST | `/boards` | `{name?, templateId?}` | 201 `{board}` | Creator becomes OWNER |
-| GET | `/boards/:id` | — | 200 `{board, myRole, members[]}` | 403/404 |
-| PATCH | `/boards/:id` | `{name?}` | 200 `{board}` | Owner only. Broadcasts `board:renamed` |
-| DELETE | `/boards/:id` | — | 204 | Soft delete. Broadcasts `board:deleted` |
-| POST | `/boards/:id/restore` | — | 200 `{board}` | Owner only, within 30 days |
-| DELETE | `/boards/:id/permanent` | `{confirmName}` | 204 | Name must match exactly |
-| POST | `/boards/:id/duplicate` | — | 201 `{board}` | No members or links copied |
-| POST | `/boards/:id/star` | `{starred:boolean}` | 200 | `[P2]` |
-| GET | `/boards/:id/access` | `?shareToken=&guestId=` | 200 `{role, joinable, requiresName}` | Drives the Phase 12 guard |
-| GET | `/boards/:id/snapshot` | — | 200 `{objects[], seq, meta}` | Snapshot + tail ops, merged server-side |
-| GET | `/boards/:id/operations` | `?sinceSeq=&limit=` | 200 `{ops[], hasMore}` | Reconnect gap-fill fallback |
-| PUT | `/boards/:id/thumbnail` | multipart | 200 `{url}` | Client-rendered JPEG |
+| Method | Path                     | Body / Query                                           | Success                              | Notes                                   |
+| ------ | ------------------------ | ------------------------------------------------------ | ------------------------------------ | --------------------------------------- |
+| GET    | `/boards`                | `?filter=all\|owned\|shared\|starred&sort=&q=&cursor=` | 200 `{boards[], nextCursor}`         | Cursor pagination, 24/page              |
+| POST   | `/boards`                | `{name?, templateId?}`                                 | 201 `{board}`                        | Creator becomes OWNER                   |
+| GET    | `/boards/:id`            | —                                                      | 200 `{board, myRole, members[]}`     | 403/404                                 |
+| PATCH  | `/boards/:id`            | `{name?}`                                              | 200 `{board}`                        | Owner only. Broadcasts `board:renamed`  |
+| DELETE | `/boards/:id`            | —                                                      | 204                                  | Soft delete. Broadcasts `board:deleted` |
+| POST   | `/boards/:id/restore`    | —                                                      | 200 `{board}`                        | Owner only, within 30 days              |
+| DELETE | `/boards/:id/permanent`  | `{confirmName}`                                        | 204                                  | Name must match exactly                 |
+| POST   | `/boards/:id/duplicate`  | —                                                      | 201 `{board}`                        | No members or links copied              |
+| POST   | `/boards/:id/star`       | `{starred:boolean}`                                    | 200                                  | `[P2]`                                  |
+| GET    | `/boards/:id/access`     | `?shareToken=&guestId=`                                | 200 `{role, joinable, requiresName}` | Drives the Phase 12 guard               |
+| GET    | `/boards/:id/snapshot`   | —                                                      | 200 `{objects[], seq, meta}`         | Snapshot + tail ops, merged server-side |
+| GET    | `/boards/:id/operations` | `?sinceSeq=&limit=`                                    | 200 `{ops[], hasMore}`               | Reconnect gap-fill fallback             |
+| PUT    | `/boards/:id/thumbnail`  | multipart                                              | 200 `{url}`                          | Client-rendered JPEG                    |
 
 ### Members and sharing
 
-| Method | Path | Body | Success | Notes |
-|---|---|---|---|---|
-| GET | `/boards/:id/members` | — | 200 `{members[]}` | |
-| POST | `/boards/:id/members` | `{emails[], role}` | 200 `{added[], invited[]}` | Owner only |
-| PATCH | `/boards/:id/members/:memberId` | `{role}` | 200 | Owner only. Emits `role:changed` |
-| DELETE | `/boards/:id/members/:memberId` | — | 204 | Emits `access:revoked` |
-| DELETE | `/boards/:id/members/me` | — | 204 | "Leave board" |
-| GET | `/boards/:id/share-link` | — | 200 `{token, role, url}` \| `null` | |
-| POST | `/boards/:id/share-link` | `{role}` | 201 `{token, url}` | Creates or replaces |
-| DELETE | `/boards/:id/share-link` | — | 204 | Revokes; ejects link users |
-| GET | `/share/:token` | — | 200 `{boardId, boardName, ownerName, activeCount}` | **Public, no auth** |
-| POST | `/share/:token/join` | `{guestId, name}` | 200 `{boardId, role}` | Creates a guest `BoardMember` |
+| Method | Path                            | Body               | Success                                            | Notes                            |
+| ------ | ------------------------------- | ------------------ | -------------------------------------------------- | -------------------------------- |
+| GET    | `/boards/:id/members`           | —                  | 200 `{members[]}`                                  |                                  |
+| POST   | `/boards/:id/members`           | `{emails[], role}` | 200 `{added[], invited[]}`                         | Owner only                       |
+| PATCH  | `/boards/:id/members/:memberId` | `{role}`           | 200                                                | Owner only. Emits `role:changed` |
+| DELETE | `/boards/:id/members/:memberId` | —                  | 204                                                | Emits `access:revoked`           |
+| DELETE | `/boards/:id/members/me`        | —                  | 204                                                | "Leave board"                    |
+| GET    | `/boards/:id/share-link`        | —                  | 200 `{token, role, url}` \| `null`                 |                                  |
+| POST   | `/boards/:id/share-link`        | `{role}`           | 201 `{token, url}`                                 | Creates or replaces              |
+| DELETE | `/boards/:id/share-link`        | —                  | 204                                                | Revokes; ejects link users       |
+| GET    | `/share/:token`                 | —                  | 200 `{boardId, boardName, ownerName, activeCount}` | **Public, no auth**              |
+| POST   | `/share/:token/join`            | `{guestId, name}`  | 200 `{boardId, role}`                              | Creates a guest `BoardMember`    |
 
 ### Uploads
 
-| Method | Path | Body | Success | Notes |
-|---|---|---|---|---|
-| POST | `/uploads/presign` | `{filename, contentType, size}` | 200 `{uploadUrl, publicUrl, key}` | Validates type and size before issuing |
-| POST | `/uploads/confirm` | `{key}` | 200 `{url}` | Verifies existence; sanitizes SVG |
+| Method | Path               | Body                            | Success                           | Notes                                  |
+| ------ | ------------------ | ------------------------------- | --------------------------------- | -------------------------------------- |
+| POST   | `/uploads/presign` | `{filename, contentType, size}` | 200 `{uploadUrl, publicUrl, key}` | Validates type and size before issuing |
+| POST   | `/uploads/confirm` | `{key}`                         | 200 `{url}`                       | Verifies existence; sanitizes SVG      |
 
 **Do not proxy image bytes through the Node server.** Presigned direct-to-S3 uploads keep the event loop free (decision D-12).
 
@@ -3851,38 +3928,44 @@ Keys are terse because these fly at 20 Hz per user.
 
 ```ts
 type ClientMessage =
-  | { t: 'join';     boardId: string; sinceSeq: number }
-  | { t: 'op';       op: ClientOp }
+  | { t: 'join'; boardId: string; sinceSeq: number }
+  | { t: 'op'; op: ClientOp }
   | { t: 'op_batch'; ops: ClientOp[] }
-  | { t: 'cursor';   x: number; y: number }
-  | { t: 'sel';      ids: string[] }
-  | { t: 'stroke';   id: string; pts: number[]; done: boolean }
-  | { t: 'xform';    ids: string[]; dx: number; dy: number }
+  | { t: 'cursor'; x: number; y: number }
+  | { t: 'sel'; ids: string[] }
+  | { t: 'stroke'; id: string; pts: number[]; done: boolean }
+  | { t: 'xform'; ids: string[]; dx: number; dy: number }
   | { t: 'ping' }
 
 type ServerMessage =
-  | { t: 'join_ack'; seq: number; role: Role; sessionId: string
-      colour: string; users: PresenceUser[] }
+  | {
+      t: 'join_ack'
+      seq: number
+      role: Role
+      sessionId: string
+      colour: string
+      users: PresenceUser[]
+    }
   | { t: 'op_batch'; ops: ServerOp[] }
-  | { t: 'ack';      ids: string[]; seqs: number[] }
-  | { t: 'nack';     id: string; code: string; message: string }
-  | { t: 'presence_join';  user: PresenceUser }
+  | { t: 'ack'; ids: string[]; seqs: number[] }
+  | { t: 'nack'; id: string; code: string; message: string }
+  | { t: 'presence_join'; user: PresenceUser }
   | { t: 'presence_leave'; sessionId: string }
-  | { t: 'cursor';   sessionId: string; x: number; y: number }
-  | { t: 'sel';      sessionId: string; ids: string[] }
-  | { t: 'stroke';   sessionId: string; id: string; pts: number[]; done: boolean }
-  | { t: 'xform';    sessionId: string; ids: string[]; dx: number; dy: number }
-  | { t: 'board_renamed';  name: string }
+  | { t: 'cursor'; sessionId: string; x: number; y: number }
+  | { t: 'sel'; sessionId: string; ids: string[] }
+  | { t: 'stroke'; sessionId: string; id: string; pts: number[]; done: boolean }
+  | { t: 'xform'; sessionId: string; ids: string[]; dx: number; dy: number }
+  | { t: 'board_renamed'; name: string }
   | { t: 'board_deleted' }
-  | { t: 'role_changed';   role: Role }
+  | { t: 'role_changed'; role: Role }
   | { t: 'access_revoked' }
   | { t: 'pong' }
 
 interface ClientOp {
-  id: string          // client-generated uuid — the idempotency key
+  id: string // client-generated uuid — the idempotency key
   type: 'CREATE' | 'UPDATE' | 'DELETE'
   objectId: string
-  payload: unknown    // full object for CREATE, PARTIAL for UPDATE, {} for DELETE
+  payload: unknown // full object for CREATE, PARTIAL for UPDATE, {} for DELETE
 }
 
 interface ServerOp extends ClientOp {
@@ -3893,27 +3976,27 @@ interface ServerOp extends ClientOp {
 
 ### Ops versus presence
 
-| | Ops | Presence |
-|---|---|---|
-| Examples | create/update/delete object | cursor, selection, in-progress stroke, drag preview |
-| Persisted | **Yes**, to Postgres | **Never** |
-| Sequence number | Yes | No |
-| Acknowledged | Yes | No |
-| Queued in the outbox offline | Yes | No — dropped |
-| Rate | Low | High — 20 Hz per user |
-| Lost message | Data loss, unacceptable | A cursor stutters, irrelevant |
+|                              | Ops                         | Presence                                            |
+| ---------------------------- | --------------------------- | --------------------------------------------------- |
+| Examples                     | create/update/delete object | cursor, selection, in-progress stroke, drag preview |
+| Persisted                    | **Yes**, to Postgres        | **Never**                                           |
+| Sequence number              | Yes                         | No                                                  |
+| Acknowledged                 | Yes                         | No                                                  |
+| Queued in the outbox offline | Yes                         | No — dropped                                        |
+| Rate                         | Low                         | High — 20 Hz per user                               |
+| Lost message                 | Data loss, unacceptable     | A cursor stutters, irrelevant                       |
 
 ### Close codes
 
-| Code | Meaning | Client reaction |
-|---|---|---|
-| 1000 | Normal | No reconnect |
-| 1001 | Going away | No reconnect |
-| 1006 | Abnormal (network) | Reconnect with backoff |
-| 4001 | Unauthorized | Do not reconnect. Refresh the token, reconnect **once** |
-| 4003 | Forbidden (role revoked) | Do not reconnect. Show S-17 |
-| 4004 | Board not found / deleted | Do not reconnect. Show S-18/S-19 |
-| 4029 | Rate limited / too many connections | Reconnect after 30 s |
+| Code | Meaning                             | Client reaction                                         |
+| ---- | ----------------------------------- | ------------------------------------------------------- |
+| 1000 | Normal                              | No reconnect                                            |
+| 1001 | Going away                          | No reconnect                                            |
+| 1006 | Abnormal (network)                  | Reconnect with backoff                                  |
+| 4001 | Unauthorized                        | Do not reconnect. Refresh the token, reconnect **once** |
+| 4003 | Forbidden (role revoked)            | Do not reconnect. Show S-17                             |
+| 4004 | Board not found / deleted           | Do not reconnect. Show S-18/S-19                        |
+| 4029 | Rate limited / too many connections | Reconnect after 30 s                                    |
 
 ### Heartbeat
 
@@ -4053,42 +4136,42 @@ model Snapshot {
 
 ### Snapshot strategy
 
-| Rule | Value |
-|---|---|
-| When | Every 500 ops, and on the last client leaving |
-| How | Replay from the previous snapshot forward, never from seq 0 |
-| Retention | Latest 3 per board |
-| Op retention | Keep all ops |
-| Load path | `latest snapshot` + `ops WHERE seq > snapshot.seq` |
-| Generation | Background job, never on the request path |
+| Rule         | Value                                                       |
+| ------------ | ----------------------------------------------------------- |
+| When         | Every 500 ops, and on the last client leaving               |
+| How          | Replay from the previous snapshot forward, never from seq 0 |
+| Retention    | Latest 3 per board                                          |
+| Op retention | Keep all ops                                                |
+| Load path    | `latest snapshot` + `ops WHERE seq > snapshot.seq`          |
+| Generation   | Background job, never on the request path                   |
 
 ---
 
 ## Appendix F — Object schemas
 
 ```ts
-type ObjectId = string   // uuid v4, generated client-side
+type ObjectId = string // uuid v4, generated client-side
 
 interface BaseObject {
   id: ObjectId
   type: 'stroke' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'sticky' | 'text' | 'image'
-  x: number            // canvas coords, top-left of the bounding box
+  x: number // canvas coords, top-left of the bounding box
   y: number
   width: number
   height: number
-  rotation: number     // degrees, 0–359.99
-  zIndex: string       // FRACTIONAL index, lexicographically ordered
-  opacity: number      // 0–1
+  rotation: number // degrees, 0–359.99
+  zIndex: string // FRACTIONAL index, lexicographically ordered
+  opacity: number // 0–1
   createdBy: string
-  createdAt: number    // client ms timestamp, DISPLAY ONLY, never for ordering
+  createdAt: number // client ms timestamp, DISPLAY ONLY, never for ordering
   updatedAt: number
 }
 
 interface StrokeObject extends BaseObject {
   type: 'stroke'
-  points: number[]          // FLAT array [x0,y0,p0, x1,y1,p1, …], stride 3
-  color: string             // #RRGGBB
-  strokeWidth: number       // 1–24
+  points: number[] // FLAT array [x0,y0,p0, x1,y1,p1, …], stride 3
+  color: string // #RRGGBB
+  strokeWidth: number // 1–24
   simplified: boolean
 }
 
@@ -4097,24 +4180,24 @@ interface ShapeObject extends BaseObject {
   stroke: string
   strokeWidth: number
   fill: string | 'none'
-  cornerRadius?: number     // rect only
-  arrowStart?: boolean      // arrow only
+  cornerRadius?: number // rect only
+  arrowStart?: boolean // arrow only
   arrowEnd?: boolean
 }
 
 interface StickyObject extends BaseObject {
   type: 'sticky'
-  text: string              // max 2000 chars
-  color: string             // one of the 8 palette colours
+  text: string // max 2000 chars
+  color: string // one of the 8 palette colours
   fontSize: number | 'auto'
   textAlign: 'left' | 'center' | 'right'
 }
 
 interface TextObject extends BaseObject {
   type: 'text'
-  text: string              // max 5000 chars
+  text: string // max 5000 chars
   color: string
-  fontSize: number          // 8–128
+  fontSize: number // 8–128
   bold: boolean
   italic: boolean
   textAlign: 'left' | 'center' | 'right'
@@ -4122,7 +4205,7 @@ interface TextObject extends BaseObject {
 
 interface ImageObject extends BaseObject {
   type: 'image'
-  url: string               // never base64
+  url: string // never base64
   naturalWidth: number
   naturalHeight: number
   cornerRadius: number
@@ -4139,13 +4222,13 @@ export const CreateStrokeSchema = z.object({
   type: z.literal('stroke'),
   x: z.number().finite().min(-1_000_000).max(1_000_000),
   y: z.number().finite().min(-1_000_000).max(1_000_000),
-  width:  z.number().finite().min(0).max(2_000_000),
+  width: z.number().finite().min(0).max(2_000_000),
   height: z.number().finite().min(0).max(2_000_000),
   rotation: z.number().min(0).max(360),
-  opacity:  z.number().min(0).max(1),
-  zIndex:   z.string().min(1).max(64),
-  points:   z.array(z.number().finite()).min(6).max(30_000),
-  color:    z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  opacity: z.number().min(0).max(1),
+  zIndex: z.string().min(1).max(64),
+  points: z.array(z.number().finite()).min(6).max(30_000),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   strokeWidth: z.number().min(1).max(24),
 })
 ```
@@ -4156,24 +4239,24 @@ export const CreateStrokeSchema = z.object({
 
 ### Tokens — PRD §15, binding
 
-| Token | Value | Use |
-|---|---|---|
-| `--color-bg-canvas` | `#FAFAFA` | Canvas background |
-| `--color-bg-app` | `#FFFFFF` | Panels, header |
-| `--color-bg-subtle` | `#F4F4F5` | Dashboard background |
-| `--color-border` | `#E4E4E7` | Dividers, panel edges |
-| `--color-text-primary` | `#18181B` | Body text |
-| `--color-text-secondary` | `#71717A` | Metadata, hints |
-| `--color-accent` | `#4F46E5` | Primary buttons, active tool |
-| `--color-danger` | `#DC2626` | Delete, errors |
-| `--color-success` | `#16A34A` | Connected, confirmations |
-| `--color-warning` | `#D97706` | Reconnecting |
-| `--radius-sm` / `md` / `lg` | 4 / 8 / 12 px | Controls / panels / modals |
-| `--shadow-panel` | `0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.06)` | Floating panels |
-| `--space-*` | 4, 8, 12, 16, 24, 32, 48 px | 4 px base scale |
-| `--font-sans` | `Inter, system-ui, -apple-system, sans-serif` | All UI |
-| `--duration-fast` / `base` / `slow` | 120 / 200 / 320 ms | Micro / standard / modal |
-| `--easing-standard` | `cubic-bezier(0.2, 0, 0, 1)` | Default easing |
+| Token                               | Value                                                   | Use                          |
+| ----------------------------------- | ------------------------------------------------------- | ---------------------------- |
+| `--color-bg-canvas`                 | `#FAFAFA`                                               | Canvas background            |
+| `--color-bg-app`                    | `#FFFFFF`                                               | Panels, header               |
+| `--color-bg-subtle`                 | `#F4F4F5`                                               | Dashboard background         |
+| `--color-border`                    | `#E4E4E7`                                               | Dividers, panel edges        |
+| `--color-text-primary`              | `#18181B`                                               | Body text                    |
+| `--color-text-secondary`            | `#71717A`                                               | Metadata, hints              |
+| `--color-accent`                    | `#4F46E5`                                               | Primary buttons, active tool |
+| `--color-danger`                    | `#DC2626`                                               | Delete, errors               |
+| `--color-success`                   | `#16A34A`                                               | Connected, confirmations     |
+| `--color-warning`                   | `#D97706`                                               | Reconnecting                 |
+| `--radius-sm` / `md` / `lg`         | 4 / 8 / 12 px                                           | Controls / panels / modals   |
+| `--shadow-panel`                    | `0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.06)` | Floating panels              |
+| `--space-*`                         | 4, 8, 12, 16, 24, 32, 48 px                             | 4 px base scale              |
+| `--font-sans`                       | `Inter, system-ui, -apple-system, sans-serif`           | All UI                       |
+| `--duration-fast` / `base` / `slow` | 120 / 200 / 320 ms                                      | Micro / standard / modal     |
+| `--easing-standard`                 | `cubic-bezier(0.2, 0, 0, 1)`                            | Default easing               |
 
 ### Frozen palettes
 
@@ -4193,31 +4276,31 @@ export const CreateStrokeSchema = z.object({
 
 ### Skill zoning
 
-| Zone | Screens | Skills that fire | Forbidden |
-|---|---|---|---|
-| Marketing | S-01 | all five visual skills | — |
-| Auth | S-02 … S-06 | ui-ux-pro-max, emil, design-taste (type/colour) | gpt-taste |
-| Product chrome | S-07, S-08, S-09, S-16 | ui-ux-pro-max, emil, framer-motion (lazy) | gpt-taste, high-end-visual |
-| Board chrome | S-10 chrome, S-12 … S-15 | ui-ux-pro-max, emil | gpt-taste, high-end-visual, framer-motion |
-| **Canvas** | the 4 layers | **none** | all six |
-| System states | S-17 … S-21 | ui-ux-pro-max, emil | gpt-taste, high-end-visual |
-| Guest | S-11, S-22 | ui-ux-pro-max, emil, high-end-visual (join card) | gpt-taste |
+| Zone           | Screens                  | Skills that fire                                 | Forbidden                                 |
+| -------------- | ------------------------ | ------------------------------------------------ | ----------------------------------------- |
+| Marketing      | S-01                     | all five visual skills                           | —                                         |
+| Auth           | S-02 … S-06              | ui-ux-pro-max, emil, design-taste (type/colour)  | gpt-taste                                 |
+| Product chrome | S-07, S-08, S-09, S-16   | ui-ux-pro-max, emil, framer-motion (lazy)        | gpt-taste, high-end-visual                |
+| Board chrome   | S-10 chrome, S-12 … S-15 | ui-ux-pro-max, emil                              | gpt-taste, high-end-visual, framer-motion |
+| **Canvas**     | the 4 layers             | **none**                                         | all six                                   |
+| System states  | S-17 … S-21              | ui-ux-pro-max, emil                              | gpt-taste, high-end-visual                |
+| Guest          | S-11, S-22               | ui-ux-pro-max, emil, high-end-visual (join card) | gpt-taste                                 |
 
 ### Motion reference
 
 ```css
---ease-out:        cubic-bezier(0.23, 1, 0.32, 1);    /* entering / exiting  */
---ease-in-out:     cubic-bezier(0.77, 0, 0.175, 1);   /* on-screen movement  */
---ease-drawer:     cubic-bezier(0.32, 0.72, 0, 1);    /* iOS-like drawer     */
---easing-standard: cubic-bezier(0.2, 0, 0, 1);        /* PRD §15 default     */
+--ease-out: cubic-bezier(0.23, 1, 0.32, 1); /* entering / exiting  */
+--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); /* on-screen movement  */
+--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* iOS-like drawer     */
+--easing-standard: cubic-bezier(0.2, 0, 0, 1); /* PRD §15 default     */
 ```
 
-| Element | Duration |
-|---|---|
-| Button press feedback | 100–160 ms |
+| Element                  | Duration   |
+| ------------------------ | ---------- |
+| Button press feedback    | 100–160 ms |
 | Tooltips, small popovers | 125–200 ms |
-| Dropdowns, selects | 150–250 ms |
-| Modals, drawers | 200–500 ms |
+| Dropdowns, selects       | 150–250 ms |
+| Modals, drawers          | 200–500 ms |
 
 **The frequency gate:** 100+×/day → no animation, ever · tens ×/day → reduce drastically · occasional → standard · rare → may delight.
 
@@ -4227,40 +4310,40 @@ export const CreateStrokeSchema = z.object({
 
 ## Appendix H — Keyboard shortcuts
 
-| Shortcut | Action | Context |
-|---|---|---|
-| `V` | Select tool | Board |
-| `H` | Hand / pan tool | Board |
-| `P` | Pen tool | Board |
-| `E` | Eraser tool | Board |
-| `R` | Rectangle | Board |
-| `O` | Ellipse | Board |
-| `L` | Line | Board |
-| `A` | Arrow | Board |
-| `N` | Sticky note | Board |
-| `T` | Text | Board |
-| `Space` (hold) | Temporary pan | Board |
-| `Cmd/Ctrl + Z` | Undo | Board |
-| `Cmd/Ctrl + Shift + Z` | Redo | Board |
-| `Cmd/Ctrl + C` | Copy | Board |
-| `Cmd/Ctrl + X` | Cut | Board |
-| `Cmd/Ctrl + V` | Paste | Board |
-| `Cmd/Ctrl + D` | Duplicate | Board |
-| `Cmd/Ctrl + A` | Select all | Board |
-| `Delete` / `Backspace` | Delete selection | Board |
-| `Escape` | Deselect / cancel / close modal | Global |
-| `Arrow keys` | Nudge 1 px | Board |
-| `Shift + Arrow` | Nudge 10 px | Board |
-| `Cmd/Ctrl + Scroll` | Zoom | Board |
-| `Cmd/Ctrl + 0` | Reset zoom to 100% | Board |
-| `Cmd/Ctrl + 1` | Zoom to fit | Board |
-| `Cmd/Ctrl + +` / `-` | Zoom in / out | Board |
-| `]` | Bring forward | Board |
-| `Cmd/Ctrl + ]` | Bring to front | Board |
-| `[` | Send backward | Board |
-| `Cmd/Ctrl + [` | Send to back | Board |
-| `?` | Shortcuts modal | Global |
-| `Cmd/Ctrl + Enter` | Submit form | Forms |
+| Shortcut               | Action                          | Context |
+| ---------------------- | ------------------------------- | ------- |
+| `V`                    | Select tool                     | Board   |
+| `H`                    | Hand / pan tool                 | Board   |
+| `P`                    | Pen tool                        | Board   |
+| `E`                    | Eraser tool                     | Board   |
+| `R`                    | Rectangle                       | Board   |
+| `O`                    | Ellipse                         | Board   |
+| `L`                    | Line                            | Board   |
+| `A`                    | Arrow                           | Board   |
+| `N`                    | Sticky note                     | Board   |
+| `T`                    | Text                            | Board   |
+| `Space` (hold)         | Temporary pan                   | Board   |
+| `Cmd/Ctrl + Z`         | Undo                            | Board   |
+| `Cmd/Ctrl + Shift + Z` | Redo                            | Board   |
+| `Cmd/Ctrl + C`         | Copy                            | Board   |
+| `Cmd/Ctrl + X`         | Cut                             | Board   |
+| `Cmd/Ctrl + V`         | Paste                           | Board   |
+| `Cmd/Ctrl + D`         | Duplicate                       | Board   |
+| `Cmd/Ctrl + A`         | Select all                      | Board   |
+| `Delete` / `Backspace` | Delete selection                | Board   |
+| `Escape`               | Deselect / cancel / close modal | Global  |
+| `Arrow keys`           | Nudge 1 px                      | Board   |
+| `Shift + Arrow`        | Nudge 10 px                     | Board   |
+| `Cmd/Ctrl + Scroll`    | Zoom                            | Board   |
+| `Cmd/Ctrl + 0`         | Reset zoom to 100%              | Board   |
+| `Cmd/Ctrl + 1`         | Zoom to fit                     | Board   |
+| `Cmd/Ctrl + +` / `-`   | Zoom in / out                   | Board   |
+| `]`                    | Bring forward                   | Board   |
+| `Cmd/Ctrl + ]`         | Bring to front                  | Board   |
+| `[`                    | Send backward                   | Board   |
+| `Cmd/Ctrl + [`         | Send to back                    | Board   |
+| `?`                    | Shortcuts modal                 | Global  |
+| `Cmd/Ctrl + Enter`     | Submit form                     | Forms   |
 
 **Rule:** every shortcut is disabled while a text input or the on-canvas text editor has focus, **except `Escape` and `Cmd/Ctrl+Enter`**.
 
@@ -4276,68 +4359,68 @@ Second person, present tense. Never blame the user. Every error tells the user w
 
 ### Errors
 
-| Situation | Message | Action |
-|---|---|---|
-| Wrong credentials | "That email or password didn't match. Try again." | — |
-| Rate limited (login) | "Too many attempts. Try again in {N} minutes." | — |
-| Email already registered | "An account already exists for this email." | "Log in instead" |
-| Weak password | "Password needs at least 8 characters, including a letter and a number." | — |
-| No board access | "You don't have access to this board." | "Ask the owner for access" / "Back to dashboard" |
-| Board not found | "This board doesn't exist, or it was deleted." | "Back to dashboard" |
-| Board deleted while open | "The owner deleted this board." | "Back to dashboard" |
-| Access revoked while open | "Your access to this board was removed." | "Back to dashboard" |
-| Disconnected | "Offline — your changes are saved locally and will sync when you're back." | "Retry now" |
-| Reconnecting | "Reconnecting… (attempt {N})" | — |
-| Syncing | "Syncing {N} changes…" | — |
-| Op rejected | "That change couldn't be saved." | "Undo" |
-| Upload too large | "Images must be under 10 MB." | — |
-| Unsupported file | "We support PNG, JPG, GIF, WebP, and SVG." | — |
-| Upload failed | "Upload failed." | "Retry" / "Remove" |
-| Board too large | "This board is getting large. Consider splitting it up." | "Dismiss" |
-| Generic server error | "Something went wrong on our end. We're looking into it." + `Ref: {8-char id}` | "Retry" |
-| Unsupported browser | "CoBoard needs a modern browser. Try Chrome, Firefox, Edge, or Safari." | — |
+| Situation                 | Message                                                                        | Action                                           |
+| ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------ |
+| Wrong credentials         | "That email or password didn't match. Try again."                              | —                                                |
+| Rate limited (login)      | "Too many attempts. Try again in {N} minutes."                                 | —                                                |
+| Email already registered  | "An account already exists for this email."                                    | "Log in instead"                                 |
+| Weak password             | "Password needs at least 8 characters, including a letter and a number."       | —                                                |
+| No board access           | "You don't have access to this board."                                         | "Ask the owner for access" / "Back to dashboard" |
+| Board not found           | "This board doesn't exist, or it was deleted."                                 | "Back to dashboard"                              |
+| Board deleted while open  | "The owner deleted this board."                                                | "Back to dashboard"                              |
+| Access revoked while open | "Your access to this board was removed."                                       | "Back to dashboard"                              |
+| Disconnected              | "Offline — your changes are saved locally and will sync when you're back."     | "Retry now"                                      |
+| Reconnecting              | "Reconnecting… (attempt {N})"                                                  | —                                                |
+| Syncing                   | "Syncing {N} changes…"                                                         | —                                                |
+| Op rejected               | "That change couldn't be saved."                                               | "Undo"                                           |
+| Upload too large          | "Images must be under 10 MB."                                                  | —                                                |
+| Unsupported file          | "We support PNG, JPG, GIF, WebP, and SVG."                                     | —                                                |
+| Upload failed             | "Upload failed."                                                               | "Retry" / "Remove"                               |
+| Board too large           | "This board is getting large. Consider splitting it up."                       | "Dismiss"                                        |
+| Generic server error      | "Something went wrong on our end. We're looking into it." + `Ref: {8-char id}` | "Retry"                                          |
+| Unsupported browser       | "CoBoard needs a modern browser. Try Chrome, Firefox, Edge, or Safari."        | —                                                |
 
 ### Empty states
 
-| Screen | Headline | Body | CTA |
-|---|---|---|---|
-| Dashboard, no boards | "Nothing here yet" | "Create your first board and invite your team." | "New board" |
-| Dashboard, filter empty | "No boards match that filter" | — | "Clear filter" |
-| Trash empty | "Trash is empty" | "Deleted boards appear here for 30 days." | — |
-| Board, no objects | "Pick a tool and start drawing" — faint, centred, arrow to the toolbar. Fades permanently after the first object | — | — |
-| Search, no results | "No boards found for '{query}'" | — | "Clear search" |
+| Screen                  | Headline                                                                                                         | Body                                            | CTA            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | -------------- |
+| Dashboard, no boards    | "Nothing here yet"                                                                                               | "Create your first board and invite your team." | "New board"    |
+| Dashboard, filter empty | "No boards match that filter"                                                                                    | —                                               | "Clear filter" |
+| Trash empty             | "Trash is empty"                                                                                                 | "Deleted boards appear here for 30 days."       | —              |
+| Board, no objects       | "Pick a tool and start drawing" — faint, centred, arrow to the toolbar. Fades permanently after the first object | —                                               | —              |
+| Search, no results      | "No boards found for '{query}'"                                                                                  | —                                               | "Clear search" |
 
 ### Guest flow
 
-| Situation | Message |
-|---|---|
+| Situation     | Message                                                       |
+| ------------- | ------------------------------------------------------------- |
 | Invalid token | "This link isn't valid. Ask whoever shared it for a new one." |
-| Revoked link | "This link has been turned off." |
-| Board deleted | "This board no longer exists." |
-| Board full | "This board is full right now. Try again in a few minutes." |
-| Name empty | "Enter a name so others know who you are." |
-| Joined | "You're in as {name}" |
-| Guest bar | "You're a guest. Sign up to save your boards." |
+| Revoked link  | "This link has been turned off."                              |
+| Board deleted | "This board no longer exists."                                |
+| Board full    | "This board is full right now. Try again in a few minutes."   |
+| Name empty    | "Enter a name so others know who you are."                    |
+| Joined        | "You're in as {name}"                                         |
+| Guest bar     | "You're a guest. Sign up to save your boards."                |
 
 ---
 
 ## Appendix J — Performance budgets and scalability
 
-| Metric | Budget | Measured how | Enforced |
-|---|---|---|---|
-| Landing page LCP | ≤ 1.5 s on 4G | Lighthouse | Phase 15 |
-| Dashboard interactive | ≤ 2.0 s | Lighthouse | Phase 15 |
-| Board first paint, 500 objects | ≤ 1.5 s | Custom perf mark | Phase 15 |
-| Board first paint, 5,000 objects | ≤ 3.0 s | Custom perf mark | `AT-13`, Phase 8 |
-| Drawing frame rate | ≥ 55 fps with 5,000 objects | Chrome perf panel | Phases 3, 15 |
-| Pan/zoom frame rate | ≥ 55 fps | Chrome perf panel | Phase 2 |
-| Input-to-local-pixel | ≤ 16 ms | Instrumented | Phase 3 |
-| Local-input-to-remote-render p95 | ≤ 250 ms | Instrumented | Phase 9 |
-| Cursor update rate | 20 Hz send, interpolated | Code review | Phase 10 |
-| Initial JS bundle (gz) | ≤ 250 KB | Bundle analyzer | **CI gate**, Phase 1 |
-| Board route chunk (gz) | ≤ 200 KB | Bundle analyzer | **CI gate**, Phase 1 |
-| Memory, 5,000 objects | ≤ 300 MB heap | Memory profiler | Phase 15 |
-| Typical WebSocket op | ≤ 2 KB | Network tab | Phase 9 |
+| Metric                           | Budget                      | Measured how      | Enforced             |
+| -------------------------------- | --------------------------- | ----------------- | -------------------- |
+| Landing page LCP                 | ≤ 1.5 s on 4G               | Lighthouse        | Phase 15             |
+| Dashboard interactive            | ≤ 2.0 s                     | Lighthouse        | Phase 15             |
+| Board first paint, 500 objects   | ≤ 1.5 s                     | Custom perf mark  | Phase 15             |
+| Board first paint, 5,000 objects | ≤ 3.0 s                     | Custom perf mark  | `AT-13`, Phase 8     |
+| Drawing frame rate               | ≥ 55 fps with 5,000 objects | Chrome perf panel | Phases 3, 15         |
+| Pan/zoom frame rate              | ≥ 55 fps                    | Chrome perf panel | Phase 2              |
+| Input-to-local-pixel             | ≤ 16 ms                     | Instrumented      | Phase 3              |
+| Local-input-to-remote-render p95 | ≤ 250 ms                    | Instrumented      | Phase 9              |
+| Cursor update rate               | 20 Hz send, interpolated    | Code review       | Phase 10             |
+| Initial JS bundle (gz)           | ≤ 250 KB                    | Bundle analyzer   | **CI gate**, Phase 1 |
+| Board route chunk (gz)           | ≤ 200 KB                    | Bundle analyzer   | **CI gate**, Phase 1 |
+| Memory, 5,000 objects            | ≤ 300 MB heap               | Memory profiler   | Phase 15             |
+| Typical WebSocket op             | ≤ 2 KB                      | Network tab       | Phase 9              |
 
 ### Scalability targets (v1)
 
@@ -4370,11 +4453,11 @@ Target uptime 99.5%. **Zero committed-op loss** — stricter than uptime: the sy
 
 ### Token strategy
 
-| Token | Storage | Lifetime |
-|---|---|---|
-| Access | **In memory only** | 15 min |
-| Refresh | `httpOnly`, `Secure`, `SameSite=Lax` cookie, rotated on use | 30 days |
-| WS ticket | In memory | 60 s, single use |
+| Token     | Storage                                                     | Lifetime         |
+| --------- | ----------------------------------------------------------- | ---------------- |
+| Access    | **In memory only**                                          | 15 min           |
+| Refresh   | `httpOnly`, `Secure`, `SameSite=Lax` cookie, rotated on use | 30 days          |
+| WS ticket | In memory                                                   | 60 s, single use |
 
 Refresh rotation includes **reuse detection** — a revoked token being presented indicates theft: revoke the entire family and force re-login.
 
@@ -4386,56 +4469,56 @@ All 28 scenarios. The numbering gaps in the source PRD are intentional category 
 
 ### Core collaboration
 
-| ID | Scenario | Expected | Phase |
-|---|---|---|---|
-| `AT-01` | Two windows, A draws a stroke | Appears in B within 250 ms | 9 |
-| `AT-02` | A and B draw simultaneously for 30 s | Boards identical; object counts match exactly | 9 |
-| `AT-03` | A moves object X while B recolours X | Final state has both the position and the colour | 9 |
-| `AT-04` | A deletes X while B moves it | Gone on both. No error, no zombie | 9 |
-| `AT-05` | Both set X's fill within 50 ms | Converge to the later server-sequenced value | 9 |
-| `AT-06` | B joins mid-session | Sees the complete board and all live cursors | 10 |
-| `AT-07` | A closes the tab | A's cursor and avatar disappear from B within 5 s | 10 |
-| `AT-08` | 5 users draw for 2 minutes | All converge; no dropped ops; frame rate holds | 10 |
+| ID      | Scenario                             | Expected                                          | Phase |
+| ------- | ------------------------------------ | ------------------------------------------------- | ----- |
+| `AT-01` | Two windows, A draws a stroke        | Appears in B within 250 ms                        | 9     |
+| `AT-02` | A and B draw simultaneously for 30 s | Boards identical; object counts match exactly     | 9     |
+| `AT-03` | A moves object X while B recolours X | Final state has both the position and the colour  | 9     |
+| `AT-04` | A deletes X while B moves it         | Gone on both. No error, no zombie                 | 9     |
+| `AT-05` | Both set X's fill within 50 ms       | Converge to the later server-sequenced value      | 9     |
+| `AT-06` | B joins mid-session                  | Sees the complete board and all live cursors      | 10    |
+| `AT-07` | A closes the tab                     | A's cursor and avatar disappear from B within 5 s | 10    |
+| `AT-08` | 5 users draw for 2 minutes           | All converge; no dropped ops; frame rate holds    | 10    |
 
 ### Persistence
 
-| ID | Scenario | Expected | Phase |
-|---|---|---|---|
-| `AT-10` | Draw, refresh | Everything present, same position and z-order | 8 |
-| `AT-11` | Draw, close browser, reopen tomorrow | Everything present | 8 |
-| `AT-12` | Restart the server mid-session | Clients reconnect automatically; no ops lost | 11 |
-| `AT-13` | Board with 5,000 objects | Loads under 3 s and is interactive | 8 |
+| ID      | Scenario                             | Expected                                      | Phase |
+| ------- | ------------------------------------ | --------------------------------------------- | ----- |
+| `AT-10` | Draw, refresh                        | Everything present, same position and z-order | 8     |
+| `AT-11` | Draw, close browser, reopen tomorrow | Everything present                            | 8     |
+| `AT-12` | Restart the server mid-session       | Clients reconnect automatically; no ops lost  | 11    |
+| `AT-13` | Board with 5,000 objects             | Loads under 3 s and is interactive            | 8     |
 
 ### Permissions
 
-| ID | Scenario | Expected | Phase |
-|---|---|---|---|
-| `AT-20` | Viewer tries to draw | Toolbar disabled; a forged socket op is rejected server-side | 12 |
-| `AT-21` | Non-member opens the board URL | Access-denied screen, board name hidden | 12 |
-| `AT-22` | Owner revokes a link while a guest draws | Guest ejected within 10 s with the correct message | 12 |
-| `AT-23` | Owner deletes the board with 3 users connected | All 3 see the "board deleted" screen | 12 |
-| `AT-24` | Editor calls the delete-board endpoint directly | 403 | 12 |
+| ID      | Scenario                                        | Expected                                                     | Phase |
+| ------- | ----------------------------------------------- | ------------------------------------------------------------ | ----- |
+| `AT-20` | Viewer tries to draw                            | Toolbar disabled; a forged socket op is rejected server-side | 12    |
+| `AT-21` | Non-member opens the board URL                  | Access-denied screen, board name hidden                      | 12    |
+| `AT-22` | Owner revokes a link while a guest draws        | Guest ejected within 10 s with the correct message           | 12    |
+| `AT-23` | Owner deletes the board with 3 users connected  | All 3 see the "board deleted" screen                         | 12    |
+| `AT-24` | Editor calls the delete-board endpoint directly | 403                                                          | 12    |
 
 ### Network chaos — all ship-blocking
 
-| ID | Scenario | Expected | Phase |
-|---|---|---|---|
-| `AT-30` | Kill wifi, draw 10 strokes, restore | All 10 appear for everyone; nothing duplicated | 11 |
-| `AT-31` | A and B both offline, both draw, both return | Both sets merge; both converge | 11 |
-| `AT-32` | Throttle to 3G with 400 ms latency | App usable; local drawing instant | 11 |
-| `AT-33` | Kill the connection mid-stroke | Commits fully or does not exist. **Never a half-stroke** | 11 |
-| `AT-34` | 30 rapid disconnect/reconnect cycles | No duplicate ops, no memory leak, no zombie sockets | 11 |
-| `AT-35` | Malformed op via the console | Server rejects, does not crash; others unaffected | 11 |
+| ID      | Scenario                                     | Expected                                                 | Phase |
+| ------- | -------------------------------------------- | -------------------------------------------------------- | ----- |
+| `AT-30` | Kill wifi, draw 10 strokes, restore          | All 10 appear for everyone; nothing duplicated           | 11    |
+| `AT-31` | A and B both offline, both draw, both return | Both sets merge; both converge                           | 11    |
+| `AT-32` | Throttle to 3G with 400 ms latency           | App usable; local drawing instant                        | 11    |
+| `AT-33` | Kill the connection mid-stroke               | Commits fully or does not exist. **Never a half-stroke** | 11    |
+| `AT-34` | 30 rapid disconnect/reconnect cycles         | No duplicate ops, no memory leak, no zombie sockets      | 11    |
+| `AT-35` | Malformed op via the console                 | Server rejects, does not crash; others unaffected        | 11    |
 
 ### Undo
 
-| ID | Scenario | Expected | Phase |
-|---|---|---|---|
-| `AT-40` | A draws, B draws, A undoes | Only A's stroke disappears | 9 |
-| `AT-41` | A moves an object, B deletes it, A undoes | No-op. No crash, no resurrection | 9 |
-| `AT-42` | A performs 10 actions and undoes 10 times | Board returns to A's starting state | 6 |
-| `AT-43` | A undoes 5 then redoes 5 | Identical to before the undos | 6 |
-| `AT-44` | A undoes, acts, then presses redo | Redo does nothing — the stack was cleared | 6 |
+| ID      | Scenario                                  | Expected                                  | Phase |
+| ------- | ----------------------------------------- | ----------------------------------------- | ----- |
+| `AT-40` | A draws, B draws, A undoes                | Only A's stroke disappears                | 9     |
+| `AT-41` | A moves an object, B deletes it, A undoes | No-op. No crash, no resurrection          | 9     |
+| `AT-42` | A performs 10 actions and undoes 10 times | Board returns to A's starting state       | 6     |
+| `AT-43` | A undoes 5 then redoes 5                  | Identical to before the undos             | 6     |
+| `AT-44` | A undoes, acts, then presses redo         | Redo does nothing — the stack was cleared | 6     |
 
 ---
 
@@ -4443,30 +4526,30 @@ All 28 scenarios. The numbering gaps in the source PRD are intentional category 
 
 All 22 from FLOWS §12.5.
 
-| # | Situation | Behaviour | Phase |
-|---|---|---|---|
-| `E-01` | Two tabs, same user | Both work. One avatar (dedupe by user id), two cursors | 10 |
-| `E-02` | Tab backgrounded 30 min | Force a reconnect check on `visibilitychange` → visible | 11 |
-| `E-03` | User's clock is wrong | Never trust client timestamps. Server seq is the only authority | 9 |
-| `E-04` | Extreme coordinates | Clamp to ±1,000,000; reject out-of-range server-side | 2 |
-| `E-05` | 50 MB image pasted | Reject before upload; check `File.size` client-side first | 13 |
-| `E-06` | Non-image clipboard data | Plain text → text object. Otherwise ignore silently | 5 |
-| `E-07` | Dragging 500 objects | One op message. Presence throttled to 10 Hz above 100 selected | 4 |
-| `E-08` | Tool switch during a drag | Ignore until the interaction finishes | 4 |
-| `E-09` | `Escape` during a stroke | Cancel entirely. Nothing committed or broadcast | 3 |
-| `E-10` | Window resized mid-drag | Recompute backing store, preserve centre, keep the drag alive | 2 |
-| `E-11` | 2 px object at 500% zoom | Still hit-testable; 8 px minimum handle target | 4 |
-| `E-12` | 5,000 objects at 10% zoom | Cull off-screen; simplified paths below 25% | 2 |
-| `E-13` | Op for an unknown object id | Log, ignore; fresh snapshot after 3 in a minute | 9 |
-| `E-14` | `seq <= lastAppliedSeq` | Ignore — duplicate | 9 |
-| `E-15` | `seq > lastAppliedSeq + 1` | Buffer, request the missing range, never apply out of order | 9 |
-| `E-16` | Double-click "New board" | Button disables on first click. One board | 8 |
-| `E-17` | Session expires with a board open | Keep the socket, refresh silently, banner on failure. **Never lose work** | 7 |
-| `E-18` | `localStorage` blocked | In-memory fallback. App works. **Show no error** | 11 |
-| `E-19` | Simultaneous board rename | Last write wins. Both see the final name | 8 |
-| `E-20` | Very long display name | Truncate to 20 chars, full name on hover | 10 |
-| `E-21` | Slow 3G board load | 30 s snapshot timeout, then inline retry. **Never a forever spinner** | 12 |
-| `E-22` | Export an empty board | Block it: "There's nothing to export yet." | 13 |
+| #      | Situation                         | Behaviour                                                                 | Phase |
+| ------ | --------------------------------- | ------------------------------------------------------------------------- | ----- |
+| `E-01` | Two tabs, same user               | Both work. One avatar (dedupe by user id), two cursors                    | 10    |
+| `E-02` | Tab backgrounded 30 min           | Force a reconnect check on `visibilitychange` → visible                   | 11    |
+| `E-03` | User's clock is wrong             | Never trust client timestamps. Server seq is the only authority           | 9     |
+| `E-04` | Extreme coordinates               | Clamp to ±1,000,000; reject out-of-range server-side                      | 2     |
+| `E-05` | 50 MB image pasted                | Reject before upload; check `File.size` client-side first                 | 13    |
+| `E-06` | Non-image clipboard data          | Plain text → text object. Otherwise ignore silently                       | 5     |
+| `E-07` | Dragging 500 objects              | One op message. Presence throttled to 10 Hz above 100 selected            | 4     |
+| `E-08` | Tool switch during a drag         | Ignore until the interaction finishes                                     | 4     |
+| `E-09` | `Escape` during a stroke          | Cancel entirely. Nothing committed or broadcast                           | 3     |
+| `E-10` | Window resized mid-drag           | Recompute backing store, preserve centre, keep the drag alive             | 2     |
+| `E-11` | 2 px object at 500% zoom          | Still hit-testable; 8 px minimum handle target                            | 4     |
+| `E-12` | 5,000 objects at 10% zoom         | Cull off-screen; simplified paths below 25%                               | 2     |
+| `E-13` | Op for an unknown object id       | Log, ignore; fresh snapshot after 3 in a minute                           | 9     |
+| `E-14` | `seq <= lastAppliedSeq`           | Ignore — duplicate                                                        | 9     |
+| `E-15` | `seq > lastAppliedSeq + 1`        | Buffer, request the missing range, never apply out of order               | 9     |
+| `E-16` | Double-click "New board"          | Button disables on first click. One board                                 | 8     |
+| `E-17` | Session expires with a board open | Keep the socket, refresh silently, banner on failure. **Never lose work** | 7     |
+| `E-18` | `localStorage` blocked            | In-memory fallback. App works. **Show no error**                          | 11    |
+| `E-19` | Simultaneous board rename         | Last write wins. Both see the final name                                  | 8     |
+| `E-20` | Very long display name            | Truncate to 20 chars, full name on hover                                  | 10    |
+| `E-21` | Slow 3G board load                | 30 s snapshot timeout, then inline retry. **Never a forever spinner**     | 12    |
+| `E-22` | Export an empty board             | Block it: "There's nothing to export yet."                                | 13    |
 
 `E-17` is the binding requirement behind the dangling `FR-BOARD-041` reference — see defect `D-1` in `RULES.md` §2.4.
 
@@ -4478,39 +4561,39 @@ All 22 from FLOWS §12.5.
 
 ### P2 requirements
 
-| ID | Item | Note |
-|---|---|---|
-| `FR-BOARD-008` | Star / favourite | Dashboard toggle, "Starred" tab pinning |
-| `FR-BOARD-009` | Templates | Blank, Retrospective, Kanban, Mind map, Flowchart. A template is just a predefined object set inserted at creation. Would also activate S-09 |
-| `FR-CANVAS-017` | Grouping | Marked `[P1]` in its heading but `[P2]` / "Do not build" in its body. See defect `D-2` — the body wins |
-| `FR-CANVAS-021` | Grid and snap-to-grid | Toggleable dot grid at 20 canvas px. Canvas layer 0 is reserved for it |
-| `FR-COMMENT-001` | Comment threads | Pinned to a coordinate or object, with replies and resolve. Deferred entirely |
-| `FR-EXPORT-002` | Export as SVG | |
-| `FR-EXPORT-003` | Export board JSON | For debugging and re-import |
-| `FR-SET-002` | Appearance / theme | Light / dark / system for app chrome. **The canvas stays light in v1** |
+| ID               | Item                  | Note                                                                                                                                         |
+| ---------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FR-BOARD-008`   | Star / favourite      | Dashboard toggle, "Starred" tab pinning                                                                                                      |
+| `FR-BOARD-009`   | Templates             | Blank, Retrospective, Kanban, Mind map, Flowchart. A template is just a predefined object set inserted at creation. Would also activate S-09 |
+| `FR-CANVAS-017`  | Grouping              | Marked `[P1]` in its heading but `[P2]` / "Do not build" in its body. See defect `D-2` — the body wins                                       |
+| `FR-CANVAS-021`  | Grid and snap-to-grid | Toggleable dot grid at 20 canvas px. Canvas layer 0 is reserved for it                                                                       |
+| `FR-COMMENT-001` | Comment threads       | Pinned to a coordinate or object, with replies and resolve. Deferred entirely                                                                |
+| `FR-EXPORT-002`  | Export as SVG         |                                                                                                                                              |
+| `FR-EXPORT-003`  | Export board JSON     | For debugging and re-import                                                                                                                  |
+| `FR-SET-002`     | Appearance / theme    | Light / dark / system for app chrome. **The canvas stays light in v1**                                                                       |
 
 ### P2 sub-features inside shipped requirements
 
-| Item | Parent | Note |
-|---|---|---|
-| Commenter role | `FR-SHARE-001` | The role matrix has four rows; only three ship |
-| Ownership transfer | `FR-SHARE-001` | |
-| "Request access" button | `FR-SHARE-005` | S-17 ships without it |
-| Follow-user | `FR-RT-004` | Click an avatar to follow their viewport |
-| Off-screen cursor chevrons | FLOWS §9.2 | Coloured chevron pinned to the viewport edge |
-| Reject over-capacity joins | `FR-RT-011` | v1 admits them as viewers with a notice instead |
-| Pixel eraser | `FR-CANVAS-006` | Splitting strokes is **explicitly out of scope** |
-| Align / distribute | FLOWS §14.4 | Multi-selection panel |
-| Right-drag to pan | FLOWS §8.2.4 | The other four pan triggers ship |
-| Bounding-box rendering below 10% zoom | TRD §7.6 | Simplified paths below 25% do ship |
-| Op pruning | TRD §3.4 | Prune ops older than the second-newest snapshot |
-| Spatial index | TRD §7.4 | **Do not build preemptively.** Linear culling is fine to ~10,000 objects |
-| S-22 onboarding tour | PRD §6 | |
+| Item                                  | Parent          | Note                                                                     |
+| ------------------------------------- | --------------- | ------------------------------------------------------------------------ |
+| Commenter role                        | `FR-SHARE-001`  | The role matrix has four rows; only three ship                           |
+| Ownership transfer                    | `FR-SHARE-001`  |                                                                          |
+| "Request access" button               | `FR-SHARE-005`  | S-17 ships without it                                                    |
+| Follow-user                           | `FR-RT-004`     | Click an avatar to follow their viewport                                 |
+| Off-screen cursor chevrons            | FLOWS §9.2      | Coloured chevron pinned to the viewport edge                             |
+| Reject over-capacity joins            | `FR-RT-011`     | v1 admits them as viewers with a notice instead                          |
+| Pixel eraser                          | `FR-CANVAS-006` | Splitting strokes is **explicitly out of scope**                         |
+| Align / distribute                    | FLOWS §14.4     | Multi-selection panel                                                    |
+| Right-drag to pan                     | FLOWS §8.2.4    | The other four pan triggers ship                                         |
+| Bounding-box rendering below 10% zoom | TRD §7.6        | Simplified paths below 25% do ship                                       |
+| Op pruning                            | TRD §3.4        | Prune ops older than the second-newest snapshot                          |
+| Spatial index                         | TRD §7.4        | **Do not build preemptively.** Linear culling is fine to ~10,000 objects |
+| S-22 onboarding tour                  | PRD §6          |                                                                          |
 
 ### Stretch — explicitly not built
 
-| Item | Note |
-|---|---|
+| Item                                       | Note                                                        |
+| ------------------------------------------ | ----------------------------------------------------------- |
 | Version history with time-travel scrubbing | The op log makes it possible later. **Do not build the UI** |
 
 ### Non-goals — never build
@@ -4519,25 +4602,25 @@ Video/voice chat · native mobile apps · offline-first PWA with full local pers
 
 ### Recorded deviation awaiting sign-off
 
-| Item | Status |
-|---|---|
+| Item                                                                             | Status                                                                                                                                                                                                                   |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | A display typeface (Clash Display, PP Editorial New) for S-01 marketing headings | **Not adopted.** Would satisfy three design skills whose font bans currently lose to PRD §15 (conflict `C-1`). PRD §15 says `--font-sans` applies to "All UI". Requires explicit sign-off. Do not implement unilaterally |
 
 ---
 
 ## Appendix O — Risks and mitigating phases
 
-| # | Risk | Likelihood | Impact | Mitigation | Phase |
-|---|---|---|---|---|---|
-| `R-1` | Conflict resolution subtly wrong; clients diverge | High | Critical | Convergence test harness in week 4. Keep resolution rules dead simple. Debug panel with op count and state hash per client | **11** |
-| `R-2` | Canvas performance collapses past a few thousand objects | High | High | Layered canvases, viewport culling, dirty-rect rendering, and a seeded 10k stress board committed from week 1 | **1, 2, 15** |
-| `R-3` | Per-user undo interacts badly with remote ops | High | High | Implement the inverse-op model in TRD §8 exactly. **Do not invent a variant.** Separate `applyAndEmit` / `applyRemoteOp` paths | **6, 9** |
-| `R-4` | Team builds the fun canvas parts and skips error/empty states | **Very High** | Medium | Definition of Done includes them. Reviewers reject PRs without them | **14** |
-| `R-5` | Scope creep — someone builds comments, or a font picker | High | Medium | PRD §2.2 is binding. New scope goes to Appendix N, not into the sprint | All |
-| `R-6` | WebSocket reconnection edge case loses ops | Medium | Critical | Sequence numbers + client-generated op IDs + server-side idempotency. `AT-30`–`AT-35` are ship-blocking | **11** |
-| `R-7` | Coordinate-space confusion (screen vs canvas) | **Very High** | Medium | Two branded TypeScript types so the compiler catches mixups | **1, 2** |
-| `R-8` | Memory leaks from event listeners and socket handlers | Medium | Medium | Every `useEffect` returns a cleanup. Profile the heap after 30 minutes of use | **15** |
-| `R-9` | Everyone works on the canvas file at once; merge hell | Medium | Medium | Strict module boundaries. Owners assigned per module | **1** (§5.1) |
+| #     | Risk                                                          | Likelihood    | Impact   | Mitigation                                                                                                                     | Phase        |
+| ----- | ------------------------------------------------------------- | ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| `R-1` | Conflict resolution subtly wrong; clients diverge             | High          | Critical | Convergence test harness in week 4. Keep resolution rules dead simple. Debug panel with op count and state hash per client     | **11**       |
+| `R-2` | Canvas performance collapses past a few thousand objects      | High          | High     | Layered canvases, viewport culling, dirty-rect rendering, and a seeded 10k stress board committed from week 1                  | **1, 2, 15** |
+| `R-3` | Per-user undo interacts badly with remote ops                 | High          | High     | Implement the inverse-op model in TRD §8 exactly. **Do not invent a variant.** Separate `applyAndEmit` / `applyRemoteOp` paths | **6, 9**     |
+| `R-4` | Team builds the fun canvas parts and skips error/empty states | **Very High** | Medium   | Definition of Done includes them. Reviewers reject PRs without them                                                            | **14**       |
+| `R-5` | Scope creep — someone builds comments, or a font picker       | High          | Medium   | PRD §2.2 is binding. New scope goes to Appendix N, not into the sprint                                                         | All          |
+| `R-6` | WebSocket reconnection edge case loses ops                    | Medium        | Critical | Sequence numbers + client-generated op IDs + server-side idempotency. `AT-30`–`AT-35` are ship-blocking                        | **11**       |
+| `R-7` | Coordinate-space confusion (screen vs canvas)                 | **Very High** | Medium   | Two branded TypeScript types so the compiler catches mixups                                                                    | **1, 2**     |
+| `R-8` | Memory leaks from event listeners and socket handlers         | Medium        | Medium   | Every `useEffect` returns a cleanup. Profile the heap after 30 minutes of use                                                  | **15**       |
+| `R-9` | Everyone works on the canvas file at once; merge hell         | Medium        | Medium   | Strict module boundaries. Owners assigned per module                                                                           | **1** (§5.1) |
 
 ---
 
@@ -4545,12 +4628,12 @@ Video/voice chat · native mobile apps · offline-first PWA with full local pers
 
 Carried forward **unresolved**. Do not guess an answer — escalate to the named owner.
 
-| # | Question | Owner | Needed by |
-|---|---|---|---|
-| `Q-1` | Do guests persist as board members after leaving, or vanish entirely? | Product | Phase 10 (M3) |
-| `Q-2` | Does a board have a hard object cap, or only a soft warning? | Eng lead | Phase 11 (M4) |
-| `Q-3` | Do we ship dark mode for the canvas or only the chrome? | Design | Phase 14 (M5) |
-| `Q-4` | Is the 30-day trash retention configurable per board? | Product | Phase 14 (M5) |
+| #     | Question                                                                                        | Owner             | Needed by     |
+| ----- | ----------------------------------------------------------------------------------------------- | ----------------- | ------------- |
+| `Q-1` | Do guests persist as board members after leaving, or vanish entirely?                           | Product           | Phase 10 (M3) |
+| `Q-2` | Does a board have a hard object cap, or only a soft warning?                                    | Eng lead          | Phase 11 (M4) |
+| `Q-3` | Do we ship dark mode for the canvas or only the chrome?                                         | Design            | Phase 14 (M5) |
+| `Q-4` | Is the 30-day trash retention configurable per board?                                           | Product           | Phase 14 (M5) |
 | `Q-5` | Adopt a display typeface for S-01 marketing headings, overriding PRD §15 for that surface only? | Eng lead + Design | Phase 14 (M5) |
 
 `Q-5` is new, raised by conflict `C-1`. FLOWS §10.3 notes that `Q-1` currently has a working answer — guests remain listed for the session and are dropped once the board has been idle for 24 hours — but this is not ratified.
@@ -4559,13 +4642,13 @@ Carried forward **unresolved**. Do not guess an answer — escalate to the named
 
 Where a phase needs an answer before the owner provides one, use these and flag the assumption in the PR:
 
-| # | Interim position |
-|---|---|
+| #     | Interim position                                                                                  |
+| ----- | ------------------------------------------------------------------------------------------------- |
 | `Q-1` | Guests persist as `BoardMember` rows and are swept after 24 hours of board idleness (FLOWS §10.3) |
-| `Q-2` | Soft warning at 10,000 objects, hard cap at 50,000 per `MAX_OBJECTS_PER_BOARD` (PRD §7.2) |
-| `Q-3` | Chrome only. **The canvas stays light in v1** (PRD `FR-SET-002`) |
-| `Q-4` | Fixed at 30 days, not configurable |
-| `Q-5` | Inter everywhere. Do not adopt a display face without sign-off |
+| `Q-2` | Soft warning at 10,000 objects, hard cap at 50,000 per `MAX_OBJECTS_PER_BOARD` (PRD §7.2)         |
+| `Q-3` | Chrome only. **The canvas stays light in v1** (PRD `FR-SET-002`)                                  |
+| `Q-4` | Fixed at 30 days, not configurable                                                                |
+| `Q-5` | Inter everywhere. Do not adopt a display face without sign-off                                    |
 
 ---
 
@@ -4593,16 +4676,16 @@ Branches `feat/…` `fix/…` `chore/…` `docs/…`. Conventional Commits — `
 
 ### CI gates
 
-| Gate | Blocking |
-|---|---|
-| `tsc --noEmit` | Yes |
-| ESLint, zero warnings | Yes |
-| Unit + integration tests | Yes |
-| Bundle size budget | Yes |
-| Board-route animation-library import check | Yes |
-| `npm audit` high/critical | Yes |
-| Playwright e2e | Yes on `main`, advisory on PRs |
-| Lighthouse CI | Advisory |
+| Gate                                       | Blocking                       |
+| ------------------------------------------ | ------------------------------ |
+| `tsc --noEmit`                             | Yes                            |
+| ESLint, zero warnings                      | Yes                            |
+| Unit + integration tests                   | Yes                            |
+| Bundle size budget                         | Yes                            |
+| Board-route animation-library import check | Yes                            |
+| `npm audit` high/critical                  | Yes                            |
+| Playwright e2e                             | Yes on `main`, advisory on PRs |
+| Lighthouse CI                              | Advisory                       |
 
 ### Analytics events — PRD §9
 
@@ -4628,37 +4711,37 @@ pnpm dev                       # web :5173, server :3000
 
 From TRD §17. Recorded so nobody re-opens a settled question without new information.
 
-| # | Decision | Alternatives considered | Rationale |
-|---|---|---|---|
-| `D-1` | Native WebSocket over Socket.IO | Socket.IO, SSE + POST | Learning value; bundle size; the reconnection logic *is* the project |
-| `D-2` | Server-ordered LWW over CRDT/OT | Yjs, Automerge, custom OT | Sufficient for spatially-separated objects; a library would hide the learning |
-| `D-3` | Op log over a mutable objects table | Mutable rows + version column | Free replay, idempotency and audit; snapshots solve the read cost |
-| `D-4` | Canvas 2D over WebGL | WebGL, SVG | Required by the brief; sufficient to 10k objects; SVG collapses past ~2k nodes |
-| `D-5` | Multiple canvas layers over one | Single canvas | Cursor movement must not redraw objects. Non-negotiable |
-| `D-6` | DOM textarea overlay for text editing | Canvas-rendered caret | IME, mobile keyboards, spellcheck and a11y come free |
-| `D-7` | Zustand over Redux/Context | Redux Toolkit, Context, Jotai | Readable outside React — essential for the rAF loop |
-| `D-8` | Fractional z-index over integers | Integer indices with renumbering | Avoids O(n) reorder storms; survives concurrent reordering |
-| `D-9` | Flat `number[]` for stroke points | `{x,y,p}[]` | ~3× smaller payloads; no per-point allocation |
-| `D-10` | Local per-user undo over global undo | Global shared history | Global undo lets you revert a teammate's work |
-| `D-11` | Access token in memory, refresh in an httpOnly cookie | Both in localStorage | XSS cannot exfiltrate an in-memory token or read an httpOnly cookie |
-| `D-12` | Presigned direct-to-S3 uploads | Proxy through Node | Keeps the event loop free during large uploads |
-| `D-13` | Guests without accounts | Signup required | Persona B abandons at any signup wall |
-| `D-14` | Ops persisted before ack | Ack then persist | An acknowledged op must be durable, or the zero-loss guarantee is a lie |
+| #      | Decision                                              | Alternatives considered          | Rationale                                                                      |
+| ------ | ----------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------ |
+| `D-1`  | Native WebSocket over Socket.IO                       | Socket.IO, SSE + POST            | Learning value; bundle size; the reconnection logic _is_ the project           |
+| `D-2`  | Server-ordered LWW over CRDT/OT                       | Yjs, Automerge, custom OT        | Sufficient for spatially-separated objects; a library would hide the learning  |
+| `D-3`  | Op log over a mutable objects table                   | Mutable rows + version column    | Free replay, idempotency and audit; snapshots solve the read cost              |
+| `D-4`  | Canvas 2D over WebGL                                  | WebGL, SVG                       | Required by the brief; sufficient to 10k objects; SVG collapses past ~2k nodes |
+| `D-5`  | Multiple canvas layers over one                       | Single canvas                    | Cursor movement must not redraw objects. Non-negotiable                        |
+| `D-6`  | DOM textarea overlay for text editing                 | Canvas-rendered caret            | IME, mobile keyboards, spellcheck and a11y come free                           |
+| `D-7`  | Zustand over Redux/Context                            | Redux Toolkit, Context, Jotai    | Readable outside React — essential for the rAF loop                            |
+| `D-8`  | Fractional z-index over integers                      | Integer indices with renumbering | Avoids O(n) reorder storms; survives concurrent reordering                     |
+| `D-9`  | Flat `number[]` for stroke points                     | `{x,y,p}[]`                      | ~3× smaller payloads; no per-point allocation                                  |
+| `D-10` | Local per-user undo over global undo                  | Global shared history            | Global undo lets you revert a teammate's work                                  |
+| `D-11` | Access token in memory, refresh in an httpOnly cookie | Both in localStorage             | XSS cannot exfiltrate an in-memory token or read an httpOnly cookie            |
+| `D-12` | Presigned direct-to-S3 uploads                        | Proxy through Node               | Keeps the event loop free during large uploads                                 |
+| `D-13` | Guests without accounts                               | Signup required                  | Persona B abandons at any signup wall                                          |
+| `D-14` | Ops persisted before ack                              | Ack then persist                 | An acknowledged op must be durable, or the zero-loss guarantee is a lie        |
 
 ### Decisions added by this plan
 
 Recorded in `RULES.md` §2.3 as conflicts `C-1`–`C-8`, resolved against the six design skills:
 
-| # | Decision | Loser |
-|---|---|---|
-| `C-1` | Inter on all 22 screens | Three skill font bans |
-| `C-2` | Phosphor icons, one family | Lucide / Heroicons |
-| `C-3` | CSS-first motion; Framer Motion non-canvas only; **no GSAP** | `gpt-taste`'s GSAP mandate |
-| `C-4` | PRD §7.1 bundle budgets are blocking CI gates | Any library breaching them |
-| `C-5` | Per-surface skill zoning | Applying landing-page grammar to product UI |
-| `C-6` | `emil-design-eng`'s frequency framework governs; canvas is a no-decoration zone | Maximalist scroll choreography |
-| `C-7` | PRD §15 tokens binding; presence and sticky palettes frozen | Generated skill palettes |
-| `C-8` | Tailwind 3.x | Tailwind v4 guidance |
+| #     | Decision                                                                        | Loser                                       |
+| ----- | ------------------------------------------------------------------------------- | ------------------------------------------- |
+| `C-1` | Inter on all 22 screens                                                         | Three skill font bans                       |
+| `C-2` | Phosphor icons, one family                                                      | Lucide / Heroicons                          |
+| `C-3` | CSS-first motion; Framer Motion non-canvas only; **no GSAP**                    | `gpt-taste`'s GSAP mandate                  |
+| `C-4` | PRD §7.1 bundle budgets are blocking CI gates                                   | Any library breaching them                  |
+| `C-5` | Per-surface skill zoning                                                        | Applying landing-page grammar to product UI |
+| `C-6` | `emil-design-eng`'s frequency framework governs; canvas is a no-decoration zone | Maximalist scroll choreography              |
+| `C-7` | PRD §15 tokens binding; presence and sticky palettes frozen                     | Generated skill palettes                    |
+| `C-8` | Tailwind 3.x                                                                    | Tailwind v4 guidance                        |
 
 ---
 

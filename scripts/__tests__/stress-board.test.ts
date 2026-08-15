@@ -35,7 +35,8 @@ describe('fixtures/stress-board.json', () => {
     const failures: { index: number; error: string }[] = []
     fixture.objects.forEach((obj, index) => {
       const r = BoardObjectSchema.safeParse(obj)
-      if (!r.success) failures.push({ index, error: r.error.issues[0]?.message ?? 'unknown' })
+      if (!r.success)
+        failures.push({ index, error: r.error.issues[0]?.message ?? 'unknown' })
     })
     expect(failures.slice(0, 5)).toEqual([])
     expect(failures).toHaveLength(0)

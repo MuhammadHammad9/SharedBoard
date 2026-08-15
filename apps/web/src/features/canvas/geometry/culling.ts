@@ -30,7 +30,10 @@ export function getViewRect(v: Viewport, width: number, height: number): ViewRec
 }
 
 export const isVisible = (o: BoardObject, view: ViewRect): boolean =>
-  o.x + o.width >= view.minX && o.x <= view.maxX && o.y + o.height >= view.minY && o.y <= view.maxY
+  o.x + o.width >= view.minX &&
+  o.x <= view.maxX &&
+  o.y + o.height >= view.minY &&
+  o.y <= view.maxY
 
 /**
  * Filter to visible objects.

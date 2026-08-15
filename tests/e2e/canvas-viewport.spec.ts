@@ -146,10 +146,14 @@ test('zoom is anchored at the pointer — R-COORD-005', async ({ page }) => {
   const worldUnder = (x: number, y: number) =>
     page.evaluate(
       ([sx, sy]) => {
-        const pan = document.querySelector('[data-testid="dbg-pan"]')!.textContent!.split(',')
+        const pan = document
+          .querySelector('[data-testid="dbg-pan"]')!
+          .textContent!.split(',')
         const zoom =
           Number.parseFloat(
-            document.querySelector('[data-testid="dbg-zoom"]')!.textContent!.replace('%', ''),
+            document
+              .querySelector('[data-testid="dbg-zoom"]')!
+              .textContent!.replace('%', ''),
           ) / 100
         return {
           x: (sx! - Number.parseFloat(pan[0]!)) / zoom,
@@ -220,7 +224,9 @@ test('zoom to fit resets an empty board to origin at 100%', async ({ page }) => 
   await expect.poll(async () => Math.abs((await readPan(page)).y)).toBeLessThan(0.5)
 })
 
-test('the canvas is focusable and has a text alternative — R-A11Y-006/008', async ({ page }) => {
+test('the canvas is focusable and has a text alternative — R-A11Y-006/008', async ({
+  page,
+}) => {
   const el = await surface(page)
   await expect(el).toHaveAttribute('tabindex', '0')
   await expect(el).toHaveAttribute('role', 'img')

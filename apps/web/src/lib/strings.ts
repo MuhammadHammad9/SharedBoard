@@ -19,14 +19,16 @@
 
 export const errors = {
   wrongCredentials: "That email or password didn't match. Try again.",
-  rateLimitedLogin: (minutes: number) => `Too many attempts. Try again in ${minutes} minutes.`,
+  rateLimitedLogin: (minutes: number) =>
+    `Too many attempts. Try again in ${minutes} minutes.`,
   emailAlreadyRegistered: 'An account already exists for this email.',
   weakPassword: 'Password needs at least 8 characters, including a letter and a number.',
   noBoardAccess: "You don't have access to this board.",
   boardNotFound: "This board doesn't exist, or it was deleted.",
   boardDeletedWhileOpen: 'The owner deleted this board.',
   accessRevokedWhileOpen: 'Your access to this board was removed.',
-  disconnected: "Offline — your changes are saved locally and will sync when you're back.",
+  disconnected:
+    "Offline — your changes are saved locally and will sync when you're back.",
   reconnecting: (attempt: number) => `Reconnecting… (attempt ${attempt})`,
   syncing: (count: number) => `Syncing ${count} changes…`,
   opRejected: "That change couldn't be saved.",
@@ -36,7 +38,8 @@ export const errors = {
   boardTooLarge: 'This board is getting large. Consider splitting it up.',
   genericServerError: "Something went wrong on our end. We're looking into it.",
   genericServerErrorRef: (correlationId: string) => `Ref: ${correlationId}`,
-  unsupportedBrowser: 'CoBoard needs a modern browser. Try Chrome, Firefox, Edge, or Safari.',
+  unsupportedBrowser:
+    'CoBoard needs a modern browser. Try Chrome, Firefox, Edge, or Safari.',
 } as const
 
 export const actions = {

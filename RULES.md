@@ -1,11 +1,11 @@
 # CoBoard — Engineering Rules
 
-| Field | Value |
-|---|---|
-| Document type | Enforceable ruleset |
-| Version | 1.0 |
-| Status | Binding on all contributors |
-| Applies to | `apps/web`, `apps/server`, `packages/shared`, all documentation |
+| Field          | Value                                                                                                                                                                                                                  |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Document type  | Enforceable ruleset                                                                                                                                                                                                    |
+| Version        | 1.0                                                                                                                                                                                                                    |
+| Status         | Binding on all contributors                                                                                                                                                                                            |
+| Applies to     | `apps/web`, `apps/server`, `packages/shared`, all documentation                                                                                                                                                        |
 | Companion docs | [`CLAUDE.md`](./CLAUDE.md), [`docs/01-PRD.md`](./docs/01-PRD.md), [`docs/02-FLOWS.md`](./docs/02-FLOWS.md), [`docs/03-TRD.md`](./docs/03-TRD.md), [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md) |
 
 ---
@@ -24,34 +24,34 @@ Every rule has a stable ID. When you reject a pull request, cite the rule ID. Wh
 R-<DOMAIN>-<NNN>
 ```
 
-| Domain | Section | Covers |
-|---|---|---|
-| `R-PREC` | §2 | Precedence and conflict resolution |
-| `R-ARCH` | §3 | Architecture and module boundaries |
-| `R-SKILL` | §4 | Design-skill usage and zoning |
-| `R-CANVAS` | §5 | Canvas rendering engine |
-| `R-COORD` | §6 | Coordinate spaces |
-| `R-SYNC` | §7 | Sync engine and wire protocol |
-| `R-CONV` | §8 | Conflict resolution and convergence |
-| `R-UNDO` | §9 | Undo and redo |
-| `R-STATE` | §10 | Client state management |
-| `R-SEC` | §11 | Security |
-| `R-UI` | §12 | Visual and interaction design |
-| `R-MOTION` | §13 | Animation and motion |
-| `R-A11Y` | §14 | Accessibility |
-| `R-PERF` | §15 | Performance |
-| `R-TEST` | §16 | Testing |
-| `R-GIT` | §17 | Version control and review |
+| Domain     | Section | Covers                              |
+| ---------- | ------- | ----------------------------------- |
+| `R-PREC`   | §2      | Precedence and conflict resolution  |
+| `R-ARCH`   | §3      | Architecture and module boundaries  |
+| `R-SKILL`  | §4      | Design-skill usage and zoning       |
+| `R-CANVAS` | §5      | Canvas rendering engine             |
+| `R-COORD`  | §6      | Coordinate spaces                   |
+| `R-SYNC`   | §7      | Sync engine and wire protocol       |
+| `R-CONV`   | §8      | Conflict resolution and convergence |
+| `R-UNDO`   | §9      | Undo and redo                       |
+| `R-STATE`  | §10     | Client state management             |
+| `R-SEC`    | §11     | Security                            |
+| `R-UI`     | §12     | Visual and interaction design       |
+| `R-MOTION` | §13     | Animation and motion                |
+| `R-A11Y`   | §14     | Accessibility                       |
+| `R-PERF`   | §15     | Performance                         |
+| `R-TEST`   | §16     | Testing                             |
+| `R-GIT`    | §17     | Version control and review          |
 
 IDs are **stable and never reused**. If a rule is withdrawn it is marked `WITHDRAWN` in place, keeping its number, with the date and reason.
 
 ## 1.3 Severities
 
-| Severity | Meaning | Enforcement |
-|---|---|---|
-| **Blocking** | Violating this ships a broken, insecure, or unusable product. | CI fails, or the reviewer must reject. No exceptions without written sign-off from the engineering lead. |
-| **Required** | Violating this produces a defect or a measurable quality regression. | Reviewer must reject. Exception requires a recorded waiver (§20). |
-| **Recommended** | Best practice. Deviating needs a reason, not permission. | Reviewer raises it; author may justify in the PR thread. |
+| Severity        | Meaning                                                              | Enforcement                                                                                              |
+| --------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Blocking**    | Violating this ships a broken, insecure, or unusable product.        | CI fails, or the reviewer must reject. No exceptions without written sign-off from the engineering lead. |
+| **Required**    | Violating this produces a defect or a measurable quality regression. | Reviewer must reject. Exception requires a recorded waiver (§20).                                        |
+| **Recommended** | Best practice. Deviating needs a reason, not permission.             | Reviewer raises it; author may justify in the PR thread.                                                 |
 
 ## 1.4 Citing a rule in review
 
@@ -81,13 +81,13 @@ The specifications are contracts. The skills are craft libraries. When they coll
 
 **R-PREC-001** `Blocking` — When two sources of guidance conflict, resolve in this order. Higher tiers win absolutely; a lower tier never overrides a higher one, no matter how strongly worded.
 
-| Tier | Authority | Examples |
-|---|---|---|
-| **1** | **Security and data integrity** | Zero committed-op loss `[PRD §7.3]`, server-side authorization `[PRD §7.4]`, persist-before-ack `[TRD D-14]` |
+| Tier  | Authority                               | Examples                                                                                                          |
+| ----- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **1** | **Security and data integrity**         | Zero committed-op loss `[PRD §7.3]`, server-side authorization `[PRD §7.4]`, persist-before-ack `[TRD D-14]`      |
 | **2** | **Explicit specification requirements** | Requirement IDs `FR-*`, performance budgets `[PRD §7.1]`, design tokens `[PRD §15]`, the stack table `[TRD §1.1]` |
-| **3** | **Accessibility** | `[PRD §7.5]`, WCAG contrast floors |
-| **4** | **Design-skill guidance** | The six skills in §4 |
-| **5** | **Individual taste** | Your preference |
+| **3** | **Accessibility**                       | `[PRD §7.5]`, WCAG contrast floors                                                                                |
+| **4** | **Design-skill guidance**               | The six skills in §4                                                                                              |
+| **5** | **Individual taste**                    | Your preference                                                                                                   |
 
 **R-PREC-002** `Blocking` — A design skill may **fill a gap** in the specifications. It may never **overrule** a specification. If the PRD, FLOWS or TRD states a value, that value stands.
 
@@ -105,12 +105,12 @@ Each was found by reading the six skills in full against the three specification
 
 **R-PREC-010** `Blocking` — `Inter` is the typeface for every one of the 22 screens.
 
-| Side | Position |
-|---|---|
-| `[PRD §15]` | `--font-sans: Inter, system-ui, -apple-system, sans-serif` — "All UI" |
-| `high-end-visual-design` §2 | "**Banned Fonts:** Inter, Roboto, Arial, Open Sans, Helvetica" |
-| `gpt-taste` §1 | "Satoshi, Cabinet Grotesk, Outfit, or Geist. **NEVER Inter**" |
-| `design-taste-frontend` §0.D | Lists "Inter + slate-900" among the LLM defaults to reach past |
+| Side                         | Position                                                              |
+| ---------------------------- | --------------------------------------------------------------------- |
+| `[PRD §15]`                  | `--font-sans: Inter, system-ui, -apple-system, sans-serif` — "All UI" |
+| `high-end-visual-design` §2  | "**Banned Fonts:** Inter, Roboto, Arial, Open Sans, Helvetica"        |
+| `gpt-taste` §1               | "Satoshi, Cabinet Grotesk, Outfit, or Geist. **NEVER Inter**"         |
+| `design-taste-frontend` §0.D | Lists "Inter + slate-900" among the LLM defaults to reach past        |
 
 **Resolution:** PRD §15 is Tier 2; the skills are Tier 4. **Inter wins.** The three font bans are formally overridden and are void in this repository.
 
@@ -122,12 +122,12 @@ Each was found by reading the six skills in full against the three specification
 
 **R-PREC-011** `Required` — Icons come from `@phosphor-icons/react`, one family, no exceptions.
 
-| Side | Position |
-|---|---|
-| `ui-ux-pro-max` | "Use SVG icons (Heroicons, Lucide, Simple Icons)" |
+| Side                         | Position                                                                                |
+| ---------------------------- | --------------------------------------------------------------------------------------- |
+| `ui-ux-pro-max`              | "Use SVG icons (Heroicons, Lucide, Simple Icons)"                                       |
 | `design-taste-frontend` §3.C | Priority order Phosphor → Hugeicons → Radix → Tabler. "**Discouraged:** `lucide-react`" |
-| `high-end-visual-design` §2 | "**Banned Icons:** Standard thick-stroked Lucide, FontAwesome, or Material Icons" |
-| Specifications | **Silent** |
+| `high-end-visual-design` §2  | "**Banned Icons:** Standard thick-stroked Lucide, FontAwesome, or Material Icons"       |
+| Specifications               | **Silent**                                                                              |
 
 **Resolution:** The specs are silent, so this is a Tier 4 decision — a genuine gap the skills fill. Phosphor is the only choice that satisfies all three skills at once: it is `design-taste-frontend`'s first preference, its Light/Regular weights meet `high-end-visual-design`'s "ultra-light, precise lines" requirement, and `ui-ux-pro-max`'s actual requirement is a consistent SVG set rather than emoji — which Phosphor satisfies. **Lucide loses.**
 
@@ -137,12 +137,12 @@ Each was found by reading the six skills in full against the three specification
 
 **R-PREC-012** `Blocking` — CSS is the default animation mechanism. Framer Motion is permitted only in the marketing and dashboard chunks. GSAP is not a dependency of this project.
 
-| Side | Position |
-|---|---|
-| `framer-motion-animator` | Framer Motion / `motion/react` for everything |
-| `gpt-taste` §5 | "You must write real GSAP (`@gsap/react`, `ScrollTrigger`)" |
-| `emil-design-eng` | "CSS animations beat JS under load"; FM's `x`/`y` are not hardware-accelerated |
-| `[TRD §1.1]` | Stack table names **no** animation library |
+| Side                     | Position                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| `framer-motion-animator` | Framer Motion / `motion/react` for everything                                  |
+| `gpt-taste` §5           | "You must write real GSAP (`@gsap/react`, `ScrollTrigger`)"                    |
+| `emil-design-eng`        | "CSS animations beat JS under load"; FM's `x`/`y` are not hardware-accelerated |
+| `[TRD §1.1]`             | Stack table names **no** animation library                                     |
 
 **Resolution:** See §13 for the full motion policy. In summary — CSS transitions, custom cubic-béziers, `@starting-style` and WAAPI are the default everywhere; Framer Motion is lazy-loaded into the marketing and dashboard chunks only and is banned from the board route; **GSAP is not adopted**. `gpt-taste`'s scroll-pinning, scrubbing, image scale-fade and card-stacking patterns are reproduced with `IntersectionObserver` and CSS scroll-driven animations. **`gpt-taste`'s GSAP mandate loses**, on Tier 2 grounds (C-4) and Tier 1 grounds (the 60 fps canvas requirement).
 
@@ -162,7 +162,7 @@ Each was found by reading the six skills in full against the three specification
 
 **R-PREC-014** `Blocking` — Design skills apply only within their assigned zone (§4.2). Applying landing-page grammar to product UI is a rule violation, not a matter of taste.
 
-`design-taste-frontend`'s own header reads: *"Landing pages, portfolios, and redesigns. **Not dashboards, not data tables, not multi-step product UI.**"* `gpt-taste` is entirely landing-page oriented — AIDA structure, hero architecture, bento grids, `picsum.photos` imagery, infinite marquees.
+`design-taste-frontend`'s own header reads: _"Landing pages, portfolios, and redesigns. **Not dashboards, not data tables, not multi-step product UI.**"_ `gpt-taste` is entirely landing-page oriented — AIDA structure, hero architecture, bento grids, `picsum.photos` imagery, infinite marquees.
 
 CoBoard is approximately 90% product UI. Two of the six skills exclude themselves from most of this application **by their own terms**.
 
@@ -174,12 +174,12 @@ CoBoard is approximately 90% product UI. Two of the six skills exclude themselve
 
 **R-PREC-015** `Blocking` — The canvas is a no-decoration zone. `emil-design-eng`'s frequency framework governs all motion decisions.
 
-| Side | Position |
-|---|---|
-| `high-end-visual-design` §5 | Heavy `backdrop-blur`, 800 ms `blur-md` fade-ups on scroll entry |
-| `gpt-taste` §5 | GSAP pinning, scrubbing, card stacking, `scale` transitions on scroll |
-| `emil-design-eng` | Seen 100+ times/day → **no animation, ever** |
-| `[PRD G-3, §7.1]` | ≥ 55 fps sustained with 5,000 objects; ≤ 16 ms input-to-pixel |
+| Side                        | Position                                                              |
+| --------------------------- | --------------------------------------------------------------------- |
+| `high-end-visual-design` §5 | Heavy `backdrop-blur`, 800 ms `blur-md` fade-ups on scroll entry      |
+| `gpt-taste` §5              | GSAP pinning, scrubbing, card stacking, `scale` transitions on scroll |
+| `emil-design-eng`           | Seen 100+ times/day → **no animation, ever**                          |
+| `[PRD G-3, §7.1]`           | ≥ 55 fps sustained with 5,000 objects; ≤ 16 ms input-to-pixel         |
 
 **Resolution:** `emil-design-eng` is the only motion skill whose philosophy agrees with the PRD, and it agrees precisely: a whiteboard's core interactions are performed hundreds of times per session, which is exactly the frequency band where it prescribes no animation at all. The maximalist scroll-choreography of the other two skills **loses** inside the product, and is confined to S-01.
 
@@ -224,12 +224,13 @@ The **12-colour presence palette** and the **8-colour sticky palette** are addit
 
 Defects found in the source specifications during planning. The source files in `docs/` are preserved **as delivered** and are not edited. These entries are the authoritative resolution.
 
-| # | Defect | Location | Resolution |
-|---|---|---|---|
-| **D-1** | `FR-BOARD-041` is referenced but does not exist. Board requirements stop at `FR-BOARD-009`. | `docs/01-PRD.md` line 183, inside `FR-AUTH-005` | The referenced behaviour — session expiry while a board is open — is fully specified as **`E-17`** in `docs/02-FLOWS.md` §12.5: keep the socket alive, refresh silently, and on failure show a banner rather than ejecting the user. Treat `E-17` as the binding requirement. Implemented in Phase 7 and Phase 14. |
-| **D-2** | `FR-CANVAS-017` contradicts itself: the heading is marked `[P1]` while the title and body say `[P2]` and "Deferred. Do not build." | `docs/01-PRD.md` line 370 | The body is unambiguous and is a scope instruction. Treat grouping as **P2, deferred**. It appears in the deferred backlog, not in any phase. |
-| **D-3** | `FR-BOARD-012` appears in §0 as an illustrative example of an ID, not as a real requirement. | `docs/01-PRD.md` line 22 | Not a defect. No action. Recorded so future ID audits do not flag it. |
-| **D-4** | TRD §1.1 pins **Vite 5.x**, but advisory [GHSA-fx2h-pf6j-xcff](https://github.com/advisories/GHSA-fx2h-pf6j-xcff) (`server.fs.deny` bypass, **high**) is patched only in Vite **≥ 6.4.3**. Holding Vite 5 leaves a high-severity advisory that `R-SEC-019` blocks the build on. | `docs/03-TRD.md` §1.1 | **Upgraded to Vite 6.4.3**, with a pnpm `overrides` entry forcing every transitive copy. `R-PREC-001` puts security and data integrity at **Tier 1**, above specification requirements at Tier 2, so the version pin yields. Vitest was likewise moved to ≥ 3.2.6 for [GHSA-5xrq-8626-4rwp](https://github.com/advisories/GHSA-5xrq-8626-4rwp) (**critical**). Applied in Phase 1. Revisit only if a Vite 5 backport appears. |
+| #       | Defect                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Location                                        | Resolution                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **D-1** | `FR-BOARD-041` is referenced but does not exist. Board requirements stop at `FR-BOARD-009`.                                                                                                                                                                                                                                                                                                                                                                                       | `docs/01-PRD.md` line 183, inside `FR-AUTH-005` | The referenced behaviour — session expiry while a board is open — is fully specified as **`E-17`** in `docs/02-FLOWS.md` §12.5: keep the socket alive, refresh silently, and on failure show a banner rather than ejecting the user. Treat `E-17` as the binding requirement. Implemented in Phase 7 and Phase 14.                                                                                                                                                                                                                                                                                   |
+| **D-2** | `FR-CANVAS-017` contradicts itself: the heading is marked `[P1]` while the title and body say `[P2]` and "Deferred. Do not build."                                                                                                                                                                                                                                                                                                                                                | `docs/01-PRD.md` line 370                       | The body is unambiguous and is a scope instruction. Treat grouping as **P2, deferred**. It appears in the deferred backlog, not in any phase.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **D-3** | `FR-BOARD-012` appears in §0 as an illustrative example of an ID, not as a real requirement.                                                                                                                                                                                                                                                                                                                                                                                      | `docs/01-PRD.md` line 22                        | Not a defect. No action. Recorded so future ID audits do not flag it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **D-4** | TRD §1.1 pins **Vite 5.x**, but advisory [GHSA-fx2h-pf6j-xcff](https://github.com/advisories/GHSA-fx2h-pf6j-xcff) (`server.fs.deny` bypass, **high**) is patched only in Vite **≥ 6.4.3**. Holding Vite 5 leaves a high-severity advisory that `R-SEC-019` blocks the build on.                                                                                                                                                                                                   | `docs/03-TRD.md` §1.1                           | **Upgraded to Vite 6.4.3**, with a pnpm `overrides` entry forcing every transitive copy. `R-PREC-001` puts security and data integrity at **Tier 1**, above specification requirements at Tier 2, so the version pin yields. Vitest was likewise moved to ≥ 3.2.6 for [GHSA-5xrq-8626-4rwp](https://github.com/advisories/GHSA-5xrq-8626-4rwp) (**critical**). Applied in Phase 1. Revisit only if a Vite 5 backport appears.                                                                                                                                                                        |
+| **D-5** | TRD §7.6 says to _"Sort visible objects by `strokeStyle`/`fillStyle` and set the context property only when it changes"_. Taken literally this **reorders the draw sequence by style**, which breaks the painter's algorithm and contradicts `R-CONV-009` (render in `sortedIds` z-order). Two overlapping opaque strokes of different colours would render with the wrong one on top — and because the _data_ still agrees, the convergence hash in Phase 11 would not catch it. | `docs/03-TRD.md` §7.6, first row                | The optimisation is sound; the reordering is not. Implemented as **run-length batching that preserves z-order**: iterate strictly in `sortedIds` order and write context state only when the style key differs from the previous object. Consecutive objects on a real board usually share a style — a user draws several marks before changing pen — so this captures most of the saving at zero correctness cost, and degrades to one write per object in the worst case, which is exactly the price of being correct. Applied in Phase 3; regression test in `renderer/__tests__/stroke.test.ts`. |
 
 **R-PREC-020** `Required` — Do not edit the files in `docs/01-PRD.md`, `docs/02-FLOWS.md` or `docs/03-TRD.md`. They are the delivered specifications and their integrity is verifiable. Corrections go in this register.
 
@@ -243,11 +244,11 @@ Defects found in the source specifications during planning. The source files in 
 
 **R-ARCH-001** `Blocking` — The client has exactly three layers with strict responsibilities.
 
-| Layer | Technology | Owns | May re-render React? |
-|---|---|---|---|
-| **UI** | React components | Header, toolbar, panels, modals, toasts | Yes, on UI-relevant state only |
-| **Render** | Plain TypeScript + `requestAnimationFrame` | Drawing pixels to the canvases | **Never** |
-| **Sync** | Plain TypeScript classes | Socket, outbox, sequence numbers, reconnection | Only to update connection status |
+| Layer      | Technology                                 | Owns                                           | May re-render React?             |
+| ---------- | ------------------------------------------ | ---------------------------------------------- | -------------------------------- |
+| **UI**     | React components                           | Header, toolbar, panels, modals, toasts        | Yes, on UI-relevant state only   |
+| **Render** | Plain TypeScript + `requestAnimationFrame` | Drawing pixels to the canvases                 | **Never**                        |
+| **Sync**   | Plain TypeScript classes                   | Socket, outbox, sequence numbers, reconnection | Only to update connection status |
 
 **R-ARCH-002** `Blocking` — The renderer must not import React, must not be a React component, and must not be invoked from a React render pass. It reads the Zustand store directly via `store.subscribe()` outside React.
 
@@ -265,7 +266,7 @@ const objects = useBoardStore(s => s.objects)
 
 ```ts
 const fill = useBoardStore(s =>
-  s.selection.length === 1 ? s.objects.get(s.selection[0])?.style.fill : undefined
+  s.selection.length === 1 ? s.objects.get(s.selection[0])?.style.fill : undefined,
 )
 ```
 
@@ -275,12 +276,12 @@ const fill = useBoardStore(s =>
 
 **R-ARCH-006** `Required` — Module ownership is assigned to reduce merge conflicts `[PRD R-9]`. Editing a module you do not own requires a heads-up to the owner in the PR description.
 
-| Module | Owner role |
-|---|---|
-| `features/canvas/renderer` | Renderer owner |
-| `features/canvas/interaction` | Interaction owner |
-| `features/sync` | Sync owner |
-| `features/boards` + `features/auth` | Product owner |
+| Module                              | Owner role        |
+| ----------------------------------- | ----------------- |
+| `features/canvas/renderer`          | Renderer owner    |
+| `features/canvas/interaction`       | Interaction owner |
+| `features/sync`                     | Sync owner        |
+| `features/boards` + `features/auth` | Product owner     |
 
 **R-ARCH-007** `Blocking` — Shared types, Zod schemas, the socket contract and pure geometry helpers live in `packages/shared` and are imported by **both** client and server. Duplicating a type across the boundary is forbidden — that is how `strokeWidth` and `stroke_width` end up in the same system `[TRD §1.3]`.
 
@@ -306,15 +307,15 @@ const fill = useBoardStore(s =>
 
 **R-SKILL-010** `Blocking` — Each of the 22 screens belongs to exactly one zone. Only the skills listed for that zone may be applied.
 
-| Zone | Screens | Skills that fire | Skills forbidden |
-|---|---|---|---|
-| **Marketing** | S-01 Landing | `gpt-taste`, `high-end-visual-design`, `design-taste-frontend`, `ui-ux-pro-max`, `framer-motion-animator` | — |
-| **Auth** | S-02 Signup, S-03 Login, S-04 Forgot, S-05 Reset, S-06 OAuth callback | `ui-ux-pro-max`, `emil-design-eng`, `design-taste-frontend` (typography and colour guidance only) | `gpt-taste` — AIDA/hero grammar is wrong for a form |
-| **Product chrome** | S-07 Dashboard, S-08 Trash, S-09 Template picker, S-16 Settings | `ui-ux-pro-max`, `emil-design-eng`, `framer-motion-animator` (lazy-loaded) | `gpt-taste`, `high-end-visual-design` |
-| **Board chrome** | S-10 header/toolbar/panels/zoom, S-12 Share, S-13 Settings, S-14 Export, S-15 Shortcuts | `ui-ux-pro-max`, `emil-design-eng` | `gpt-taste`, `high-end-visual-design`, `framer-motion-animator` |
-| **Canvas** | The four layers in FLOWS §14.3 | **None** | All six |
-| **System states** | S-17 Access denied, S-18 Not found, S-19 Deleted, S-20 404, S-21 Error boundary | `ui-ux-pro-max`, `emil-design-eng` | `gpt-taste`, `high-end-visual-design` |
-| **Guest** | S-11 Guest name entry, S-22 Onboarding tour | `ui-ux-pro-max`, `emil-design-eng`, `high-end-visual-design` (join card treatment only) | `gpt-taste` |
+| Zone               | Screens                                                                                 | Skills that fire                                                                                          | Skills forbidden                                                |
+| ------------------ | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| **Marketing**      | S-01 Landing                                                                            | `gpt-taste`, `high-end-visual-design`, `design-taste-frontend`, `ui-ux-pro-max`, `framer-motion-animator` | —                                                               |
+| **Auth**           | S-02 Signup, S-03 Login, S-04 Forgot, S-05 Reset, S-06 OAuth callback                   | `ui-ux-pro-max`, `emil-design-eng`, `design-taste-frontend` (typography and colour guidance only)         | `gpt-taste` — AIDA/hero grammar is wrong for a form             |
+| **Product chrome** | S-07 Dashboard, S-08 Trash, S-09 Template picker, S-16 Settings                         | `ui-ux-pro-max`, `emil-design-eng`, `framer-motion-animator` (lazy-loaded)                                | `gpt-taste`, `high-end-visual-design`                           |
+| **Board chrome**   | S-10 header/toolbar/panels/zoom, S-12 Share, S-13 Settings, S-14 Export, S-15 Shortcuts | `ui-ux-pro-max`, `emil-design-eng`                                                                        | `gpt-taste`, `high-end-visual-design`, `framer-motion-animator` |
+| **Canvas**         | The four layers in FLOWS §14.3                                                          | **None**                                                                                                  | All six                                                         |
+| **System states**  | S-17 Access denied, S-18 Not found, S-19 Deleted, S-20 404, S-21 Error boundary         | `ui-ux-pro-max`, `emil-design-eng`                                                                        | `gpt-taste`, `high-end-visual-design`                           |
+| **Guest**          | S-11 Guest name entry, S-22 Onboarding tour                                             | `ui-ux-pro-max`, `emil-design-eng`, `high-end-visual-design` (join card treatment only)                   | `gpt-taste`                                                     |
 
 **R-SKILL-011** `Blocking` — **The canvas is a no-decoration zone.** No design skill applies to the four canvas layers. `[TRD §7]` is the only authority on what is drawn there and how. No entrance animation, no blur, no scroll effect, no shadow, no decorative gradient touches any canvas layer.
 
@@ -340,13 +341,13 @@ python3 /root/.claude/skills/synced/ui-ux-pro-max/scripts/search.py "<query>" --
 
 **R-SKILL-031** `Required` — Dial values are **locked per zone**. Do not re-derive them per task.
 
-| Zone | `DESIGN_VARIANCE` | `MOTION_INTENSITY` | `VISUAL_DENSITY` |
-|---|---|---|---|
-| Marketing (S-01) | 7 | 6 | 4 |
-| Auth | 5 | 3 | 4 |
-| Product chrome | 5 | 3 | 5 |
-| Board chrome | 4 | 2 | 6 |
-| System states | 4 | 2 | 3 |
+| Zone             | `DESIGN_VARIANCE` | `MOTION_INTENSITY` | `VISUAL_DENSITY` |
+| ---------------- | ----------------- | ------------------ | ---------------- |
+| Marketing (S-01) | 7                 | 6                  | 4                |
+| Auth             | 5                 | 3                  | 4                |
+| Product chrome   | 5                 | 3                  | 5                |
+| Board chrome     | 4                 | 2                  | 6                |
+| System states    | 4                 | 2                  | 3                |
 
 Rationale: the skill's own inference table puts "minimalist / clean / Linear-style" at 5-6 / 3-4 / 2-3, and product UI at higher density. The board chrome sits lowest on motion because of `C-6`.
 
@@ -370,12 +371,12 @@ Rationale: the skill's own inference table puts "minimalist / clean / Linear-sty
 
 **R-SKILL-052** `Blocking` — **Its GSAP mandate is not adopted** (`C-3`). Reproduce its motion paradigms without GSAP:
 
-| `gpt-taste` paradigm | CoBoard implementation |
-|---|---|
-| ScrollTrigger pinning | `position: sticky` + `IntersectionObserver` |
-| Scrubbing text reveal | CSS scroll-driven animation (`animation-timeline: view()`) with an `IntersectionObserver` fallback |
-| Image scale and fade on scroll | `IntersectionObserver` toggling a class; `transform`/`opacity` transition |
-| Card stacking | `position: sticky` with incremental `top` offsets |
+| `gpt-taste` paradigm           | CoBoard implementation                                                                             |
+| ------------------------------ | -------------------------------------------------------------------------------------------------- |
+| ScrollTrigger pinning          | `position: sticky` + `IntersectionObserver`                                                        |
+| Scrubbing text reveal          | CSS scroll-driven animation (`animation-timeline: view()`) with an `IntersectionObserver` fallback |
+| Image scale and fade on scroll | `IntersectionObserver` toggling a class; `transform`/`opacity` transition                          |
+| Card stacking                  | `position: sticky` with incremental `top` offsets                                                  |
 
 **R-SKILL-053** `Required` — **Adopted:** the AIDA structure, the 2-to-3-line H1 iron rule with wide containers, `grid-flow-dense` gapless bento, the meta-label ban ("SECTION 01", "QUESTION 05"), button-contrast verification, and the `overflow-x-hidden` page wrapper.
 
@@ -402,7 +403,7 @@ Rationale: the skill's own inference table puts "minimalist / clean / Linear-sty
 
 **R-SKILL-070** `Required` — This is the **default motion authority for the whole application** (`C-6`), including zones where no other skill applies.
 
-**R-SKILL-071** `Recommended` — Operational note: invoked with no specific question, this skill replies with a single fixed line and nothing else. Always invoke it with a concrete question, e.g. *"Review the toast enter/exit transitions in `Toast.tsx`."*
+**R-SKILL-071** `Recommended` — Operational note: invoked with no specific question, this skill replies with a single fixed line and nothing else. Always invoke it with a concrete question, e.g. _"Review the toast enter/exit transitions in `Toast.tsx`."_
 
 **R-SKILL-072** `Required` — Its review output format is mandatory when reviewing UI code: a single markdown table with `| Before | After | Why |` columns. Not a bulleted list.
 
@@ -418,13 +419,13 @@ Rationale: the skill's own inference table puts "minimalist / clean / Linear-sty
 
 **R-CANVAS-001** `Blocking` — Four stacked, absolutely positioned, identically sized elements. Contents and redraw triggers are fixed:
 
-| Layer | Element | Contents | Redraws on |
-|---|---|---|---|
-| 0 | `<canvas id="grid">` `[P2]` | Dot grid | Viewport change only |
-| 1 | `<canvas id="objects">` | All committed objects | Object create/update/delete, viewport change |
-| 2 | `<canvas id="interaction">` | In-progress stroke, marquee, drag preview, alignment guides | Every `pointermove` during an interaction |
-| 3 | `<canvas id="overlay">` | Selection boxes, handles, remote cursors, remote selections, remote in-progress strokes | Every frame while presence is active |
-| 4 | `<div id="text-overlay">` | The DOM textarea for text editing | Only while editing text |
+| Layer | Element                     | Contents                                                                                | Redraws on                                   |
+| ----- | --------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------- |
+| 0     | `<canvas id="grid">` `[P2]` | Dot grid                                                                                | Viewport change only                         |
+| 1     | `<canvas id="objects">`     | All committed objects                                                                   | Object create/update/delete, viewport change |
+| 2     | `<canvas id="interaction">` | In-progress stroke, marquee, drag preview, alignment guides                             | Every `pointermove` during an interaction    |
+| 3     | `<canvas id="overlay">`     | Selection boxes, handles, remote cursors, remote selections, remote in-progress strokes | Every frame while presence is active         |
+| 4     | `<div id="text-overlay">`   | The DOM textarea for text editing                                                       | Only while editing text                      |
 
 **R-CANVAS-002** `Blocking` — **A remote cursor moving must never cause layer 1 to redraw.** `[FLOWS §14.3]` If moving the mouse in one window drops the frame rate in another, the layering is wrong. This is the single most important performance rule in the project.
 
@@ -523,7 +524,7 @@ Passing one where the other is expected must be a compile error. This feels peda
 
 ```ts
 const worldPos = screenToCanvas(pointerScreenPos, viewport)
-const newZoom  = clamp(viewport.zoom * factor, 0.1, 5)
+const newZoom = clamp(viewport.zoom * factor, 0.1, 5)
 viewport.x = pointerScreenPos.x - worldPos.x * newZoom
 viewport.y = pointerScreenPos.y - worldPos.y * newZoom
 viewport.zoom = newZoom
@@ -543,14 +544,14 @@ viewport.zoom = newZoom
 
 **R-SYNC-001** `Blocking` — Ops and presence are different categories and are never confused.
 
-| | Ops | Presence |
-|---|---|---|
-| Examples | create / update / delete object | cursor, selection, in-progress stroke, drag preview |
-| Persisted | **Yes** | **Never** |
-| Sequence number | Yes | No |
-| Acknowledged | Yes | No |
-| Queued when offline | Yes | No — dropped |
-| Lost message | Data loss, unacceptable | A cursor stutters, irrelevant |
+|                     | Ops                             | Presence                                            |
+| ------------------- | ------------------------------- | --------------------------------------------------- |
+| Examples            | create / update / delete object | cursor, selection, in-progress stroke, drag preview |
+| Persisted           | **Yes**                         | **Never**                                           |
+| Sequence number     | Yes                             | No                                                  |
+| Acknowledged        | Yes                             | No                                                  |
+| Queued when offline | Yes                             | No — dropped                                        |
+| Lost message        | Data loss, unacceptable         | A cursor stutters, irrelevant                       |
 
 **R-SYNC-002** `Blocking` — Never write a cursor position to the database.
 
@@ -640,14 +641,14 @@ viewport.zoom = newZoom
 
 **R-CONV-007** `Required` — Concurrent outcomes are fixed and are not errors:
 
-| A does | B does | Result |
-|---|---|---|
-| Moves X | Moves Y | Both apply |
-| Moves X | Recolours X | Both apply — different fields |
+| A does          | B does           | Result                                                               |
+| --------------- | ---------------- | -------------------------------------------------------------------- |
+| Moves X         | Moves Y          | Both apply                                                           |
+| Moves X         | Recolours X      | Both apply — different fields                                        |
 | Sets X fill red | Sets X fill blue | Later server seq wins; the loser sees the change. **No error shown** |
-| Deletes X | Moves X | X stays deleted; the move is dropped silently |
-| Deletes X | Deletes X | Idempotent no-op |
-| Reorders z | Reorders z | Both valid — fractional indexing |
+| Deletes X       | Moves X          | X stays deleted; the move is dropped silently                        |
+| Deletes X       | Deletes X        | Idempotent no-op                                                     |
+| Reorders z      | Reorders z       | Both valid — fractional indexing                                     |
 
 **R-CONV-008** `Required` — `zIndex` is a **fractional string key**, ordered lexicographically. Not an integer, not an array position `[TRD §6.4, D-8]`.
 
@@ -862,12 +863,12 @@ Derived from `emil-design-eng`, which is the motion authority for this project (
 
 **R-MOTION-001** `Blocking` — Before writing any animation, answer: **how often will the user see this?**
 
-| Frequency | Decision |
-|---|---|
-| 100+ times/day — keyboard shortcuts, tool switching, selection, drawing | **No animation. Ever.** |
-| Tens of times/day — hover effects, list navigation | Remove or drastically reduce |
-| Occasional — modals, drawers, toasts | Standard animation |
-| Rare / first-time — onboarding, celebrations | May add delight |
+| Frequency                                                               | Decision                     |
+| ----------------------------------------------------------------------- | ---------------------------- |
+| 100+ times/day — keyboard shortcuts, tool switching, selection, drawing | **No animation. Ever.**      |
+| Tens of times/day — hover effects, list navigation                      | Remove or drastically reduce |
+| Occasional — modals, drawers, toasts                                    | Standard animation           |
+| Rare / first-time — onboarding, celebrations                            | May add delight              |
 
 **R-MOTION-002** `Blocking` — **Never animate keyboard-initiated actions.** These are repeated hundreds of times daily; animation makes them feel slow and disconnected.
 
@@ -881,21 +882,21 @@ Derived from `emil-design-eng`, which is the motion authority for this project (
 
 **R-MOTION-011** `Required` — Easing selection is not a matter of taste:
 
-| Situation | Easing |
-|---|---|
-| Entering or exiting | `ease-out` |
-| Moving or morphing on screen | `ease-in-out` |
-| Hover or colour change | `ease` |
-| Constant motion (marquee, progress) | `linear` |
-| Default | `ease-out` |
+| Situation                           | Easing        |
+| ----------------------------------- | ------------- |
+| Entering or exiting                 | `ease-out`    |
+| Moving or morphing on screen        | `ease-in-out` |
+| Hover or colour change              | `ease`        |
+| Constant motion (marquee, progress) | `linear`      |
+| Default                             | `ease-out`    |
 
 **R-MOTION-012** `Required` — Use custom curves. The built-in CSS easings are too weak. The project curves are:
 
 ```css
---ease-out:      cubic-bezier(0.23, 1, 0.32, 1);      /* UI interactions */
---ease-in-out:   cubic-bezier(0.77, 0, 0.175, 1);     /* on-screen movement */
---ease-drawer:   cubic-bezier(0.32, 0.72, 0, 1);      /* iOS-like drawer */
---easing-standard: cubic-bezier(0.2, 0, 0, 1);        /* PRD §15 default */
+--ease-out: cubic-bezier(0.23, 1, 0.32, 1); /* UI interactions */
+--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); /* on-screen movement */
+--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* iOS-like drawer */
+--easing-standard: cubic-bezier(0.2, 0, 0, 1); /* PRD §15 default */
 ```
 
 `--easing-standard` is the `[PRD §15]` token and is the default for token-driven transitions. The other three are additive and fill gaps the PRD does not specify.
@@ -904,13 +905,13 @@ Derived from `emil-design-eng`, which is the motion authority for this project (
 
 **R-MOTION-020** `Required` — Durations are bounded:
 
-| Element | Duration |
-|---|---|
-| Button press feedback | 100–160 ms |
-| Tooltips, small popovers | 125–200 ms |
-| Dropdowns, selects | 150–250 ms |
-| Modals, drawers | 200–500 ms |
-| Marketing / explanatory | May be longer |
+| Element                  | Duration      |
+| ------------------------ | ------------- |
+| Button press feedback    | 100–160 ms    |
+| Tooltips, small popovers | 125–200 ms    |
+| Dropdowns, selects       | 150–250 ms    |
+| Modals, drawers          | 200–500 ms    |
+| Marketing / explanatory  | May be longer |
 
 **R-MOTION-021** `Required` — **UI animations stay under 300 ms.** A 180 ms dropdown feels more responsive than a 400 ms one.
 
@@ -1002,20 +1003,20 @@ Derived from `emil-design-eng`, which is the motion authority for this project (
 
 **R-PERF-001** `Blocking` — The budgets:
 
-| Metric | Budget |
-|---|---|
-| Landing page LCP | ≤ 1.5 s on 4G |
-| Dashboard interactive | ≤ 2.0 s |
-| Board first paint (500 objects) | ≤ 1.5 s |
-| Board first paint (5,000 objects) | ≤ 3.0 s |
-| Drawing frame rate | ≥ 55 fps with 5,000 objects |
-| Pan/zoom frame rate | ≥ 55 fps |
-| Input-to-local-pixel latency | ≤ 16 ms |
-| Local-input-to-remote-render p95 | ≤ 250 ms |
-| Initial JS bundle (gzipped) | ≤ 250 KB |
-| Board route chunk (gzipped) | ≤ 200 KB |
-| Memory with 5,000 objects | ≤ 300 MB heap |
-| Typical WebSocket op | ≤ 2 KB |
+| Metric                            | Budget                      |
+| --------------------------------- | --------------------------- |
+| Landing page LCP                  | ≤ 1.5 s on 4G               |
+| Dashboard interactive             | ≤ 2.0 s                     |
+| Board first paint (500 objects)   | ≤ 1.5 s                     |
+| Board first paint (5,000 objects) | ≤ 3.0 s                     |
+| Drawing frame rate                | ≥ 55 fps with 5,000 objects |
+| Pan/zoom frame rate               | ≥ 55 fps                    |
+| Input-to-local-pixel latency      | ≤ 16 ms                     |
+| Local-input-to-remote-render p95  | ≤ 250 ms                    |
+| Initial JS bundle (gzipped)       | ≤ 250 KB                    |
+| Board route chunk (gzipped)       | ≤ 200 KB                    |
+| Memory with 5,000 objects         | ≤ 300 MB heap               |
+| Typical WebSocket op              | ≤ 2 KB                      |
 
 **R-PERF-002** `Blocking` — p95 local-input-to-remote-render is 250 ms target, 500 ms hard ceiling `[PRD FR-RT-001]`.
 
@@ -1103,106 +1104,106 @@ The consolidated "this has been tried and it breaks" list, drawn from all three 
 
 ## 18.1 Architecture and state
 
-| # | Anti-pattern | What breaks |
-|---|---|---|
-| A-01 | Putting canvas objects in React state | 60 re-renders/second; frame rate collapses. The single most common way this project dies |
-| A-02 | Subscribing a component to the whole object map | Same as A-01 |
-| A-03 | Multiple `requestAnimationFrame` loops | Competing redraws, unpredictable frame budget |
-| A-04 | Drawing synchronously from an event handler | Layout thrash, dropped frames, torn rendering |
-| A-05 | Allocating inside the draw loop | GC pauses appear as dropped frames |
-| A-06 | Duplicating a type across client and server | `strokeWidth` vs `stroke_width`; a day lost |
-| A-07 | An objects table with `UPDATE`s instead of an op log | Reconnect gap-fill becomes impossible; no idempotent replay |
+| #    | Anti-pattern                                         | What breaks                                                                              |
+| ---- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| A-01 | Putting canvas objects in React state                | 60 re-renders/second; frame rate collapses. The single most common way this project dies |
+| A-02 | Subscribing a component to the whole object map      | Same as A-01                                                                             |
+| A-03 | Multiple `requestAnimationFrame` loops               | Competing redraws, unpredictable frame budget                                            |
+| A-04 | Drawing synchronously from an event handler          | Layout thrash, dropped frames, torn rendering                                            |
+| A-05 | Allocating inside the draw loop                      | GC pauses appear as dropped frames                                                       |
+| A-06 | Duplicating a type across client and server          | `strokeWidth` vs `stroke_width`; a day lost                                              |
+| A-07 | An objects table with `UPDATE`s instead of an op log | Reconnect gap-fill becomes impossible; no idempotent replay                              |
 
 ## 18.2 Coordinates and rendering
 
-| # | Anti-pattern | What breaks |
-|---|---|---|
-| A-10 | Storing screen coordinates | Objects move when the user pans. Critical data corruption |
-| A-11 | Centre-anchored zoom | Feels broken. Explicitly non-negotiable in the PRD |
-| A-12 | Unbranded coordinate types | Screen/canvas mixups that compile fine and fail at runtime |
-| A-13 | `getImageData` in the render path | GPU→CPU sync; frame rate destroyed |
-| A-14 | DPR above 2 | Quadrupled fill cost for no visible gain |
-| A-15 | Redrawing layer 1 on cursor movement | One user's mouse drops another user's frame rate |
-| A-16 | Building a spatial index before measuring | Complexity with no demonstrated benefit |
-| A-17 | Simplifying stroke points during the stroke | Wasted CPU on every `pointermove`; visible lag |
+| #    | Anti-pattern                                | What breaks                                                |
+| ---- | ------------------------------------------- | ---------------------------------------------------------- |
+| A-10 | Storing screen coordinates                  | Objects move when the user pans. Critical data corruption  |
+| A-11 | Centre-anchored zoom                        | Feels broken. Explicitly non-negotiable in the PRD         |
+| A-12 | Unbranded coordinate types                  | Screen/canvas mixups that compile fine and fail at runtime |
+| A-13 | `getImageData` in the render path           | GPU→CPU sync; frame rate destroyed                         |
+| A-14 | DPR above 2                                 | Quadrupled fill cost for no visible gain                   |
+| A-15 | Redrawing layer 1 on cursor movement        | One user's mouse drops another user's frame rate           |
+| A-16 | Building a spatial index before measuring   | Complexity with no demonstrated benefit                    |
+| A-17 | Simplifying stroke points during the stroke | Wasted CPU on every `pointermove`; visible lag             |
 
 ## 18.3 Interaction
 
-| # | Anti-pattern | What breaks |
-|---|---|---|
-| A-20 | Ignoring `pointercancel` | App stuck in `DRAGGING` forever when the OS steals the pointer |
-| A-21 | Omitting `setPointerCapture` | Dragging outside the window loses the stroke |
-| A-22 | Allowing `DRAWING` → `PANNING` | Corrupted stroke state |
+| #    | Anti-pattern                        | What breaks                                                                         |
+| ---- | ----------------------------------- | ----------------------------------------------------------------------------------- |
+| A-20 | Ignoring `pointercancel`            | App stuck in `DRAGGING` forever when the OS steals the pointer                      |
+| A-21 | Omitting `setPointerCapture`        | Dragging outside the window loses the stroke                                        |
+| A-22 | Allowing `DRAWING` → `PANNING`      | Corrupted stroke state                                                              |
 | A-23 | Implementing a text caret on canvas | Weeks of work, worse than a textarea, loses IME, spellcheck, mobile keyboards, a11y |
-| A-24 | Persisting empty text objects | Invisible junk accumulates on the board |
+| A-24 | Persisting empty text objects       | Invisible junk accumulates on the board                                             |
 
 ## 18.4 Sync
 
-| # | Anti-pattern | What breaks |
-|---|---|---|
-| A-30 | `SELECT MAX(seq)` outside a transaction | Two concurrent ops get the same sequence number. Divergence |
-| A-31 | Retrying a nacked op | Retry loop; you DDoS your own server |
-| A-32 | Acking before persisting | An acknowledged op can be lost. The zero-loss guarantee becomes a lie |
-| A-33 | Sending the full object on update | Every concurrent edit becomes a lost update |
-| A-34 | Applying ops out of sequence order | Divergence between clients |
-| A-35 | Writing cursor positions to the database | Write amplification for data with no value |
-| A-36 | Unjittered reconnection backoff | 50 clients retry in lockstep and hammer the server in waves |
-| A-37 | Loading the snapshot and socket without the buffering rule | The classic "object flickers in then disappears" bug |
-| A-38 | Trusting client timestamps for ordering | A user with a wrong clock corrupts ordering for everyone |
-| A-39 | Resurrecting a tombstoned object | Zombie objects that cannot be deleted |
+| #    | Anti-pattern                                               | What breaks                                                           |
+| ---- | ---------------------------------------------------------- | --------------------------------------------------------------------- |
+| A-30 | `SELECT MAX(seq)` outside a transaction                    | Two concurrent ops get the same sequence number. Divergence           |
+| A-31 | Retrying a nacked op                                       | Retry loop; you DDoS your own server                                  |
+| A-32 | Acking before persisting                                   | An acknowledged op can be lost. The zero-loss guarantee becomes a lie |
+| A-33 | Sending the full object on update                          | Every concurrent edit becomes a lost update                           |
+| A-34 | Applying ops out of sequence order                         | Divergence between clients                                            |
+| A-35 | Writing cursor positions to the database                   | Write amplification for data with no value                            |
+| A-36 | Unjittered reconnection backoff                            | 50 clients retry in lockstep and hammer the server in waves           |
+| A-37 | Loading the snapshot and socket without the buffering rule | The classic "object flickers in then disappears" bug                  |
+| A-38 | Trusting client timestamps for ordering                    | A user with a wrong clock corrupts ordering for everyone              |
+| A-39 | Resurrecting a tombstoned object                           | Zombie objects that cannot be deleted                                 |
 
 ## 18.5 Undo
 
-| # | Anti-pattern | What breaks |
-|---|---|---|
-| A-40 | Pushing remote ops onto the local undo stack | Undo reverts a teammate's work. Unacceptable |
-| A-41 | Capturing the whole object for an inverse op | Undo clobbers a teammate's concurrent edit to a different field |
-| A-42 | Pushing one entry per `pointermove` during a resize | 200 undo entries for one resize |
-| A-43 | Crashing on a stale undo entry | Crash instead of a silent no-op |
+| #    | Anti-pattern                                        | What breaks                                                     |
+| ---- | --------------------------------------------------- | --------------------------------------------------------------- |
+| A-40 | Pushing remote ops onto the local undo stack        | Undo reverts a teammate's work. Unacceptable                    |
+| A-41 | Capturing the whole object for an inverse op        | Undo clobbers a teammate's concurrent edit to a different field |
+| A-42 | Pushing one entry per `pointermove` during a resize | 200 undo entries for one resize                                 |
+| A-43 | Crashing on a stale undo entry                      | Crash instead of a silent no-op                                 |
 
 ## 18.6 Security
 
-| # | Anti-pattern | What breaks |
-|---|---|---|
-| A-50 | Client-side-only permission checks | A viewer with the console open edits the board |
-| A-51 | Access tokens in `localStorage` | Any XSS exfiltrates them |
+| #    | Anti-pattern                                | What breaks                                                     |
+| ---- | ------------------------------------------- | --------------------------------------------------------------- |
+| A-50 | Client-side-only permission checks          | A viewer with the console open edits the board                  |
+| A-51 | Access tokens in `localStorage`             | Any XSS exfiltrates them                                        |
 | A-52 | Coercing invalid input instead of rejecting | `Infinity` in a coordinate blanks the canvas for the whole room |
-| A-53 | Revealing whether an email is registered | Account enumeration |
-| A-54 | Showing the board name on the 403 screen | Information leak |
-| A-55 | Trusting the client-supplied MIME type | Malicious upload |
-| A-56 | `dangerouslySetInnerHTML` | XSS |
+| A-53 | Revealing whether an email is registered    | Account enumeration                                             |
+| A-54 | Showing the board name on the 403 screen    | Information leak                                                |
+| A-55 | Trusting the client-supplied MIME type      | Malicious upload                                                |
+| A-56 | `dangerouslySetInnerHTML`                   | XSS                                                             |
 
 ## 18.7 Design and motion
 
-| # | Anti-pattern | What breaks |
-|---|---|---|
-| A-60 | `ease-in` on UI | Feels sluggish at the exact moment the user is watching |
-| A-61 | Animating from `scale(0)` | Elements appear from nothing; looks wrong |
-| A-62 | `transition: all` | Animates properties you did not intend, including layout |
-| A-63 | Animating `width`/`height`/`top`/`left` | Triggers layout and paint; drops frames |
-| A-64 | Animating keyboard-initiated actions | Makes a 100×/day action feel slow forever |
-| A-65 | `backdrop-blur` on a scrolling container | Continuous GPU repaints; severe mobile frame drops |
-| A-66 | Keyframes on rapidly-triggered elements | Restart-from-zero jank instead of smooth retargeting |
-| A-67 | Framer Motion `x`/`y` shorthand under load | Not hardware accelerated; drops frames |
-| A-68 | Emoji as icons | Looks unprofessional; renders inconsistently across platforms |
-| A-69 | Mixing icon families | Visually incoherent |
-| A-70 | Hover scale transforms that shift layout | Content jumps under the cursor |
-| A-71 | Spinners where skeletons belong | Layout shift on load |
-| A-72 | Inlining copy at call sites | Copy drifts from the PRD |
-| A-73 | Arbitrary `z-index` values like `z-[9999]` | Stacking wars |
-| A-74 | Applying landing-page grammar to product UI | Violates the skills' own scope; produces a whiteboard that looks like a marketing site |
-| A-75 | Placeholder names like "John Doe" in seed data | The "Jane Doe effect"; reads as unfinished |
+| #    | Anti-pattern                                   | What breaks                                                                            |
+| ---- | ---------------------------------------------- | -------------------------------------------------------------------------------------- |
+| A-60 | `ease-in` on UI                                | Feels sluggish at the exact moment the user is watching                                |
+| A-61 | Animating from `scale(0)`                      | Elements appear from nothing; looks wrong                                              |
+| A-62 | `transition: all`                              | Animates properties you did not intend, including layout                               |
+| A-63 | Animating `width`/`height`/`top`/`left`        | Triggers layout and paint; drops frames                                                |
+| A-64 | Animating keyboard-initiated actions           | Makes a 100×/day action feel slow forever                                              |
+| A-65 | `backdrop-blur` on a scrolling container       | Continuous GPU repaints; severe mobile frame drops                                     |
+| A-66 | Keyframes on rapidly-triggered elements        | Restart-from-zero jank instead of smooth retargeting                                   |
+| A-67 | Framer Motion `x`/`y` shorthand under load     | Not hardware accelerated; drops frames                                                 |
+| A-68 | Emoji as icons                                 | Looks unprofessional; renders inconsistently across platforms                          |
+| A-69 | Mixing icon families                           | Visually incoherent                                                                    |
+| A-70 | Hover scale transforms that shift layout       | Content jumps under the cursor                                                         |
+| A-71 | Spinners where skeletons belong                | Layout shift on load                                                                   |
+| A-72 | Inlining copy at call sites                    | Copy drifts from the PRD                                                               |
+| A-73 | Arbitrary `z-index` values like `z-[9999]`     | Stacking wars                                                                          |
+| A-74 | Applying landing-page grammar to product UI    | Violates the skills' own scope; produces a whiteboard that looks like a marketing site |
+| A-75 | Placeholder names like "John Doe" in seed data | The "Jane Doe effect"; reads as unfinished                                             |
 
 ## 18.8 Process
 
-| # | Anti-pattern | What breaks |
-|---|---|---|
-| A-80 | Silently guessing at an ambiguous requirement | The single largest source of rework on projects like this |
-| A-81 | Building the fun canvas parts and skipping error and empty states | Rated "Very High" likelihood in the risk register |
-| A-82 | Scope creep — building comments, a font picker, grouping | PRD §2.2 is binding |
-| A-83 | Starting the sync stage before the renderer is solid | You cannot tell which layer is lying to you; days lost |
-| A-84 | A 2,000-line pull request | Will not be reviewed properly |
-| A-85 | Deferring the convergence harness to the polish phase | The bug it catches will have compounded for four weeks |
+| #    | Anti-pattern                                                      | What breaks                                               |
+| ---- | ----------------------------------------------------------------- | --------------------------------------------------------- |
+| A-80 | Silently guessing at an ambiguous requirement                     | The single largest source of rework on projects like this |
+| A-81 | Building the fun canvas parts and skipping error and empty states | Rated "Very High" likelihood in the risk register         |
+| A-82 | Scope creep — building comments, a font picker, grouping          | PRD §2.2 is binding                                       |
+| A-83 | Starting the sync stage before the renderer is solid              | You cannot tell which layer is lying to you; days lost    |
+| A-84 | A 2,000-line pull request                                         | Will not be reviewed properly                             |
+| A-85 | Deferring the convergence harness to the polish phase             | The bug it catches will have compounded for four weeks    |
 
 ---
 
@@ -1310,21 +1311,21 @@ Copy these into the PR description for the relevant zone.
 
 # Appendix — rule index by ID
 
-| Range | Domain | Section |
-|---|---|---|
-| `R-PREC-001` … `R-PREC-020` | Precedence, the eight conflicts, defect register | §2 |
-| `R-ARCH-001` … `R-ARCH-009` | Architecture and module boundaries | §3 |
-| `R-SKILL-001` … `R-SKILL-073` | Design-skill usage and zoning | §4 |
-| `R-CANVAS-001` … `R-CANVAS-056` | Canvas rendering and interaction | §5 |
-| `R-COORD-001` … `R-COORD-007` | Coordinate spaces | §6 |
-| `R-SYNC-001` … `R-SYNC-044` | Sync engine and wire protocol | §7 |
-| `R-CONV-001` … `R-CONV-011` | Conflict resolution and convergence | §8 |
-| `R-UNDO-001` … `R-UNDO-010` | Undo and redo | §9 |
-| `R-STATE-001` … `R-STATE-007` | Client state | §10 |
-| `R-SEC-001` … `R-SEC-020` | Security | §11 |
-| `R-UI-001` … `R-UI-060` | Visual and interaction design | §12 |
-| `R-MOTION-001` … `R-MOTION-071` | Animation and motion | §13 |
-| `R-A11Y-001` … `R-A11Y-011` | Accessibility | §14 |
-| `R-PERF-001` … `R-PERF-025` | Performance | §15 |
-| `R-TEST-001` … `R-TEST-008` | Testing | §16 |
-| `R-GIT-001` … `R-GIT-012` | Version control, review, exceptions | §17, §20 |
+| Range                           | Domain                                           | Section  |
+| ------------------------------- | ------------------------------------------------ | -------- |
+| `R-PREC-001` … `R-PREC-020`     | Precedence, the eight conflicts, defect register | §2       |
+| `R-ARCH-001` … `R-ARCH-009`     | Architecture and module boundaries               | §3       |
+| `R-SKILL-001` … `R-SKILL-073`   | Design-skill usage and zoning                    | §4       |
+| `R-CANVAS-001` … `R-CANVAS-056` | Canvas rendering and interaction                 | §5       |
+| `R-COORD-001` … `R-COORD-007`   | Coordinate spaces                                | §6       |
+| `R-SYNC-001` … `R-SYNC-044`     | Sync engine and wire protocol                    | §7       |
+| `R-CONV-001` … `R-CONV-011`     | Conflict resolution and convergence              | §8       |
+| `R-UNDO-001` … `R-UNDO-010`     | Undo and redo                                    | §9       |
+| `R-STATE-001` … `R-STATE-007`   | Client state                                     | §10      |
+| `R-SEC-001` … `R-SEC-020`       | Security                                         | §11      |
+| `R-UI-001` … `R-UI-060`         | Visual and interaction design                    | §12      |
+| `R-MOTION-001` … `R-MOTION-071` | Animation and motion                             | §13      |
+| `R-A11Y-001` … `R-A11Y-011`     | Accessibility                                    | §14      |
+| `R-PERF-001` … `R-PERF-025`     | Performance                                      | §15      |
+| `R-TEST-001` … `R-TEST-008`     | Testing                                          | §16      |
+| `R-GIT-001` … `R-GIT-012`       | Version control, review, exceptions              | §17, §20 |

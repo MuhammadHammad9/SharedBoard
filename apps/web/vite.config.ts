@@ -21,7 +21,8 @@ function devFixtures(): Plugin {
       server.middlewares.use((req, res, next) => {
         if (!req.url?.startsWith('/fixtures/')) return next()
         const file = resolve(root, '.' + req.url.split('?')[0])
-        if (!file.startsWith(resolve(root, 'fixtures')) || !existsSync(file)) return next()
+        if (!file.startsWith(resolve(root, 'fixtures')) || !existsSync(file))
+          return next()
         res.setHeader('Content-Type', 'application/json')
         createReadStream(file).pipe(res)
       })

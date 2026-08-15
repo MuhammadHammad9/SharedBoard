@@ -2,28 +2,42 @@ import {
   POLYLINE_ZOOM_THRESHOLD,
   type BoardObject,
   type ObjectType,
+  type StrokeObject,
   type Viewport,
 } from '@coboard/shared'
 import { collectVisible, getViewRect } from '../geometry/culling.js'
+import { applyStrokeStyle, strokePath, strokeStyleKey } from './shapes/stroke.js'
 
 /**
  * Layer 1 — committed objects.
  *
- * PHASE 2 SCOPE: this is a deliberately transitional BLOCKOUT renderer. Each
- * object is drawn as its bounding box, tinted by type. Real stroke rendering
- * (quadratic curves through midpoints, TRD §7.5) lands in Phase 3; shapes,
- * sticky notes and text in Phase 5.
- *
- * It exists now because Phase 2's exit gate is "≥55 fps panning the 10,000
- * object stress board", and that cannot be measured honestly without drawing
- * something for 10,000 objects. It exercises the parts this phase is
- * responsible for — culling, the once-per-frame transform, and style batching.
+ * PHASE 3 SCOPE: strokes render for real (TRD §7.5, quadratic curves through
+ * midpoints). The other seven types still draw as tinted bounding boxes — the
+ * transitional BLOCKOUT renderer Phase 2 added so the 10,000-object frame-rate
+ * gate could be measured honestly. Shapes and sticky notes replace their
+ * blockout in Phase 5, text and images in Phase 5 and 12.
  *
  * R-CANVAS-021: apply the viewport transform ONCE per frame, not per object.
- * R-CANVAS-022: batch by style. Context state changes are ~40% of frame cost
- *               at 5,000 objects (TRD §12.1).
  * R-CANVAS-024: never allocate inside the draw loop.
  * R-CANVAS-023: never call getImageData in the render path.
+ *
+ * ── Ordering and batching, and why they are in tension ──────────────────────
+ *
+ * R-CONV-009 requires objects to render in z-order: `sortedIds` is the painter's
+ * algorithm and two overlapping opaque strokes must resolve the same way on
+ * every client, or the boards have visibly diverged even though the data
+ * agrees.
+ *
+ * TRD §7.6 says to "sort visible objects by strokeStyle/fillStyle and set the
+ * context property only when it changes". Taken literally that REORDERS the
+ * draw sequence by style, which breaks the above. Recorded as defect D-5 in
+ * RULES.md §2.4.
+ *
+ * What this does instead is RUN-LENGTH batching: iterate strictly in z-order
+ * and write context state only when the style key differs from the previous
+ * object. Consecutive strokes on a real board usually share a colour and width
+ * — a user draws several marks with one pen setting before changing it — so
+ * this captures most of the saving at zero correctness cost.
  */
 
 export interface DrawObjectsArgs {
@@ -31,17 +45,18 @@ export interface DrawObjectsArgs {
   width: number
   height: number
   dpr: number
+  /** Objects in z-order — R-CONV-009. The renderer never sorts. */
   objects: Iterable<BoardObject>
   /** Reused scratch array so culling allocates nothing per frame. */
   scratch: BoardObject[]
 }
 
 /**
- * Blockout tints. Phase 3+ replaces this with each object's real style; the
- * palette here is only so the stress board is legible while we measure.
+ * Blockout tints for the types that have no real renderer yet. Phase 5 deletes
+ * the entries it replaces; the palette exists only so the stress board is
+ * legible while we measure.
  */
-const TINTS: Record<ObjectType, string> = {
-  stroke: '#18181B',
+const TINTS: Partial<Record<ObjectType, string>> = {
   rect: '#3B82F6',
   ellipse: '#22C55E',
   line: '#71717A',
@@ -50,17 +65,6 @@ const TINTS: Record<ObjectType, string> = {
   text: '#18181B',
   image: '#E4E4E7',
 }
-
-const TYPE_ORDER: readonly ObjectType[] = [
-  'image',
-  'sticky',
-  'rect',
-  'ellipse',
-  'line',
-  'arrow',
-  'stroke',
-  'text',
-]
 
 export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs): void {
   const { viewport, width, height, dpr, objects, scratch } = args
@@ -79,27 +83,40 @@ export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs
   ctx.translate(viewport.x, viewport.y)
   ctx.scale(viewport.zoom, viewport.zoom)
 
-  // Hairlines must stay hairlines as we zoom, so divide by the scale.
-  ctx.lineWidth = 1 / viewport.zoom
-
-  // R-CANVAS-027: below 25% zoom, detail is invisible. Skip outlines entirely
-  // rather than paying for two passes per object.
+  // R-CANVAS-027: below 25% zoom the curvature is sub-pixel. Straight segments
+  // are indistinguishable and cheaper.
   const coarse = viewport.zoom < POLYLINE_ZOOM_THRESHOLD
 
-  // Style batching: one pass per type, so fillStyle is set 8 times per frame
-  // rather than once per object.
-  for (const type of TYPE_ORDER) {
-    let opened = false
-    for (let i = 0; i < visible.length; i++) {
-      const o = visible[i]!
-      if (o.type !== type) continue
-      if (!opened) {
-        ctx.fillStyle = TINTS[type]
-        ctx.globalAlpha = coarse ? 0.7 : 0.85
-        opened = true
+  // Run-length batching state. Empty string can never equal a real key, which
+  // always contains two pipes.
+  let styleKey = ''
+  let blockoutTint = ''
+
+  for (let i = 0; i < visible.length; i++) {
+    const o = visible[i]!
+
+    if (o.type === 'stroke') {
+      const s = o as StrokeObject
+      const key = strokeStyleKey(s)
+      if (key !== styleKey) {
+        applyStrokeStyle(ctx, s)
+        styleKey = key
+        // A fill-styled blockout may follow; force it to re-set its own state.
+        blockoutTint = ''
       }
-      ctx.fillRect(o.x, o.y, o.width, o.height)
+      strokePath(ctx, s.points, coarse)
+      continue
     }
+
+    const tint = TINTS[o.type]
+    if (!tint) continue
+    if (tint !== blockoutTint) {
+      ctx.fillStyle = tint
+      ctx.globalAlpha = coarse ? 0.7 : 0.85
+      blockoutTint = tint
+      styleKey = ''
+    }
+    ctx.fillRect(o.x, o.y, o.width, o.height)
   }
 
   ctx.globalAlpha = 1
