@@ -1,0 +1,20 @@
+// CoBoard database schema.
+//
+// Phase 1: datasource and generator only, with one empty initial migration to
+// prove the connection. Models arrive with the phases that need them:
+//   Phase 7  — User, RefreshToken
+//   Phase 8  — Board, Operation, Snapshot
+//   Phase 12 — BoardMember, ShareLink, Role
+//
+// TRD §3.2, decision D-3: the op log is the source of truth. Do NOT add a
+// mutable `Object` table and UPDATE rows — that loses free replay, idempotent
+// outbox replay, ordering authority and auditability (anti-pattern A-07).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

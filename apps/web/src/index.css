@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Motion tokens as CSS custom properties.
+ *
+ * PRD §15 supplies --easing-standard and the three durations.
+ * The other three curves come from emil-design-eng (R-MOTION-012) and fill
+ * gaps the PRD does not specify: the built-in CSS easings are too weak.
+ */
+@layer base {
+  :root {
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+    --easing-standard: cubic-bezier(0.2, 0, 0, 1);
+
+    --duration-fast: 120ms;
+    --duration-base: 200ms;
+    --duration-slow: 320ms;
+  }
+
+  html {
+    font-family: theme('fontFamily.sans');
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: theme('colors.app');
+    color: theme('colors.primary');
+  }
+
+  /*
+   * R-MOTION-060 (Blocking) / R-A11Y-010: prefers-reduced-motion means FEWER
+   * and GENTLER animations, not zero. Keep opacity and colour transitions that
+   * aid comprehension; remove movement.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-property: opacity, color, background-color, border-color, fill, stroke !important;
+      transition-duration: var(--duration-fast) !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* R-UI-022 / R-A11Y-001: a visible focus ring on every focusable element. */
+  :focus-visible {
+    outline: 2px solid theme('colors.accent');
+    outline-offset: 2px;
+  }
+}

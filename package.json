@@ -1,0 +1,59 @@
+{
+  "name": "coboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CoBoard — real-time collaborative whiteboard",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:web": "pnpm --filter @coboard/web dev",
+    "dev:server": "pnpm --filter @coboard/server dev",
+    "build": "pnpm --filter @coboard/shared build && pnpm --filter @coboard/web build && pnpm --filter @coboard/server build",
+    "typecheck": "tsc --build --force && tsc --noEmit -p apps/web",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "analyze": "pnpm --filter @coboard/web build && tsx scripts/check-bundle-size.ts",
+    "check:board-chunk": "tsx scripts/check-board-chunk-imports.ts",
+    "services:up": "bash scripts/dev-services.sh",
+    "db:migrate": "pnpm --filter @coboard/server db:migrate",
+    "db:studio": "pnpm --filter @coboard/server db:studio",
+    "db:reset": "pnpm --filter @coboard/server db:reset",
+    "db:seed": "pnpm --filter @coboard/server db:seed",
+    "fixtures:generate": "tsx scripts/generate-stress-board.ts"
+  },
+  "pnpm": {
+    "_comment:overrides": "Security overrides. R-SEC-019 blocks the build on high/critical advisories, and R-PREC-001 puts security at Tier 1 — above the TRD §1.1 version pin. GHSA-fx2h-pf6j-xcff (vite server.fs.deny bypass) is patched only in >=6.4.3, so every transitive copy is forced there.",
+    "overrides": {
+      "vite": "^6.4.3"
+    },
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma"
+    ]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.15.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "globals": "^15.12.0",
+    "prettier": "^3.4.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.16.0",
+    "vitest": "^3.2.7"
+  }
+}
