@@ -73,6 +73,9 @@ export default {
         panel: '20',
         guestbar: '25',
         header: '30',
+        // Above the header so a tooltip on a header control is not clipped by
+        // it; below toasts, which must never be obscured.
+        tooltip: '35',
         toast: '40',
         backdrop: '45',
         modal: '50',

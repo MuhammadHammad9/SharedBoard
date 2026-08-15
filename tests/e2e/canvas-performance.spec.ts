@@ -21,6 +21,11 @@ import { expect, test, type Page } from '@playwright/test'
  */
 
 const CI_P95_CEILING_MS = 33
+/**
+ * Input-to-pixel floor. PRD §7.1 budgets ≤16 ms; this ceiling is deliberately
+ * three frames of slack, for the same shared-runner reason as the frame gate.
+ */
+const CI_INPUT_P95_CEILING_MS = 50
 const STRESS_BOARD = '/?stress=1&debug=1'
 
 interface Metrics {
@@ -29,6 +34,11 @@ interface Metrics {
   last: number
   count: number
   painted: number
+  inputP50: number
+  inputP95: number
+  inputCount: number
+  objectPaints: number
+  interactionPaints: number
 }
 
 async function readMetrics(page: Page): Promise<Metrics> {
@@ -74,13 +84,66 @@ test('pans the 10,000-object stress board within the frame budget', async ({ pag
   // Always report, pass or fail. This line is the deliverable.
   console.log(
     `[perf] stress board pan — p50 ${m.p50.toFixed(2)}ms (~${(1000 / Math.max(m.p50, 0.01)).toFixed(0)}fps), ` +
-      `p95 ${m.p95.toFixed(2)}ms, frames ${m.count}, painted ${m.painted}`,
+      `p95 ${m.p95.toFixed(2)}ms, frames ${m.count}, painted ${m.painted}, ` +
+      `input p50 ${m.inputP50.toFixed(2)}ms p95 ${m.inputP95.toFixed(2)}ms`,
   )
 
   expect(m.count, 'renderer painted frames during the pan').toBeGreaterThan(10)
   expect(m.p95, `p95 frame time ${m.p95.toFixed(2)}ms exceeded the CI floor`).toBeLessThan(
     CI_P95_CEILING_MS,
   )
+})
+
+test('draws on the 10,000-object stress board within the frame budget', async ({ page }) => {
+  /*
+   * Phase 3's exit gate: "Drawing on the 10,000-object stress board holds
+   * ≥55 fps". Harder than the pan test, because every frame now pays for real
+   * quadratic stroke rendering across the visible set AND the in-flight stroke
+   * on layer 2 — and the interaction layer is dirty on every single move.
+   */
+  test.slow()
+
+  await page.goto(STRESS_BOARD)
+  await expect(page.getByTestId('canvas-surface')).toHaveAttribute('data-ready', 'true')
+  await expect(page.getByTestId('dbg-objects')).toContainText('/ 10000', { timeout: 30_000 })
+
+  await page.getByTestId('tool-pen').click()
+  const box = (await page.getByTestId('canvas-surface').boundingBox())!
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  // Reset AFTER pointerdown so the measurement window is the drag itself.
+  await resetMetrics(page)
+
+  for (let i = 1; i <= 60; i++) {
+    const t = i / 60
+    await page.mouse.move(cx + Math.sin(t * 7) * 260, cy + Math.cos(t * 5) * 180)
+  }
+
+  const m = await readMetrics(page)
+  await page.mouse.up()
+
+  console.log(
+    `[perf] stress board draw — p50 ${m.p50.toFixed(2)}ms (~${(1000 / Math.max(m.p50, 0.01)).toFixed(0)}fps), ` +
+      `p95 ${m.p95.toFixed(2)}ms, frames ${m.count}, ` +
+      `input p50 ${m.inputP50.toFixed(2)}ms p95 ${m.inputP95.toFixed(2)}ms (n=${m.inputCount}), ` +
+      `paints obj ${m.objectPaints} / int ${m.interactionPaints}`,
+  )
+
+  expect(m.count, 'renderer painted frames during the drag').toBeGreaterThan(10)
+  expect(m.p95, `p95 frame time ${m.p95.toFixed(2)}ms exceeded the CI floor`).toBeLessThan(
+    CI_P95_CEILING_MS,
+  )
+  expect(
+    m.inputP95,
+    `input-to-pixel p95 ${m.inputP95.toFixed(2)}ms exceeded the CI floor`,
+  ).toBeLessThan(CI_INPUT_P95_CEILING_MS)
+
+  // R-CANVAS-002, on the stress board where it actually costs something: the
+  // object layer must not repaint while a stroke is in flight.
+  expect(m.objectPaints, 'object layer repainted during a stroke').toBe(0)
 })
 
 test('culls off-screen objects rather than drawing all 10,000', async ({ page }) => {

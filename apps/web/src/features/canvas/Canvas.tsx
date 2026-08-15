@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MAX_DPR } from '@coboard/shared'
+import { MAX_DPR, type BoardObject } from '@coboard/shared'
 import { boardStore, useBoardStore } from '../../stores/boardStore.js'
+import { Toolbar } from '../../components/board/Toolbar.js'
+import { PropertiesPanel } from '../../components/board/PropertiesPanel.js'
 import { ZoomControls } from '../../components/board/ZoomControls.js'
 import { CanvasDebugOverlay, type DebugSnapshot } from '../../components/dev/CanvasDebugOverlay.js'
 import { Renderer } from './renderer/Renderer.js'
@@ -33,6 +35,37 @@ import { devFlags, loadStressFixture } from './devFixture.js'
  * R-ARCH-002: the Renderer is plain TypeScript. It reads the store directly
  * via subscribe() and never triggers a React render.
  */
+/**
+ * Committed objects in z-order — R-CONV-009.
+ *
+ * A generator rather than a built array: the renderer calls this every painted
+ * frame, and materialising 10,000 entries sixty times a second is the
+ * allocation churn R-CANVAS-024 forbids. `sortedIds` may briefly name an id
+ * the Map no longer holds during a delete, so misses are skipped rather than
+ * asserted on.
+ */
+/** Shown by the debug overlay before the renderer has mounted. */
+const EMPTY_METRICS = {
+  p50: 0,
+  p95: 0,
+  last: 0,
+  count: 0,
+  painted: 0,
+  inputP50: 0,
+  inputP95: 0,
+  inputCount: 0,
+  objectPaints: 0,
+  interactionPaints: 0,
+} as const
+
+function* objectsInZOrder(): Generator<BoardObject> {
+  const { objects, sortedIds } = boardStore.getState()
+  for (let i = 0; i < sortedIds.length; i++) {
+    const o = objects.get(sortedIds[i]!)
+    if (o) yield o
+  }
+}
+
 export function Canvas() {
   /**
    * The container is held in STATE, not a ref.
@@ -54,12 +87,21 @@ export function Canvas() {
 
   const [ready, setReady] = useState(false)
   const [flags] = useState(devFlags)
-  const [fixtureCount, setFixtureCount] = useState<number | null>(null)
 
   const getSize = useCallback(() => sizeRef.current, [])
+  const getElement = useCallback(() => container, [container])
 
-  const { spaceHeld } = useKeyboard({ getSize })
-  usePointer(container, spaceHeld)
+  /**
+   * Input-to-pixel latency (PRD §7.1, ≤16 ms). Stable identity so it does not
+   * churn the pointer listeners; the renderer it forwards to is swapped
+   * through a ref rather than through the dependency array.
+   */
+  const noteInput = useCallback((timeStamp: number) => {
+    rendererRef.current?.noteInput(timeStamp)
+  }, [])
+
+  const { spaceHeld } = useKeyboard({ getSize, getElement })
+  usePointer(container, spaceHeld, { onInput: noteInput })
   useWheel(container)
 
   // ── Renderer lifecycle ────────────────────────────────────────────────────
@@ -78,8 +120,12 @@ export function Canvas() {
       { objects: ctxObjects, interaction: ctxInteraction, overlay: ctxOverlay },
       {
         getViewport: () => boardStore.getState().viewport,
-        getObjects: () => boardStore.getState().objects.values(),
+        // R-CONV-009: layer 1 paints in z-order. Iterating the Map's insertion
+        // order was invisible while every object was a blockout tint; with
+        // real overlapping strokes it is a visible painter's-algorithm bug.
+        getObjects: objectsInZOrder,
         getSize: () => sizeRef.current,
+        getDraft: () => boardStore.getState().draft,
       },
       () => dprRef.current,
     )
@@ -103,11 +149,26 @@ export function Canvas() {
     const resizeObserver = new ResizeObserver(applySize)
     resizeObserver.observe(container)
 
-    // R-ARCH-002: the renderer subscribes OUTSIDE React. A viewport or object
-    // change marks layer 1 dirty; it never re-renders a component.
+    /*
+     * R-ARCH-002: the renderer subscribes OUTSIDE React. Nothing below can
+     * re-render a component.
+     *
+     * R-CANVAS-002 (Blocking) — the phase's real proof. A growing draft stroke
+     * marks layer 2 and ONLY layer 2. Drawing must not repaint 10,000
+     * committed objects sixty times a second, for exactly the reason a remote
+     * cursor must not in Phase 10. The e2e test asserts the object-layer paint
+     * count stays flat across a full drag.
+     *
+     * The viewport is the one input that dirties both: pan and zoom move the
+     * committed objects and the in-flight stroke together.
+     */
     const unsubscribe = boardStore.subscribe((state, prev) => {
-      if (state.viewport !== prev.viewport || state.objectsVersion !== prev.objectsVersion) {
+      const viewportChanged = state.viewport !== prev.viewport
+      if (viewportChanged || state.objectsVersion !== prev.objectsVersion) {
         renderer.markDirty('objects')
+      }
+      if (viewportChanged || state.draftVersion !== prev.draftVersion) {
+        renderer.markDirty('interaction')
       }
     })
 
@@ -124,10 +185,19 @@ export function Canvas() {
     renderer.start()
     setReady(true)
 
+    /*
+     * Test and dev hooks. Guarded so they never reach a production bundle —
+     * a page that hands out its object graph on `window` is an invitation.
+     *
+     * `__coboardObjects` exists so the e2e suite can assert on what was
+     * actually committed (point counts, colour, bounding box) without reading
+     * pixels back off a canvas, which would be both slow and flaky.
+     */
     if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
-      ;(window as unknown as Record<string, unknown>).__coboardMetrics = () => renderer.getMetrics()
-      ;(window as unknown as Record<string, unknown>).__coboardResetMetrics = () =>
-        renderer.resetMetrics()
+      const w = window as unknown as Record<string, unknown>
+      w.__coboardMetrics = () => renderer.getMetrics()
+      w.__coboardResetMetrics = () => renderer.resetMetrics()
+      w.__coboardObjects = () => [...objectsInZOrder()]
     }
 
     return () => {
@@ -143,15 +213,9 @@ export function Canvas() {
   // ── Dev stress fixture ────────────────────────────────────────────────────
   useEffect(() => {
     if (!flags.stress) return
-    let cancelled = false
-    loadStressFixture()
-      .then(n => {
-        if (!cancelled) setFixtureCount(n)
-      })
-      .catch(err => console.error('[canvas] stress fixture failed:', err))
-    return () => {
-      cancelled = true
-    }
+    // The object count reaches the aria-label through the store selector, so
+    // nothing here needs the resolved value.
+    loadStressFixture().catch(err => console.error('[canvas] stress fixture failed:', err))
   }, [flags.stress])
 
   const readDebug = useCallback((): DebugSnapshot => {
@@ -164,19 +228,22 @@ export function Canvas() {
       viewport,
       totalObjects: objects.size,
       visibleObjects: visible,
-      metrics: rendererRef.current?.getMetrics() ?? {
-        p50: 0,
-        p95: 0,
-        last: 0,
-        count: 0,
-        painted: 0,
-      },
+      metrics: rendererRef.current?.getMetrics() ?? EMPTY_METRICS,
     }
   }, [])
 
+  // Narrow selectors only — R-ARCH-003. Never subscribe a component to
+  // `objects`; that re-renders on every mutation, sixty times a second.
   const activeTool = useBoardStore(s => s.activeTool)
   const panning = useBoardStore(s => s.interaction.type === 'PANNING')
-  const cursor = panning ? 'grabbing' : activeTool === 'hand' ? 'grab' : 'default'
+  const objectCount = useBoardStore(s => s.sortedIds.length)
+  const cursor = panning
+    ? 'grabbing'
+    : activeTool === 'hand'
+      ? 'grab'
+      : activeTool === 'pen'
+        ? 'crosshair'
+        : 'default'
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-canvas">
@@ -190,7 +257,7 @@ export function Canvas() {
         tabIndex={0}
         // R-A11Y-006: text alternative. The count updates as objects change.
         role="img"
-        aria-label={`Whiteboard with ${fixtureCount ?? 0} objects`}
+        aria-label={`Whiteboard with ${objectCount} objects`}
       >
         {/* Layer 0 (grid) is [P2] and intentionally absent. */}
         <canvas ref={objectsRef} id="objects" className="absolute inset-0" />
@@ -199,6 +266,8 @@ export function Canvas() {
         <div id="text-overlay" className="pointer-events-none absolute inset-0" />
       </div>
 
+      <Toolbar />
+      <PropertiesPanel />
       <ZoomControls getSize={getSize} />
       {flags.debug && <CanvasDebugOverlay read={readDebug} />}
     </div>

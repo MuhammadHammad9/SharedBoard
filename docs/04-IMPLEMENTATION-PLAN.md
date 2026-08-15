@@ -908,27 +908,42 @@ Tooltips delay before the first appearance, then open instantly for adjacent tri
 11. Below-25%-zoom polyline fallback.
 12. Object-layer drawing with style batching and culling.
 
+> **Corrections applied during implementation.**
+>
+> - **RDP lives in `@coboard/shared`, not `features/canvas/geometry/simplify.ts`.** It is pure geometry over a stride-3 array with no DOM dependency, §5 puts pure geometry helpers in the shared package, and the server needs the same function in Phase 9 to bound op payloads. A client-side copy would breach `R-ARCH-007`. `simplifyStroke` and `strokeBounds` were added to `packages/shared/src/geometry.ts`. Same correction shape as Phase 2's `transform.ts`.
+> - **`packages/shared/src/schemas/object.ts` already existed.** Phase 1 shipped `StrokeObjectSchema` with the stride-3 `points` array and finite bounds on every field. Phase 3 consumes it unchanged; the file list above was stale.
+> - **Style batching preserves z-order — defect `D-5`.** TRD §7.6's "sort visible objects by `strokeStyle`/`fillStyle`" breaks the painter's algorithm and contradicts `R-CONV-009`: two overlapping opaque strokes would resolve differently from the data. Implemented as **run-length batching in z-order** — context state is written only when the style key differs from the previous object, and nothing is reordered. Recorded in `RULES.md` §2.4.
+> - **Layer 1 now iterates `sortedIds`.** Phase 2's renderer read `objects.values()`, i.e. insertion order. Invisible while every object was a blockout tint; a visible z-order bug the moment real overlapping strokes exist.
+> - **Only implemented tools get keyboard shortcuts.** All eleven tools render (FLOWS §14.2), but the eight without an implementation are **disabled** and unbound. A shortcut that selects a tool which then draws nothing is worse than no shortcut. `ACTIVE_TOOLS` is now `['select', 'hand', 'pen']`.
+> - **Pressure is captured, not rendered as variable width** — agreed scope decision on the `[P1]` sub-item. `PointerEvent.pressure` is normalised, stored in the stride-3 array, carried through simplification and persisted. It is not drawn as taper: TRD §7.5 sets one `lineWidth` for the whole path, and visible taper needs either a filled outline polygon or one `stroke()` per segment — the second is `R-CANVAS-022`'s failure mode multiplied by every point in every object, and both contradict explicit Tier 2 spec code. The data is stored, so a later phase can render it without a migration.
+
 ### Files
 
 ```
+packages/shared/src/geometry.ts                          # simplifyStroke + strokeBounds (NOT a client copy)
 apps/web/src/features/canvas/renderer/shapes/stroke.ts
-apps/web/src/features/canvas/geometry/simplify.ts
+apps/web/src/features/canvas/renderer/{drawObjects,drawInteraction,Renderer}.ts
 apps/web/src/features/canvas/interaction/handlers/draw.ts
-apps/web/src/features/canvas/interaction/useKeyboard.ts
+apps/web/src/features/canvas/interaction/{usePointer,useKeyboard}.ts
 apps/web/src/components/board/{Toolbar.tsx,PropertiesPanel.tsx}
 apps/web/src/components/board/properties/PenProperties.tsx
 apps/web/src/components/ui/{Tooltip.tsx,ColorSwatch.tsx,Slider.tsx}
-packages/shared/src/schemas/object.ts
+apps/web/src/lib/persist.ts                              # validated localStorage
+apps/web/src/stores/boardStore.ts
+tests/e2e/canvas-draw.spec.ts
 ```
 
 ### Tests
 
 - Unit: RDP reduces ~400 points to ~60 at ε = 0.5, and preserves endpoints exactly.
 - Unit: RDP on a straight line reduces to two points.
+- Unit: RDP is iterative — `STROKE_POINTS_MAX` input must not overflow the stack. A crash in the shared package takes the *server* down in Phase 9, not just a tab.
 - Unit: stroke bounding box accounts for `strokeWidth`.
+- Unit: run-length batching writes `strokeStyle` once per run **and never reorders** (the `D-5` regression test).
+- Unit: `localStorage` reads are validated — a hostile or stale value falls back to defaults.
 - Component: selecting the pen tool swaps the properties panel and persists to `localStorage`.
-- Manual: draw continuously for 30 seconds on the stress board; frame rate stays ≥55 fps.
-- Manual: input-to-pixel latency ≤16 ms, measured by instrumentation.
+- E2E: drawing does not repaint layer 1 (`R-CANVAS-002`), asserted from the renderer's own paint counters.
+- E2E perf: a scripted drag on the stress board, reporting frame p50/p95 **and input-to-pixel p50/p95** from the renderer's instrumentation. Loose CI floors; the real figures are printed to the log and recorded in the PR.
 
 ### Exit gate
 

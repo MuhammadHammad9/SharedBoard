@@ -60,6 +60,22 @@ export function CanvasDebugOverlay({ read }: Props) {
         testId="dbg-frame"
       />
       <Row label="fps" value={`~${fps}`} testId="dbg-fps" />
+      {/* PRD §7.1 budget: input to local pixel ≤ 16 ms. */}
+      <Row
+        label="input"
+        value={`p50 ${metrics.inputP50.toFixed(1)}ms  p95 ${metrics.inputP95.toFixed(1)}ms`}
+        testId="dbg-input"
+      />
+      {/*
+        Layer paint counts — R-CANVAS-002 made visible. Drawing a stroke should
+        run the interaction number up while the objects number stays put. If
+        both climb together, something is dirtying layer 1 that should not be.
+      */}
+      <Row
+        label="paints"
+        value={`obj ${metrics.objectPaints}  int ${metrics.interactionPaints}`}
+        testId="dbg-paints"
+      />
     </div>
   )
 }

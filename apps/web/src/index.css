@@ -53,4 +53,71 @@
     outline: 2px solid theme('colors.accent');
     outline-offset: 2px;
   }
+
+  /*
+   * Tooltip entry — components/ui/Tooltip.tsx.
+   *
+   * A TRANSITION, not a keyframe (R-MOTION-030): sweeping a pointer down the
+   * toolbar re-triggers this constantly, and a transition retargets mid-flight
+   * where a keyframe restarts from zero and stutters. @starting-style is what
+   * gives a freshly mounted node a start state to transition FROM.
+   *
+   * scale(0.97), never scale(0) — R-MOTION-032. Nothing in the real world
+   * appears from nothing.
+   *
+   * 125 ms, --ease-out. R-MOTION-020 puts tooltips at 125–200 ms; R-MOTION-010
+   * forbids ease-in, which delays the exact moment the user is watching.
+   *
+   * There is no exit transition, deliberately: the node unmounts on close, and
+   * on the frequency gate (R-MOTION-001) a toolbar tooltip is seen tens of
+   * times a session. Fading one out as the pointer has already moved on is
+   * motion the user did not ask for.
+   */
+  [data-tooltip] {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+    transform-origin: left center;
+    transition:
+      opacity 125ms var(--ease-out),
+      transform 125ms var(--ease-out);
+  }
+
+  @starting-style {
+    [data-tooltip] {
+      opacity: 0;
+      transform: translateY(-50%) scale(0.97);
+    }
+  }
+
+  /*
+   * Adjacent triggers open with no animation at all. Once one tooltip is open
+   * the user has declared intent, and replaying a transition per button as the
+   * pointer travels down eleven tools is noise.
+   */
+  [data-tooltip][data-instant] {
+    transition-duration: 0ms;
+  }
+
+  /*
+   * Properties-panel context swap — components/board/PropertiesPanel.tsx.
+   *
+   * Opacity ONLY, 120 ms. No slide, no scale. Switching tools is top-band on
+   * the frequency gate (R-MOTION-001), so 240 px of content must not travel
+   * across the screen every time the user presses P. The crossfade exists
+   * purely to stop the swap reading as a flicker.
+   *
+   * The vertical centring is a translate held constant across the transition —
+   * animating it would reintroduce exactly the movement this avoids.
+   */
+  [data-crossfade] {
+    opacity: 1;
+    transform: translateY(-50%);
+    transition: opacity var(--duration-fast) var(--ease-out);
+  }
+
+  @starting-style {
+    [data-crossfade] {
+      opacity: 0;
+    }
+  }
 }

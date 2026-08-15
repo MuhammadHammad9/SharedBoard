@@ -2,9 +2,9 @@
 
 **A real-time collaborative whiteboard.** Multiple people open the same board URL and simultaneously draw freehand strokes, place shapes, write text and drop sticky notes. Every action appears on every other screen within a few hundred milliseconds, with live labelled cursors.
 
-> **Status: Phase 2 complete.** Monorepo, shared package, design tokens, CI gates, and the canvas surface with working pan and zoom. Drawing tools arrive in Phase 3. See [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md).
+> **Status: Phase 3 complete.** Monorepo, shared package, design tokens, CI gates, the canvas surface with pan and zoom, and **the pen tool** — freehand strokes with quadratic-curve rendering, Ramer–Douglas–Peucker simplification on commit, a left toolbar and a properties panel. Selection and transforms arrive in Phase 4. See [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md).
 >
-> Try it: `pnpm dev`, then `http://localhost:5173/?stress=1&debug=1` for the 10,000-object stress board with the frame-timing overlay.
+> Try it: `pnpm dev`, then `http://localhost:5173/?debug=1` and press `P` to draw. Add `&stress=1` for the 10,000-object stress board with the frame-timing and input-latency overlay.
 
 ---
 
@@ -57,7 +57,7 @@ Read them in this order.
 
 ## Stack
 
-React 18.3 · TypeScript 5.4 strict · Vite 5 · Zustand 4 · Canvas 2D · Tailwind 3.x · Node 20 · Express 4 · native `ws` · PostgreSQL 15 · Prisma 5 · Redis 7 · Vitest + Playwright
+React 18.3 · TypeScript 5.4 strict · Vite 6 (see **D-4**) · Zustand 4 · Canvas 2D · Tailwind 3.x · Phosphor icons · Node 20 · Express 4 · native `ws` · PostgreSQL 15 · Prisma 5 · Redis 7 · Vitest + Playwright
 
 ---
 
@@ -112,13 +112,15 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium pnpm test:e2e
 
 The three documents in `docs/01`–`03` are preserved **exactly as delivered** and must not be edited. Their integrity is verifiable.
 
-Three defects were found in them during planning. Rather than patching the sources, they are resolved in the defect register at [`RULES.md`](./RULES.md) §2.4:
+Five defects have been found in them so far. Rather than patching the sources, they are resolved in the defect register at [`RULES.md`](./RULES.md) §2.4:
 
 | # | Defect | Resolution |
 |---|---|---|
 | **D-1** | `FR-BOARD-041` is referenced in the PRD but never defined — board requirements stop at `FR-BOARD-009` | The behaviour it points at (session expiry while a board is open) is fully specified as **`E-17`** in FLOWS §12.5. `E-17` is the binding requirement |
 | **D-2** | `FR-CANVAS-017` is marked `[P1]` in its heading but `[P2]` / "Deferred. Do not build." in its body | The body wins. Grouping is P2 and deferred |
 | **D-3** | `FR-BOARD-012` appears in PRD §0 as an illustrative example, not a requirement | Not a defect. Recorded so ID audits do not flag it |
+| **D-4** | TRD §1.1 pins Vite 5, but a high-severity advisory is patched only in ≥ 6.4.3 | Upgraded to Vite 6.4.3. Security is Tier 1 and outranks the version pin |
+| **D-5** | TRD §7.6's "sort visible objects by style" reorders the draw sequence, breaking z-order | Run-length style batching that preserves z-order. Same saving, no painter's-algorithm bug |
 
 ---
 
