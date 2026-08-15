@@ -1,4 +1,4 @@
-import type { BoardObject, Viewport } from '@coboard/shared'
+import type { BoardObject, Rect, Viewport } from '@coboard/shared'
 import { drawObjects } from './drawObjects.js'
 import { drawInteraction, type DraftStroke } from './drawInteraction.js'
 import { drawOverlay } from './drawOverlay.js'
@@ -28,6 +28,30 @@ export interface RenderSources {
   getSize: () => { width: number; height: number }
   /** The in-flight stroke, or null. Phase 3. */
   getDraft?: () => DraftStroke | null
+  /** Selection overlay + marquee + eraser highlight. Phase 4. */
+  getSelectionView?: () => SelectionView
+}
+
+/** Everything layers 2 and 3 need to know about the current selection. */
+export interface SelectionView {
+  /** Union box of the selection in canvas coordinates, or null. */
+  box: Rect | null
+  /** Hide handles while the box is actively being dragged around. */
+  showHandles: boolean
+  /** Marquee rectangle in canvas coordinates, or null. */
+  marquee: Rect | null
+  /** Live rotation readout in degrees, or null. */
+  rotationDeg: number | null
+  /** Object under the eraser, or null. */
+  eraseCandidate: string | null
+}
+
+const EMPTY_SELECTION_VIEW: SelectionView = {
+  box: null,
+  showHandles: false,
+  marquee: null,
+  rotationDeg: null,
+  eraseCandidate: null,
 }
 
 export interface RenderTargets {
@@ -50,6 +74,7 @@ export interface FrameMetrics {
   /** Paints of layer 1. The layer-isolation proof reads this — R-CANVAS-002. */
   objectPaints: number
   interactionPaints: number
+  overlayPaints: number
 }
 
 const METRICS_WINDOW = 120
@@ -80,6 +105,7 @@ export class Renderer {
 
   private objectPaints = 0
   private interactionPaints = 0
+  private overlayPaints = 0
 
   /** Scratch array reused every frame so culling allocates nothing. */
   private readonly visible: BoardObject[] = []
@@ -136,6 +162,11 @@ export class Renderer {
     const viewport = this.sources.getViewport()
     const dpr = this.dpr()
 
+    // Read once per frame, not once per layer: the three layers must agree
+    // about what is selected, and calling the source three times invites a
+    // frame where the box and the handles disagree.
+    const view = this.sources.getSelectionView?.() ?? EMPTY_SELECTION_VIEW
+
     if (this.dirty.objects) {
       drawObjects(this.targets.objects, {
         viewport,
@@ -144,6 +175,7 @@ export class Renderer {
         dpr,
         objects: this.sources.getObjects(),
         scratch: this.visible,
+        eraseCandidate: view.eraseCandidate,
       })
       this.dirty.objects = false
       this.objectPaints++
@@ -155,13 +187,23 @@ export class Renderer {
         height,
         dpr,
         draft: this.sources.getDraft?.() ?? null,
+        marquee: view.marquee,
       })
       this.dirty.interaction = false
       this.interactionPaints++
     }
     if (this.dirty.overlay) {
-      drawOverlay(this.targets.overlay, { viewport, width, height, dpr })
+      drawOverlay(this.targets.overlay, {
+        viewport,
+        width,
+        height,
+        dpr,
+        selectionBox: view.box,
+        showHandles: view.showHandles,
+        rotationDeg: view.rotationDeg,
+      })
       this.dirty.overlay = false
+      this.overlayPaints++
     }
   }
 
@@ -222,6 +264,7 @@ export class Renderer {
       inputCount: this.inputCount,
       objectPaints: this.objectPaints,
       interactionPaints: this.interactionPaints,
+      overlayPaints: this.overlayPaints,
     }
   }
 
@@ -236,6 +279,7 @@ export class Renderer {
     this.pendingInput = -1
     this.objectPaints = 0
     this.interactionPaints = 0
+    this.overlayPaints = 0
     this.lastFrameStart = performance.now()
   }
 }

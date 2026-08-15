@@ -90,9 +90,9 @@ describe('Toolbar — FLOWS §14.2', () => {
     const disabled = (name: string) =>
       (screen.getByRole('button', { name }) as HTMLButtonElement).disabled
 
-    for (const name of ['Select', 'Hand', 'Pen']) expect(disabled(name)).toBe(false)
+    for (const name of ['Select', 'Hand', 'Pen', 'Eraser'])
+      expect(disabled(name)).toBe(false)
     for (const name of [
-      'Eraser',
       'Rectangle',
       'Ellipse',
       'Line',

@@ -22,6 +22,12 @@ export interface SliderProps {
   step?: number
   /** Rendered next to the label, e.g. `3 px` or `80%`. Defaults to the value. */
   display?: string
+  /**
+   * The selection disagrees on this property (FLOWS §14.4). Styles the readout
+   * as the "Mixed" marker and tags it for tests, so a multi-selection needs no
+   * second label stacked above the slider.
+   */
+  mixed?: boolean
   onChange: (value: number) => void
   testId?: string
 }
@@ -33,6 +39,7 @@ export function Slider({
   max,
   step = 1,
   display,
+  mixed = false,
   onChange,
   testId,
 }: SliderProps) {
@@ -43,7 +50,14 @@ export function Slider({
         <label htmlFor={id} className="text-xs text-muted">
           {label}
         </label>
-        <span className="text-xs tabular-nums text-primary">{display ?? value}</span>
+        <span
+          className={
+            mixed ? 'text-xs italic text-muted' : 'text-xs tabular-nums text-primary'
+          }
+          data-testid={mixed ? 'mixed-value' : undefined}
+        >
+          {display ?? value}
+        </span>
       </div>
       <input
         id={id}

@@ -1154,15 +1154,31 @@ The only permitted motion is the eraser hover highlight — a 120 ms colour tran
 15. Multi-selection properties panel with "Mixed" value rendering.
 16. `E-07`: batch drags of many objects into one operation.
 
+> **Corrections applied during implementation.**
+>
+> - **Delete is NOT undoable in this phase**, though `FR-CANVAS-014` requires it. `HistoryManager` is Phase 6. Every mutation is routed through two batched store actions — `updateObjects` and `deleteObjects` — so Phase 6 has exactly one hook per operation type, with the pre-change objects still in hand to build inverse ops from. Nothing about those signatures needs to change. The `PHASE 6 SLOT` comments mark each site.
+> - **Type-specific resize covers strokes only** (task 10). Text and sticky notes reflow rather than scaling glyphs, but neither type exists until Phase 5, so there is nothing to reflow and nothing to test. `applyBoxTransform` scales stroke point geometry and carries a marked branch for the Phase 5 types.
+> - **Alignment guides are not in this phase.** FLOWS §8.2.3's MOVE flow mentions them, but they are `FR-CANVAS-020` `[P1]` and Appendix A assigns them to **Phase 5**. FLOWS is describing the eventual behaviour of the flow, not this phase's scope.
+> - **New defect `D-6` — the marquee's layer.** FLOWS §8.2.3 says the marquee renders "on the overlay layer"; §14.3's layer table explicitly lists "the marquee rectangle" under **layer 2 (interaction)**. §14.3 is the authoritative layer specification and the more specific statement, so it wins: marquee on layer 2, selection box and handles on layer 3. Recorded in `RULES.md` §2.4.
+> - **`ERASING` is added to the machine, and cannot be suspended by `PANNING`.** FLOWS §15.1's machine predates the eraser and excludes only `DRAWING` and text editing from pan entry. An erase is a destructive pointer drag; suspending it to pan would leave the user holding a live delete gesture while the board slides underneath them. `R-CANVAS-051`'s reasoning extends to it.
+> - **Selection outranks the active tool in the properties panel.** §14.4 keys most rows on the tool and its last three on the selection, without saying which wins. A user who has just selected something wants to edit it, so a non-empty selection takes the panel.
+
 ### Files
 
 ```
+packages/shared/src/geometry.ts                          # hit-test primitives, rotation, polyline distance
+apps/web/src/features/canvas/geometry/{hitTest,bounds,transformSelection}.ts
 apps/web/src/features/canvas/interaction/machine.ts
-apps/web/src/features/canvas/interaction/handlers/{select,drag,resize,rotate,erase}.ts
-apps/web/src/features/canvas/geometry/{hitTest.ts,bounds.ts}
-apps/web/src/features/canvas/renderer/drawOverlay.ts
+apps/web/src/features/canvas/interaction/handlers/{select,transform,erase}.ts
+apps/web/src/features/canvas/interaction/{usePointer,useKeyboard}.ts
+apps/web/src/features/canvas/renderer/{drawOverlay,drawInteraction,drawObjects,Renderer}.ts
 apps/web/src/components/board/properties/{SelectionProperties.tsx,MixedValue.tsx}
+apps/web/src/components/board/PropertiesPanel.tsx
+apps/web/src/stores/boardStore.ts
+tests/e2e/canvas-selection.spec.ts
 ```
+
+Move, resize and rotate share one begin/update/end shape and one snapshot mechanism, so they live in a single `transform.ts` rather than three files that would be 80% identical.
 
 ### Tests
 

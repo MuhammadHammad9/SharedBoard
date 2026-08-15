@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MAX_DPR, type BoardObject } from '@coboard/shared'
-import { boardStore, useBoardStore } from '../../stores/boardStore.js'
+import { MAX_DPR, type ObjectId } from '@coboard/shared'
+import { boardStore, objectsInZOrder, useBoardStore } from '../../stores/boardStore.js'
 import { Toolbar } from '../../components/board/Toolbar.js'
 import { PropertiesPanel } from '../../components/board/PropertiesPanel.js'
 import { ZoomControls } from '../../components/board/ZoomControls.js'
@@ -8,7 +8,14 @@ import {
   CanvasDebugOverlay,
   type DebugSnapshot,
 } from '../../components/dev/CanvasDebugOverlay.js'
-import { Renderer } from './renderer/Renderer.js'
+import { Renderer, type SelectionView } from './renderer/Renderer.js'
+import {
+  currentSelectionBox,
+  marqueeRect,
+  probe,
+  toCanvas,
+} from './interaction/handlers/select.js'
+import { HANDLE_CURSORS } from './geometry/bounds.js'
 import { resizeCanvas } from './renderer/resizeCanvas.js'
 import { getViewRect, isVisible } from './geometry/culling.js'
 import { useKeyboard } from './interaction/useKeyboard.js'
@@ -59,13 +66,29 @@ const EMPTY_METRICS = {
   inputCount: 0,
   objectPaints: 0,
   interactionPaints: 0,
+  overlayPaints: 0,
 } as const
 
-function* objectsInZOrder(): Generator<BoardObject> {
-  const { objects, sortedIds } = boardStore.getState()
-  for (let i = 0; i < sortedIds.length; i++) {
-    const o = objects.get(sortedIds[i]!)
-    if (o) yield o
+/**
+ * Everything layers 2 and 3 need about the selection, read fresh each frame.
+ *
+ * Lives outside the component and reads the store directly (R-ARCH-002): the
+ * renderer must never depend on React having re-rendered, and the selection
+ * box changes on every pointermove of a drag — sixty React renders a second is
+ * exactly the failure R-ARCH-003 exists to prevent.
+ */
+function readSelectionView(): SelectionView {
+  const { interaction, eraseCandidate } = boardStore.getState()
+
+  return {
+    box: currentSelectionBox(),
+    // Handles are hidden during a live transform. Eight little squares
+    // skittering around under the cursor while the user drags is noise, and
+    // they are unclickable during the gesture anyway.
+    showHandles: interaction.type === 'IDLE' || interaction.type === 'PANNING',
+    marquee: interaction.type === 'MARQUEEING' ? marqueeRect(interaction) : null,
+    rotationDeg: interaction.type === 'ROTATING' ? interaction.currentDeg : null,
+    eraseCandidate,
   }
 }
 
@@ -129,6 +152,7 @@ export function Canvas() {
         getObjects: objectsInZOrder,
         getSize: () => sizeRef.current,
         getDraft: () => boardStore.getState().draft,
+        getSelectionView: readSelectionView,
       },
       () => dprRef.current,
     )
@@ -167,11 +191,46 @@ export function Canvas() {
      */
     const unsubscribe = boardStore.subscribe((state, prev) => {
       const viewportChanged = state.viewport !== prev.viewport
-      if (viewportChanged || state.objectsVersion !== prev.objectsVersion) {
+      const interactionChanged = state.interaction !== prev.interaction
+
+      // Layer 1 — committed objects. The eraser highlight lives here because
+      // it recolours a real object rather than drawing on top of it.
+      if (
+        viewportChanged ||
+        state.objectsVersion !== prev.objectsVersion ||
+        state.eraseCandidate !== prev.eraseCandidate
+      ) {
         renderer.markDirty('objects')
       }
-      if (viewportChanged || state.draftVersion !== prev.draftVersion) {
+
+      // Layer 2 — draft stroke and marquee. `interactionChanged` is what
+      // drives the marquee: it lives entirely in the interaction state, so
+      // there is no separate version counter to watch.
+      if (
+        viewportChanged ||
+        state.draftVersion !== prev.draftVersion ||
+        interactionChanged
+      ) {
         renderer.markDirty('interaction')
+      }
+
+      /*
+       * Layer 3 — the selection overlay. Deliberately NOT dirtied by
+       * `objectsVersion` alone: that fires on every pointermove of a drag, and
+       * the box does need to follow. It is dirtied by `interactionChanged`
+       * instead, which covers the transform states, plus the selection itself
+       * and the viewport. During a drag the interaction object is replaced
+       * only once (on the `moved` flag), so the box is refreshed by the
+       * objectsVersion clause below — kept explicit so the coupling is visible
+       * rather than accidental.
+       */
+      if (
+        viewportChanged ||
+        interactionChanged ||
+        state.selection !== prev.selection ||
+        state.objectsVersion !== prev.objectsVersion
+      ) {
+        renderer.markDirty('overlay')
       }
     })
 
@@ -201,6 +260,19 @@ export function Canvas() {
       w.__coboardMetrics = () => renderer.getMetrics()
       w.__coboardResetMetrics = () => renderer.resetMetrics()
       w.__coboardObjects = () => [...objectsInZOrder()]
+      w.__coboardSelection = () => [...boardStore.getState().selection]
+      w.__coboardSelect = (ids: string[]) =>
+        boardStore.getState().setSelection(ids as ObjectId[])
+      // Store-commit counter. The E-07 batching test reads this to prove a
+      // 500-object drag is one write per frame, not five hundred.
+      w.__coboardVersion = () => boardStore.getState().objectsVersion
+      /*
+       * The LIVE viewport. Tests that need to convert canvas → screen must
+       * read it here and not from the ?debug=1 overlay: that overlay repaints
+       * on a 250 ms interval by design, so reading it right after a zoom gives
+       * a stale pan and a click target tens of pixels off.
+       */
+      w.__coboardViewport = () => ({ ...boardStore.getState().viewport })
     }
 
     return () => {
@@ -240,22 +312,65 @@ export function Canvas() {
   // Narrow selectors only — R-ARCH-003. Never subscribe a component to
   // `objects`; that re-renders on every mutation, sixty times a second.
   const activeTool = useBoardStore(s => s.activeTool)
-  const panning = useBoardStore(s => s.interaction.type === 'PANNING')
+  const interactionType = useBoardStore(s => s.interaction.type)
   const objectCount = useBoardStore(s => s.sortedIds.length)
-  const cursor = panning
-    ? 'grabbing'
-    : activeTool === 'hand'
-      ? 'grab'
-      : activeTool === 'pen'
-        ? 'crosshair'
-        : 'default'
+
+  /*
+   * ONE effect owns the cursor, and it is deliberately not a React style prop.
+   *
+   * While the Select tool is idle the cursor depends on what is under the
+   * pointer — a handle, an object, or empty canvas — which changes on every
+   * pointermove. That is explicitly not React state (R-STATE-003), so it is
+   * written straight to the element.
+   *
+   * Splitting it across a `style` prop and an effect does not work: effect
+   * cleanup runs AFTER React commits the new style, so the cleanup wipes the
+   * value React just set and the cursor falls back to `auto`. One owner, no
+   * race.
+   */
+  useEffect(() => {
+    if (!container) return
+
+    const base =
+      interactionType === 'PANNING' || interactionType === 'ROTATING'
+        ? 'grabbing'
+        : interactionType === 'DRAGGING'
+          ? 'move'
+          : activeTool === 'hand'
+            ? 'grab'
+            : activeTool === 'pen' || activeTool === 'eraser'
+              ? 'crosshair'
+              : 'default'
+
+    container.style.cursor = base
+
+    // Hover feedback applies only when the Select tool is at rest. During a
+    // gesture the cursor must stay fixed to whatever that gesture means.
+    if (activeTool !== 'select' || interactionType !== 'IDLE') return
+
+    // FLOWS §14.2: a distinct resize cursor per handle, so the affordance
+    // tells the user which axis they are about to change.
+    const onMove = (e: PointerEvent) => {
+      const rect = container.getBoundingClientRect()
+      const c = toCanvas(e.clientX - rect.left, e.clientY - rect.top)
+      const target = probe(c.x, c.y, e.pointerType !== 'mouse')
+      container.style.cursor =
+        target.kind === 'handle'
+          ? HANDLE_CURSORS[target.handle]
+          : target.kind === 'object'
+            ? 'move'
+            : 'default'
+    }
+
+    container.addEventListener('pointermove', onMove)
+    return () => container.removeEventListener('pointermove', onMove)
+  }, [container, activeTool, interactionType])
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-canvas">
       <div
         ref={setContainer}
         className="absolute inset-0 touch-none"
-        style={{ cursor }}
         data-testid="canvas-surface"
         data-ready={ready ? 'true' : 'false'}
         // R-A11Y-008: the canvas is focusable so keyboard shortcuts have a home.

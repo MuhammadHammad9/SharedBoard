@@ -33,7 +33,8 @@
  *                      └──► discard ──► IDLE
  */
 
-import type { ObjectId } from '@coboard/shared'
+import type { BoardObject, ObjectId, Rect } from '@coboard/shared'
+import type { HandleId } from '../geometry/bounds.js'
 
 export type InteractionState =
   | { type: 'IDLE' }
@@ -46,10 +47,53 @@ export type InteractionState =
       pointerId: number | null
       previous: InteractionType
     }
-  | { type: 'MARQUEEING'; startX: number; startY: number; pointerId: number }
-  | { type: 'DRAGGING'; pointerId: number; ids: ObjectId[] }
-  | { type: 'RESIZING'; pointerId: number; handle: string }
-  | { type: 'ROTATING'; pointerId: number }
+  /** Marquee. Start and current are CANVAS coordinates — R-COORD-002. */
+  | {
+      type: 'MARQUEEING'
+      startX: number
+      startY: number
+      currentX: number
+      currentY: number
+      pointerId: number
+      /** Selection to preserve when the drag began with Shift held. */
+      additive: ObjectId[]
+    }
+  | {
+      type: 'DRAGGING'
+      pointerId: number
+      ids: ObjectId[]
+      /** Pointer origin in canvas space. Deltas are measured from here, never
+       *  from the previous frame, so a long drag cannot accumulate drift. */
+      startX: number
+      startY: number
+      /** Each object exactly as it was at pointerdown. */
+      origin: Map<ObjectId, BoardObject>
+      /** True once the pointer has moved far enough to count as a drag. */
+      moved: boolean
+    }
+  | {
+      type: 'RESIZING'
+      pointerId: number
+      handle: HandleId
+      ids: ObjectId[]
+      startBox: Rect
+      origin: Map<ObjectId, BoardObject>
+    }
+  | {
+      type: 'ROTATING'
+      pointerId: number
+      ids: ObjectId[]
+      centreX: number
+      centreY: number
+      /** Pointer angle at pointerdown, so rotation is applied as a DELTA and
+       *  the object does not jump to face the cursor on the first move. */
+      startAngle: number
+      origin: Map<ObjectId, BoardObject>
+      /** Current absolute rotation, for the live degree readout. */
+      currentDeg: number
+    }
+  /** Object eraser drag — FR-CANVAS-006. */
+  | { type: 'ERASING'; pointerId: number }
   | { type: 'DRAWING'; pointerId: number; opId: string }
   | { type: 'EDITING_TEXT'; objectId: ObjectId }
 
@@ -63,6 +107,7 @@ export const CAPTURING_STATES: readonly InteractionType[] = [
   'RESIZING',
   'ROTATING',
   'DRAWING',
+  'ERASING',
 ]
 
 export const isCapturing = (t: InteractionType): boolean => CAPTURING_STATES.includes(t)
@@ -74,6 +119,12 @@ export const isCapturing = (t: InteractionType): boolean => CAPTURING_STATES.inc
  * during a stroke does nothing — entering PANNING mid-stroke corrupts the
  * stroke state (anti-pattern A-22). EDITING_TEXT is absent for the same
  * reason: Space is a legitimate character there.
+ *
+ * ERASING is absent by the same reasoning, extended. FLOWS §15.1 excludes only
+ * DRAWING and text editing, but its machine predates the eraser. An erase is a
+ * destructive pointer drag over a path; suspending it to pan would leave the
+ * user holding a live delete gesture while the board slides underneath them.
+ * The conservative reading is the safe one where deletion is involved.
  */
 export const PAN_ENTRY_STATES: readonly InteractionType[] = [
   'IDLE',
