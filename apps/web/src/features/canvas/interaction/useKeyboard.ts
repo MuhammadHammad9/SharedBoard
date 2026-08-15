@@ -3,6 +3,20 @@ import { boardStore } from '../../../stores/boardStore.js'
 import { canChangeTool } from './machine.js'
 import { endPan } from './handlers/pan.js'
 import { cancelDraw } from './handlers/draw.js'
+import {
+  cancelDrag,
+  cancelResize,
+  cancelRotate,
+  nudgeSelection,
+} from './handlers/transform.js'
+
+/** Arrow key → unit direction. FR-CANVAS-011. */
+const ARROW_DELTAS: Record<string, { x: number; y: number } | undefined> = {
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 },
+  ArrowUp: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 },
+}
 
 /**
  * Keyboard handling for the canvas. PRD Appendix A.
@@ -60,16 +74,61 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
        * when there is no stroke to unwind.
        */
       if (e.key === 'Escape') {
-        if (store.interaction.type === 'DRAWING') {
-          e.preventDefault()
-          cancelDraw(optionsRef.current.getElement?.() ?? null)
+        e.preventDefault()
+        const el = optionsRef.current.getElement?.() ?? null
+        switch (store.interaction.type) {
+          case 'DRAWING':
+            cancelDraw(el)
+            return
+          case 'DRAGGING':
+            cancelDrag(el)
+            return
+          case 'RESIZING':
+            cancelResize(el)
+            return
+          case 'ROTATING':
+            cancelRotate(el)
+            return
+          default:
+            // FR-CANVAS-022: Escape deselects and returns to the Select tool.
+            store.clearSelection()
+            if (store.activeTool !== 'select') store.setActiveTool('select')
         }
+        return
+      }
+
+      // Delete the selection — FR-CANVAS-014. Not yet undoable; HistoryManager
+      // arrives in Phase 6 and hooks the store's deleteObjects.
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (store.selection.length === 0) return
+        if (!canChangeTool(store.interaction.type)) return
+        e.preventDefault()
+        store.deleteObjects(store.selection)
+        return
+      }
+
+      // Arrow-key nudge — FR-CANVAS-011. 1 canvas px, 10 with Shift.
+      // Canvas units, not screen: nudging must move the object the same
+      // distance in the document regardless of zoom, or the same keypress
+      // means different things at 10% and 500%.
+      const nudge = ARROW_DELTAS[e.key]
+      if (nudge) {
+        if (store.selection.length === 0) return
+        if (!canChangeTool(store.interaction.type)) return
+        e.preventDefault()
+        const step = e.shiftKey ? 10 : 1
+        nudgeSelection(nudge.x * step, nudge.y * step)
         return
       }
 
       if (mod) {
         const c = centre()
-        switch (e.key) {
+        switch (e.key.toLowerCase()) {
+          case 'a':
+            // FR-CANVAS-022: ALL objects, not just the visible ones.
+            e.preventDefault()
+            store.selectAll()
+            return
           case '0':
             e.preventDefault()
             store.resetZoom(c.x, c.y)
@@ -114,6 +173,9 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
           break
         case 'p':
           store.setActiveTool('pen')
+          break
+        case 'e':
+          store.setActiveTool('eraser')
           break
         // E R O L A N T are bound by the phases that implement those tools.
         default:

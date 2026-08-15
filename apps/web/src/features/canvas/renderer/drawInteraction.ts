@@ -1,4 +1,4 @@
-import type { Viewport } from '@coboard/shared'
+import type { Rect, Viewport } from '@coboard/shared'
 import { drawStroke } from './shapes/stroke.js'
 
 /**
@@ -35,23 +35,57 @@ export interface DrawLayerArgs {
   height: number
   dpr: number
   draft?: DraftStroke | null
+  /** Marquee rectangle in CANVAS coordinates while MARQUEEING — FR-CANVAS-004. */
+  marquee?: Rect | null
 }
+
+/** PRD §15 --color-accent. A canvas cannot read a CSS custom property. */
+const ACCENT = '#4F46E5'
 
 export function drawInteraction(
   ctx: CanvasRenderingContext2D,
   args: DrawLayerArgs,
 ): void {
-  const { viewport, width, height, dpr, draft } = args
+  const { viewport, width, height, dpr, draft, marquee } = args
 
   ctx.save()
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, width, height)
 
   if (draft && draft.points.length >= 6) {
+    ctx.save()
     // R-CANVAS-021: transform once, then draw in canvas coordinates.
     ctx.translate(viewport.x, viewport.y)
     ctx.scale(viewport.zoom, viewport.zoom)
     drawStroke(ctx, draft, viewport.zoom)
+    ctx.restore()
+  }
+
+  /*
+   * The marquee lives HERE, on layer 2 — defect D-6.
+   *
+   * FLOWS §8.2.3 says "marquee rectangle on the overlay layer", but §14.3's
+   * layer table explicitly lists "the marquee rectangle" under layer 2. §14.3
+   * is the authoritative layer specification and the more specific of the two
+   * statements, so it wins. Recorded in RULES.md §2.4.
+   *
+   * Drawn UNTRANSFORMED in screen space so the 1 px outline stays 1 px at
+   * every zoom level.
+   */
+  if (marquee) {
+    const x = marquee.x * viewport.zoom + viewport.x
+    const y = marquee.y * viewport.zoom + viewport.y
+    const w = marquee.width * viewport.zoom
+    const h = marquee.height * viewport.zoom
+
+    ctx.fillStyle = ACCENT
+    ctx.globalAlpha = 0.08
+    ctx.fillRect(x, y, w, h)
+
+    ctx.globalAlpha = 1
+    ctx.strokeStyle = ACCENT
+    ctx.lineWidth = 1
+    ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w), Math.round(h))
   }
 
   ctx.restore()

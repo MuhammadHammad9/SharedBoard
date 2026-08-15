@@ -157,6 +157,77 @@ test('draws on the 10,000-object stress board within the frame budget', async ({
   expect(m.objectPaints, 'object layer repainted during a stroke').toBe(0)
 })
 
+test('drags 500 objects at once as ONE operation — FLOWS E-07', async ({ page }) => {
+  /*
+   * Phase 4's exit gate: "Dragging 500 objects batches into one operation."
+   *
+   * Asserted two ways. `objectsVersion` counts store commits, so a
+   * per-object loop would show 500 bumps per frame instead of one — that is
+   * the batching claim. The frame time is the consequence: one commit means
+   * one repaint, and the interaction stays responsive.
+   */
+  test.slow()
+
+  await page.goto(STRESS_BOARD)
+  await expect(page.getByTestId('canvas-surface')).toHaveAttribute('data-ready', 'true')
+  await expect(page.getByTestId('dbg-objects')).toContainText('/ 10000', {
+    timeout: 30_000,
+  })
+
+  // Select 500 objects directly. Marqueeing them would test the marquee, and
+  // this test is about the drag.
+  const selected = await page.evaluate(() => {
+    const w = window as unknown as {
+      __coboardObjects: () => { id: string }[]
+      __coboardSelect: (ids: string[]) => void
+    }
+    const ids = w
+      .__coboardObjects()
+      .slice(0, 500)
+      .map(o => o.id)
+    w.__coboardSelect(ids)
+    return ids.length
+  })
+  expect(selected).toBe(500)
+
+  const box = (await page.getByTestId('canvas-surface').boundingBox())!
+  const versionBefore = await page.evaluate(() =>
+    (window as unknown as { __coboardVersion: () => number }).__coboardVersion(),
+  )
+
+  await page.getByTestId('tool-select').click()
+  await page.mouse.move(box.x + 100, box.y + 100)
+  await page.mouse.down()
+  await resetMetrics(page)
+
+  const STEPS = 30
+  for (let i = 1; i <= STEPS; i++) {
+    await page.mouse.move(box.x + 100 + i * 6, box.y + 100 + i * 3)
+  }
+
+  const m = await readMetrics(page)
+  const versionAfter = await page.evaluate(() =>
+    (window as unknown as { __coboardVersion: () => number }).__coboardVersion(),
+  )
+  await page.mouse.up()
+
+  const commits = versionAfter - versionBefore
+  console.log(
+    `[perf] 500-object drag — ${commits} store commits over ${STEPS} moves, ` +
+      `p50 ${m.p50.toFixed(2)}ms (~${(1000 / Math.max(m.p50, 0.01)).toFixed(0)}fps), ` +
+      `p95 ${m.p95.toFixed(2)}ms, input p50 ${m.inputP50.toFixed(2)}ms`,
+  )
+
+  // ONE commit per pointermove at most — never one per object. 500 objects
+  // moved 30 times would be 15,000 commits without batching.
+  expect(commits).toBeLessThanOrEqual(STEPS + 2)
+  expect(commits).toBeGreaterThan(0)
+  expect(
+    m.p95,
+    `p95 frame time ${m.p95.toFixed(2)}ms exceeded the CI floor`,
+  ).toBeLessThan(CI_P95_CEILING_MS)
+})
+
 test('culls off-screen objects rather than drawing all 10,000', async ({ page }) => {
   test.slow()
 

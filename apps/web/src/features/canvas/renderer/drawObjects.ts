@@ -49,7 +49,12 @@ export interface DrawObjectsArgs {
   objects: Iterable<BoardObject>
   /** Reused scratch array so culling allocates nothing per frame. */
   scratch: BoardObject[]
+  /** Object under the eraser, drawn in --color-danger — FR-CANVAS-006. */
+  eraseCandidate?: string | null
 }
+
+/** PRD §15 --color-danger. The eraser's "this is what you are about to lose". */
+const DANGER = '#DC2626'
 
 /**
  * Blockout tints for the types that have no real renderer yet. Phase 5 deletes
@@ -67,7 +72,7 @@ const TINTS: Partial<Record<ObjectType, string>> = {
 }
 
 export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs): void {
-  const { viewport, width, height, dpr, objects, scratch } = args
+  const { viewport, width, height, dpr, objects, scratch, eraseCandidate } = args
 
   ctx.save()
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -95,8 +100,26 @@ export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs
   for (let i = 0; i < visible.length; i++) {
     const o = visible[i]!
 
+    /*
+     * FR-CANVAS-006: the object under the eraser renders in --color-danger.
+     * Drawn outside the batch — it is exactly one object per frame at most, so
+     * paying one extra pair of context writes is cheaper than threading a
+     * conditional through the batching state, and it keeps the run-length
+     * logic below honest about what it is comparing.
+     */
+    const erasing = eraseCandidate != null && o.id === eraseCandidate
+
     if (o.type === 'stroke') {
       const s = o as StrokeObject
+      if (erasing) {
+        ctx.save()
+        applyStrokeStyle(ctx, { ...s, color: DANGER })
+        strokePath(ctx, s.points, coarse)
+        ctx.restore()
+        // The batch's cached style is still whatever it was before the save,
+        // so nothing needs invalidating here.
+        continue
+      }
       const key = strokeStyleKey(s)
       if (key !== styleKey) {
         applyStrokeStyle(ctx, s)
@@ -105,6 +128,15 @@ export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs
         blockoutTint = ''
       }
       strokePath(ctx, s.points, coarse)
+      continue
+    }
+
+    if (erasing) {
+      ctx.save()
+      ctx.fillStyle = DANGER
+      ctx.globalAlpha = 0.85
+      ctx.fillRect(o.x, o.y, o.width, o.height)
+      ctx.restore()
       continue
     }
 

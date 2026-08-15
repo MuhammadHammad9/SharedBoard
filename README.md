@@ -2,9 +2,9 @@
 
 **A real-time collaborative whiteboard.** Multiple people open the same board URL and simultaneously draw freehand strokes, place shapes, write text and drop sticky notes. Every action appears on every other screen within a few hundred milliseconds, with live labelled cursors.
 
-> **Status: Phase 3 complete.** Monorepo, shared package, design tokens, CI gates, the canvas surface with pan and zoom, and **the pen tool** — freehand strokes with quadratic-curve rendering, Ramer–Douglas–Peucker simplification on commit, a left toolbar and a properties panel. Selection and transforms arrive in Phase 4. See [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md).
+> **Status: Phase 4 complete.** Monorepo, shared package, design tokens, CI gates, the canvas surface with pan and zoom, the pen tool, and the **full selection toolkit** — click, shift-click, marquee, move, resize, rotate, delete, nudge, and an object eraser. Shapes, sticky notes and text arrive in Phase 5. See [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md).
 >
-> Try it: `pnpm dev`, then `http://localhost:5173/?debug=1` and press `P` to draw. Add `&stress=1` for the 10,000-object stress board with the frame-timing and input-latency overlay.
+> Try it: `pnpm dev`, then `http://localhost:5173/?debug=1`. Press `P` to draw, `V` to select, `E` to erase. Add `&stress=1` for the 10,000-object stress board with the frame-timing and input-latency overlay.
 
 ---
 
@@ -112,7 +112,7 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium pnpm test:e2e
 
 The three documents in `docs/01`–`03` are preserved **exactly as delivered** and must not be edited. Their integrity is verifiable.
 
-Five defects have been found in them so far. Rather than patching the sources, they are resolved in the defect register at [`RULES.md`](./RULES.md) §2.4:
+Six defects have been found in them so far. Rather than patching the sources, they are resolved in the defect register at [`RULES.md`](./RULES.md) §2.4:
 
 | #       | Defect                                                                                                | Resolution                                                                                                                                           |
 | ------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |

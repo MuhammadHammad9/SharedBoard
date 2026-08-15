@@ -114,6 +114,118 @@ export function distanceToSegmentSq(
 export const normalizeRotation = (deg: number): number => ((deg % 360) + 360) % 360
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Hit-test primitives — TRD §7.7
+ *
+ * Pure predicates over a point and a shape. They live here rather than in the
+ * client because the geometry is not DOM-dependent, and because Phase 9's
+ * server-side op validation needs the same notion of "inside" that the client
+ * used when it decided what the user clicked.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export const pointInRect = (px: number, py: number, r: Rect): boolean =>
+  px >= r.x && px <= r.x + r.width && py >= r.y && py <= r.y + r.height
+
+/** Standard ellipse test: (dx/rx)² + (dy/ry)² ≤ 1. TRD §7.7. */
+export function pointInEllipse(px: number, py: number, r: Rect): boolean {
+  const rx = r.width / 2
+  const ry = r.height / 2
+  // A degenerate axis has no interior; fall back to the box so a zero-height
+  // ellipse is still clickable rather than silently unselectable.
+  if (rx <= 0 || ry <= 0) return pointInRect(px, py, r)
+  const dx = (px - (r.x + rx)) / rx
+  const dy = (py - (r.y + ry)) / ry
+  return dx * dx + dy * dy <= 1
+}
+
+/**
+ * Transform a point into an object's local (unrotated) space —
+ * R-CANVAS-042, TRD §7.7.
+ *
+ * Translate to the centre, rotate by −rotation, translate back. Every precise
+ * test can then be axis-aligned, which is the whole reason this exists: a
+ * rotated-rectangle containment test is fiddly and easy to get subtly wrong,
+ * whereas rotating the *point* is four lines and obviously correct.
+ */
+export function toLocalSpace(
+  px: number,
+  py: number,
+  centreX: number,
+  centreY: number,
+  rotationDeg: number,
+): { x: number; y: number } {
+  if (rotationDeg === 0) return { x: px, y: py }
+  const rad = (-rotationDeg * Math.PI) / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  const dx = px - centreX
+  const dy = py - centreY
+  return {
+    x: centreX + dx * cos - dy * sin,
+    y: centreY + dx * sin + dy * cos,
+  }
+}
+
+/**
+ * The axis-aligned box that encloses a rotated rect.
+ *
+ * Used for the cheap AABB rejection phase: a rotated object's true extent is
+ * larger than its own width and height, and rejecting against the unrotated
+ * box would make the corners of a rotated object unclickable.
+ */
+export function rotatedBounds(r: Rect, rotationDeg: number): Rect {
+  if (rotationDeg === 0) return r
+  const rad = (rotationDeg * Math.PI) / 180
+  const cos = Math.abs(Math.cos(rad))
+  const sin = Math.abs(Math.sin(rad))
+  const w = r.width * cos + r.height * sin
+  const h = r.width * sin + r.height * cos
+  return {
+    x: r.x + r.width / 2 - w / 2,
+    y: r.y + r.height / 2 - h / 2,
+    width: w,
+    height: h,
+  }
+}
+
+/**
+ * Smallest squared distance from a point to a stride-3 polyline.
+ *
+ * Early-exits as soon as it is within `withinSq`, because the caller only ever
+ * asks "is this close enough?" — computing the true minimum across a
+ * 60-segment stroke when segment 2 already answers the question is wasted work
+ * on a path that runs per object per click (TRD §7.7).
+ */
+export function distanceToPolylineSq(
+  px: number,
+  py: number,
+  points: readonly number[],
+  withinSq = Infinity,
+): number {
+  const s = STROKE_POINT_STRIDE
+  if (points.length < s * 2) {
+    if (points.length < 2) return Infinity
+    const dx = px - points[0]!
+    const dy = py - points[1]!
+    return dx * dx + dy * dy
+  }
+
+  let best = Infinity
+  for (let i = 0; i + s * 2 - 1 < points.length; i += s) {
+    const d = distanceToSegmentSq(
+      px,
+      py,
+      points[i]!,
+      points[i + 1]!,
+      points[i + s]!,
+      points[i + s + 1]!,
+    )
+    if (d < best) best = d
+    if (best <= withinSq) return best
+  }
+  return best
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Stroke geometry — TRD §7.5, D-9
  *
  * Strokes are a FLAT number[] with stride 3: [x0,y0,p0, x1,y1,p1, …]

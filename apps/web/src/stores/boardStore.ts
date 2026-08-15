@@ -59,7 +59,7 @@ export type Tool =
  * a shortcut that selects a tool which draws nothing is worse than no
  * shortcut. Extended by each phase that lands a tool.
  */
-export const ACTIVE_TOOLS: readonly Tool[] = ['select', 'hand', 'pen']
+export const ACTIVE_TOOLS: readonly Tool[] = ['select', 'hand', 'pen', 'eraser']
 
 export const isActiveTool = (t: string): t is Tool =>
   (ACTIVE_TOOLS as readonly string[]).includes(t)
@@ -90,6 +90,22 @@ interface BoardState {
   interaction: InteractionState
 
   /**
+   * Selected object ids — FR-CANVAS-004.
+   *
+   * R-STATE-004 permits React to read the selection COUNT and a derived
+   * summary. Components must not map over this to read object geometry; the
+   * properties panel selects a derived summary instead (R-ARCH-003).
+   */
+  selection: ObjectId[]
+
+  /**
+   * Object under the eraser, highlighted in --color-danger — FR-CANVAS-006.
+   * A separate field from `selection` because it is a hover affordance, not a
+   * selection, and it must not survive a tool change.
+   */
+  eraseCandidate: ObjectId | null
+
+  /**
    * The in-flight stroke. Points are pushed IN PLACE and `draftVersion` bumped
    * — R-STATE-002. Cloning a 400-element array on every pointermove at 240 Hz
    * is exactly the allocation churn R-CANVAS-024 exists to prevent.
@@ -110,6 +126,15 @@ interface BoardState {
   loadObjects: (objects: BoardObject[]) => void
   addObject: (o: BoardObject) => void
   removeObject: (id: ObjectId) => void
+  /** Replace many objects in one commit — E-07. */
+  updateObjects: (objects: readonly BoardObject[]) => void
+  /** Delete many objects in one commit — FR-CANVAS-014. */
+  deleteObjects: (ids: readonly ObjectId[]) => void
+  setSelection: (ids: readonly ObjectId[]) => void
+  toggleSelection: (id: ObjectId) => void
+  clearSelection: () => void
+  selectAll: () => void
+  setEraseCandidate: (id: ObjectId | null) => void
   startDraft: (d: DraftStroke) => void
   touchDraft: () => void
   clearDraft: () => void
@@ -137,6 +162,8 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   activeTool: restored.activeTool as Tool,
   pen: restored.pen,
   interaction: { type: 'IDLE' },
+  selection: [],
+  eraseCandidate: null,
 
   draft: null,
   draftVersion: 0,
@@ -278,7 +305,113 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
   clearDraft: () =>
     set(s => (s.draft === null ? {} : { draft: null, draftVersion: s.draftVersion + 1 })),
+
+  /**
+   * Replace many objects at once — the drag, resize and rotate commit path.
+   *
+   * FLOWS E-07 is the reason this takes an array rather than being called in a
+   * loop: dragging 500 objects must be ONE operation. In Phase 9 that becomes
+   * one batched socket message; in Phase 6, one undo entry (R-UNDO-004). Here
+   * it is one store commit and therefore one renderer repaint, instead of 500.
+   *
+   * R-STATE-002: the Map is mutated in place and `objectsVersion` bumped. A
+   * fresh 10,000-entry Map per pointermove is a visible stutter.
+   *
+   * `sortedIds` is untouched: an update changes geometry, never z-order.
+   */
+  updateObjects: objects =>
+    set(s => {
+      if (objects.length === 0) return {}
+      for (const o of objects) {
+        if (!s.objects.has(o.id)) continue
+        s.objects.set(o.id, { ...o, x: clampCoordValue(o.x), y: clampCoordValue(o.y) })
+      }
+      return { objectsVersion: s.objectsVersion + 1 }
+    }),
+
+  /**
+   * Delete many objects at once — FR-CANVAS-014, and the eraser's commit path.
+   *
+   * NOT UNDOABLE YET. FR-CANVAS-014 requires deletion to be undoable and it
+   * will be: HistoryManager arrives in Phase 6 and hooks exactly here, where
+   * the full set of removed objects is still in hand to build the inverse
+   * CREATE ops from. Nothing about this signature needs to change for that.
+   */
+  deleteObjects: ids =>
+    set(s => {
+      const removed = new Set<ObjectId>()
+      for (const id of ids) {
+        if (s.objects.delete(id)) removed.add(id)
+      }
+      if (removed.size === 0) return {}
+
+      // PHASE 6 SLOT: push one history entry containing an inverse CREATE per
+      // removed object (R-UNDO-004 — a multi-object action is ONE entry).
+      // PHASE 9 SLOT: emit one batched op:delete message.
+      return {
+        sortedIds: s.sortedIds.filter(id => !removed.has(id)),
+        selection: s.selection.filter(id => !removed.has(id)),
+        eraseCandidate:
+          s.eraseCandidate && removed.has(s.eraseCandidate) ? null : s.eraseCandidate,
+        objectsVersion: s.objectsVersion + 1,
+      }
+    }),
+
+  setSelection: ids =>
+    set(s => {
+      // Reference stability matters: `selection` drives React re-renders via
+      // narrow selectors, and a fresh array for an unchanged selection would
+      // re-render the properties panel on every pointermove of a drag.
+      if (sameIds(s.selection, ids)) return {}
+      return { selection: [...ids] }
+    }),
+
+  toggleSelection: id =>
+    set(s => ({
+      selection: s.selection.includes(id)
+        ? s.selection.filter(x => x !== id)
+        : [...s.selection, id],
+    })),
+
+  clearSelection: () => set(s => (s.selection.length === 0 ? {} : { selection: [] })),
+
+  /** FR-CANVAS-022: ALL objects, not just the visible ones. */
+  selectAll: () => set(s => ({ selection: [...s.sortedIds] })),
+
+  setEraseCandidate: id =>
+    set(s => (s.eraseCandidate === id ? {} : { eraseCandidate: id })),
 }))
+
+/** Order-sensitive id comparison, used to avoid pointless selection writes. */
+function sameIds(a: readonly ObjectId[], b: readonly ObjectId[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+
+/** The selected objects, in z-order. Non-React path — renderer and handlers. */
+export function selectedObjects(): BoardObject[] {
+  const { objects, sortedIds, selection } = useBoardStore.getState()
+  if (selection.length === 0) return []
+  const wanted = new Set(selection)
+  const out: BoardObject[] = []
+  for (const id of sortedIds) {
+    const o = objects.get(id)
+    if (o && wanted.has(id)) out.push(o)
+  }
+  return out
+}
+
+/** All objects in z-order. Shared by hit testing and the renderer. */
+export function objectsInZOrder(): BoardObject[] {
+  const { objects, sortedIds } = useBoardStore.getState()
+  const out: BoardObject[] = []
+  for (const id of sortedIds) {
+    const o = objects.get(id)
+    if (o) out.push(o)
+  }
+  return out
+}
 
 /**
  * Fractional z-index key for a locally created object — TRD §6.4, D-8.
