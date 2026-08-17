@@ -1,10 +1,12 @@
 import { Trash } from '@phosphor-icons/react'
 import {
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
   PEN_COLOURS,
+  STICKY_COLOURS,
   STROKE_WIDTH_MAX,
   STROKE_WIDTH_MIN,
   type BoardObject,
-  type StrokeObject,
 } from '@coboard/shared'
 import { selectedObjects, useBoardStore } from '../../../stores/boardStore.js'
 import { ColorSwatch } from '../../ui/ColorSwatch.js'
@@ -14,29 +16,46 @@ import { MIXED, MixedValue, commonValue } from './MixedValue.js'
 /**
  * Properties for the current selection — FLOWS §14.4.
  *
- * The table in §14.4 has three multi-selection rows: same type shows the
- * shared property set, mixed types show only universally shared properties,
- * and differing values render as "Mixed". All three fall out of one rule —
- * offer a control when EVERY selected object has that property, and show
- * "Mixed" when they disagree on its value — so there is no per-combination
- * branching to get wrong as Phase 5 adds types.
+ * §14.4 has three multi-selection rows: same type shows the shared property
+ * set, mixed types show only universally shared properties, and differing
+ * values render as "Mixed". All three fall out of one rule — offer a control
+ * when EVERY selected object has that property, and show "Mixed" when they
+ * disagree on its value — so there is no per-combination branching to get
+ * wrong as new types arrive.
  *
- * PHASE 5/6 SLOTS: z-order controls (§14.4 lists them for every selection row)
- * need `FR-CANVAS-016`'s reordering, and Delete becomes undoable when Phase 6
- * lands. Both are noted at their call sites.
+ * `opacity` lives on BaseObject and is therefore the one universally shared
+ * property: it is the whole panel for a mixed-type selection.
  *
- * R-ARCH-003: this component subscribes to the selection ARRAY and the object
- * VERSION, never to the object Map. It re-renders when the selection changes
- * and when a transform commits — a few times a second at most, not sixty.
+ * R-ARCH-003: subscribes to the selection array and the object VERSION, never
+ * to the object Map. It re-renders when the selection changes and when a
+ * transform commits — a few times a second at most, not sixty.
  */
 
-/** Every selected object carries a stroke colour and width. */
-const isStrokeLike = (o: BoardObject): o is StrokeObject => o.type === 'stroke'
+type Kind = 'stroke' | 'shape' | 'sticky' | 'text' | 'mixed'
+
+function kindOf(objects: readonly BoardObject[]): Kind {
+  const kinds = new Set(
+    objects.map(o =>
+      o.type === 'stroke'
+        ? 'stroke'
+        : o.type === 'sticky'
+          ? 'sticky'
+          : o.type === 'text'
+            ? 'text'
+            : o.type === 'image'
+              ? 'image'
+              : 'shape',
+    ),
+  )
+  if (kinds.size !== 1) return 'mixed'
+  const only = [...kinds][0]
+  return only === 'image' ? 'mixed' : (only as Kind)
+}
 
 export function SelectionProperties() {
   const selectionCount = useBoardStore(s => s.selection.length)
-  // Reading the version rather than the objects themselves keeps the
-  // subscription narrow while still refreshing after a transform commits.
+  // Reading the version rather than the objects keeps the subscription narrow
+  // while still refreshing after a transform or an edit commits.
   useBoardStore(s => s.objectsVersion)
   const updateObjects = useBoardStore(s => s.updateObjects)
   const deleteObjects = useBoardStore(s => s.deleteObjects)
@@ -45,16 +64,55 @@ export function SelectionProperties() {
   const objects = selectedObjects()
   if (objects.length === 0) return null
 
-  const allStrokes = objects.every(isStrokeLike)
-  const strokes = objects.filter(isStrokeLike)
-
-  const colour = allStrokes ? commonValue(strokes, o => o.color) : undefined
-  const width = allStrokes ? commonValue(strokes, o => o.strokeWidth) : undefined
-  // Opacity is on BaseObject, so it is the one property every type shares —
-  // the "universally shared" row of §14.4.
+  const kind = kindOf(objects)
   const opacity = commonValue(objects, o => o.opacity)
 
-  const patch = (fn: (o: BoardObject) => BoardObject) => updateObjects(objects.map(fn))
+  /** Apply a patch to every selected object, in one batched commit. */
+  const patch = (fn: (o: BoardObject) => BoardObject) =>
+    updateObjects(objects.map(o => ({ ...fn(o), updatedAt: Date.now() })))
+
+  /** A colour row, reused by every type that has one. */
+  const colourRow = (
+    label: string,
+    palette: readonly string[],
+    read: (o: BoardObject) => string | undefined,
+    write: (o: BoardObject, colour: string) => BoardObject,
+    columns = 5,
+  ) => {
+    const current = commonValue(objects, read)
+    return (
+      <section className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between">
+          <h4 className="text-xs font-medium text-muted">{label}</h4>
+          {current === MIXED && <MixedValue />}
+        </div>
+        <div
+          className={`grid gap-2 ${columns === 4 ? 'grid-cols-4' : 'grid-cols-5'}`}
+          role="group"
+          aria-label={label}
+        >
+          {palette.map(c => (
+            <ColorSwatch
+              key={c}
+              color={c}
+              context={label === 'Colour' ? 'Colour' : `${label} colour`}
+              selected={
+                current !== MIXED &&
+                typeof current === 'string' &&
+                current.toLowerCase() === c.toLowerCase()
+              }
+              onSelect={next => patch(o => write(o, next))}
+            />
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  const width = commonValue(objects, o =>
+    'strokeWidth' in o ? (o as { strokeWidth: number }).strokeWidth : undefined,
+  )
+  const fontSize = commonValue(objects, o => (o.type === 'text' ? o.fontSize : undefined))
 
   return (
     <div className="flex flex-col gap-4" data-testid="selection-properties">
@@ -64,39 +122,42 @@ export function SelectionProperties() {
         </h3>
       </header>
 
-      {allStrokes && (
-        <section className="flex flex-col gap-2">
-          <div className="flex items-baseline justify-between">
-            <h4 className="text-xs font-medium text-muted">Colour</h4>
-            {colour === MIXED && <MixedValue />}
-          </div>
-          <div className="grid grid-cols-5 gap-2" role="group" aria-label="Stroke colour">
-            {PEN_COLOURS.map(c => (
-              <ColorSwatch
-                key={c}
-                color={c}
-                selected={colour !== MIXED && colour === c}
-                onSelect={next =>
-                  patch(o =>
-                    isStrokeLike(o) ? { ...o, color: next, updatedAt: Date.now() } : o,
-                  )
-                }
-              />
-            ))}
-          </div>
-        </section>
-      )}
+      {kind === 'stroke' &&
+        colourRow(
+          'Colour',
+          PEN_COLOURS,
+          o => (o.type === 'stroke' ? o.color : undefined),
+          (o, c) => (o.type === 'stroke' ? { ...o, color: c } : o),
+        )}
 
-      {/*
-        The sliders carry "Mixed" in their own value readout rather than
-        stacking a separate label above them. The thumb still has to sit
-        somewhere, so it falls back to the minimum — moving it then applies one
-        definite value to the whole selection, which is what the user means by
-        touching it.
-      */}
-      {allStrokes && (
+      {kind === 'shape' &&
+        colourRow(
+          'Stroke',
+          PEN_COLOURS,
+          o => ('stroke' in o ? (o as { stroke: string }).stroke : undefined),
+          (o, c) => ('stroke' in o ? { ...o, stroke: c } : o),
+        )}
+
+      {kind === 'sticky' &&
+        colourRow(
+          'Colour',
+          Object.values(STICKY_COLOURS),
+          o => (o.type === 'sticky' ? o.color : undefined),
+          (o, c) => (o.type === 'sticky' ? { ...o, color: c } : o),
+          4,
+        )}
+
+      {kind === 'text' &&
+        colourRow(
+          'Colour',
+          PEN_COLOURS,
+          o => (o.type === 'text' ? o.color : undefined),
+          (o, c) => (o.type === 'text' ? { ...o, color: c } : o),
+        )}
+
+      {(kind === 'stroke' || kind === 'shape') && (
         <Slider
-          label="Width"
+          label="Stroke width"
           value={width === MIXED || width === undefined ? STROKE_WIDTH_MIN : width}
           min={STROKE_WIDTH_MIN}
           max={STROKE_WIDTH_MAX}
@@ -104,13 +165,27 @@ export function SelectionProperties() {
           mixed={width === MIXED}
           testId="selection-width-slider"
           onChange={next =>
-            patch(o =>
-              isStrokeLike(o) ? { ...o, strokeWidth: next, updatedAt: Date.now() } : o,
-            )
+            patch(o => ('strokeWidth' in o ? { ...o, strokeWidth: next } : o))
           }
         />
       )}
 
+      {kind === 'text' && (
+        <Slider
+          label="Font size"
+          value={fontSize === MIXED || fontSize === undefined ? FONT_SIZE_MIN : fontSize}
+          min={FONT_SIZE_MIN}
+          max={FONT_SIZE_MAX}
+          display={fontSize === MIXED ? 'Mixed' : `${fontSize ?? FONT_SIZE_MIN} px`}
+          mixed={fontSize === MIXED}
+          testId="selection-fontsize-slider"
+          onChange={next =>
+            patch(o => (o.type === 'text' ? { ...o, fontSize: next } : o))
+          }
+        />
+      )}
+
+      {/* The universally shared property — the whole panel for a mixed selection. */}
       <Slider
         label="Opacity"
         value={Math.round(
@@ -122,12 +197,11 @@ export function SelectionProperties() {
         display={opacity === MIXED ? 'Mixed' : `${Math.round((opacity ?? 1) * 100)}%`}
         mixed={opacity === MIXED}
         testId="selection-opacity-slider"
-        onChange={next =>
-          patch(o => ({ ...o, opacity: next / 100, updatedAt: Date.now() }))
-        }
+        onChange={next => patch(o => ({ ...o, opacity: next / 100 }))}
       />
 
-      {/* PHASE 5 SLOT: z-order controls (§14.4) once FR-CANVAS-016 exists. */}
+      {/* Z-order beyond front/back is FR-CANVAS-016, Phase 9. Both of those
+          live in the context menu, where §14.4 and FLOWS §14.2 put them. */}
 
       <button
         type="button"

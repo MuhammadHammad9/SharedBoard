@@ -121,4 +121,31 @@
       opacity: 0;
     }
   }
+
+  /*
+   * Context menu entrance — components/board/ContextMenu.tsx, R-MOTION-034.
+   *
+   * 150 ms, opacity + scale(0.95) → 1, with transform-origin set inline to the
+   * pointer. A menu that grows from its own centre reads as unanchored; one
+   * that grows from the click feels summoned by it.
+   *
+   * scale(0.95), never scale(0) — R-MOTION-032. This is the one entrance
+   * animation in Phase 5: a context menu is an occasional interaction, not a
+   * top-band one, so it clears the R-MOTION-001 frequency gate that keeps
+   * every other surface here static.
+   */
+  [data-crossfade-menu] {
+    opacity: 1;
+    scale: 1;
+    transition:
+      opacity 150ms var(--ease-out),
+      scale 150ms var(--ease-out);
+  }
+
+  @starting-style {
+    [data-crossfade-menu] {
+      opacity: 0;
+      scale: 0.95;
+    }
+  }
 }

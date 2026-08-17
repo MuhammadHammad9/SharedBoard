@@ -8,6 +8,8 @@ import {
   translateObject,
 } from '../../geometry/transformSelection.js'
 import { selectionBounds, type HandleId } from '../../geometry/bounds.js'
+import { findSnaps, type Guide } from '../../geometry/alignmentGuides.js'
+import { getViewRect, isVisible } from '../../geometry/culling.js'
 import { canTransition } from '../machine.js'
 import { releaseCapture } from './select.js'
 
@@ -32,6 +34,14 @@ import { releaseCapture } from './select.js'
 
 /** Pointer travel, in canvas units, before a press counts as a drag. */
 const DRAG_THRESHOLD = 2
+
+/**
+ * Above this many selected objects, alignment guides are not computed.
+ *
+ * See the note at the call site: it is a behaviour decision that happens to
+ * also be the difference between 45 and 60 fps on the 500-object stress drag.
+ */
+const SNAP_MAX_SELECTION = 50
 
 /** Snapshot the selection so updates can always recompute from the origin. */
 function snapshot(): { ids: ObjectId[]; origin: Map<ObjectId, BoardObject> } {
@@ -58,17 +68,18 @@ export function beginDrag(pointerId: number, px: number, py: number): boolean {
     startY: py,
     origin,
     moved: false,
+    guides: [],
   })
   return true
 }
 
-export function updateDrag(px: number, py: number): void {
+export function updateDrag(px: number, py: number, snapEnabled = true): void {
   const state = boardStore.getState()
   const { interaction } = state
   if (interaction.type !== 'DRAGGING') return
 
-  const dx = px - interaction.startX
-  const dy = py - interaction.startY
+  let dx = px - interaction.startX
+  let dy = py - interaction.startY
 
   // A press that never really moved must not be recorded as a drag — it is a
   // click, and committing a zero-delta update would create a pointless op and
@@ -77,9 +88,65 @@ export function updateDrag(px: number, py: number): void {
     !interaction.moved &&
     Math.abs(dx) < DRAG_THRESHOLD &&
     Math.abs(dy) < DRAG_THRESHOLD
-  )
+  ) {
     return
-  if (!interaction.moved) state.setInteraction({ ...interaction, moved: true })
+  }
+
+  /*
+   * Alignment guides — FR-CANVAS-020.
+   *
+   * The snap is computed from the ORIGIN box plus the raw delta, never from
+   * the already-snapped position. Feeding a snapped box back in on the next
+   * frame would let the guide capture the drag and refuse to let go.
+   *
+   * Candidates are non-selected objects inside the viewport: an object cannot
+   * align to itself, and one nobody can see is not a landmark anyone is
+   * aiming at. Ctrl disables the whole thing, which is how the user places
+   * something deliberately close to but not aligned with a neighbour.
+   */
+  let guides: Guide[] = []
+  const originBox = selectionBounds([...interaction.origin.values()])
+
+  /*
+   * Guides are skipped for large selections, and the reason is behavioural
+   * before it is a performance one: aligning the union box of two hundred
+   * objects to one neighbour's edge is not something anyone is trying to do.
+   * FR-CANVAS-020 describes placing an object next to another object.
+   *
+   * It also removes the search from the E-07 stress path, where it was the
+   * difference between 45 and 60 fps on a 500-object drag — the scan is O(all
+   * objects) per frame, on top of the culling pass the renderer already does.
+   */
+  const worthSnapping = interaction.ids.length <= SNAP_MAX_SELECTION
+
+  if (snapEnabled && worthSnapping && originBox) {
+    const { width, height } = viewSize()
+    const view = getViewRect(state.viewport, width, height)
+    const selected = new Set(interaction.ids)
+
+    const others: BoardObject[] = []
+    for (const o of state.objects.values()) {
+      if (!selected.has(o.id) && isVisible(o, view)) others.push(o)
+    }
+
+    const snap = findSnaps(
+      { ...originBox, x: originBox.x + dx, y: originBox.y + dy },
+      others,
+      state.viewport.zoom,
+      true,
+    )
+    dx += snap.dx
+    dy += snap.dy
+    guides = snap.guides
+  }
+
+  // Write the interaction back only when something the renderer cares about
+  // actually changed — `moved`, or the guide set. A fresh object every
+  // pointermove would dirty layer 3 sixty times a second for nothing.
+  const guidesChanged = guides.length !== interaction.guides.length || guides.length > 0
+  if (!interaction.moved || guidesChanged) {
+    state.setInteraction({ ...interaction, moved: true, guides })
+  }
 
   const next: BoardObject[] = []
   for (const id of interaction.ids) {
@@ -91,6 +158,21 @@ export function updateDrag(px: number, py: number): void {
   // PHASE 10 SLOT: throttled presence:transform at 20 Hz, dropping to 10 Hz
   // above 100 selected objects (FLOWS E-07). Ephemeral, never an op.
 }
+
+/**
+ * Viewport pixel size, injected by the Canvas at mount.
+ *
+ * The guide search needs it to cull to the visible set, and this module has no
+ * DOM of its own. An explicit injection point beats a hidden global.
+ */
+let viewSizeSource: () => { width: number; height: number } = () => ({
+  width: 0,
+  height: 0,
+})
+export const setViewSizeSource = (fn: () => { width: number; height: number }): void => {
+  viewSizeSource = fn
+}
+const viewSize = () => viewSizeSource()
 
 export function endDrag(element: Element | null): void {
   const { interaction, setInteraction } = boardStore.getState()

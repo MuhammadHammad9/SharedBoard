@@ -16,10 +16,14 @@ import {
   toCanvas,
 } from './interaction/handlers/select.js'
 import { HANDLE_CURSORS } from './geometry/bounds.js'
+import { buildObject } from './interaction/handlers/create.js'
+import { setViewSizeSource } from './interaction/handlers/transform.js'
+import { TextOverlay } from './TextOverlay.js'
+import { ContextMenu } from '../../components/board/ContextMenu.js'
 import { resizeCanvas } from './renderer/resizeCanvas.js'
 import { getViewRect, isVisible } from './geometry/culling.js'
 import { useKeyboard } from './interaction/useKeyboard.js'
-import { usePointer } from './interaction/usePointer.js'
+import { getLastPointer, usePointer } from './interaction/usePointer.js'
 import { useWheel } from './interaction/useWheel.js'
 import { devFlags, loadStressFixture } from './devFixture.js'
 
@@ -89,8 +93,18 @@ function readSelectionView(): SelectionView {
     marquee: interaction.type === 'MARQUEEING' ? marqueeRect(interaction) : null,
     rotationDeg: interaction.type === 'ROTATING' ? interaction.currentDeg : null,
     eraseCandidate,
+    // The in-progress shape is built through the same factory the commit uses,
+    // so the preview and the result cannot diverge.
+    creating:
+      interaction.type === 'CREATING'
+        ? buildObject(interaction.tool, interaction.box, PREVIEW_ID)
+        : null,
+    guides: interaction.type === 'DRAGGING' ? interaction.guides : [],
   }
 }
+
+/** A fixed id for the un-committed preview object. It never reaches the store. */
+const PREVIEW_ID = '00000000-0000-4000-8000-000000000000' as ObjectId
 
 export function Canvas() {
   /**
@@ -126,7 +140,7 @@ export function Canvas() {
     rendererRef.current?.noteInput(timeStamp)
   }, [])
 
-  const { spaceHeld } = useKeyboard({ getSize, getElement })
+  const { spaceHeld } = useKeyboard({ getSize, getElement, getPointer: getLastPointer })
   usePointer(container, spaceHeld, { onInput: noteInput })
   useWheel(container)
 
@@ -173,6 +187,9 @@ export function Canvas() {
     }
 
     applySize()
+    // The alignment-guide search culls to the visible set and needs the
+    // viewport's pixel size; hand it the same source the renderer uses.
+    setViewSizeSource(() => sizeRef.current)
     const resizeObserver = new ResizeObserver(applySize)
     resizeObserver.observe(container)
 
@@ -386,8 +403,10 @@ export function Canvas() {
         <div id="text-overlay" className="pointer-events-none absolute inset-0" />
       </div>
 
+      <TextOverlay container={container} />
       <Toolbar />
       <PropertiesPanel />
+      <ContextMenu container={container} getSize={getSize} />
       <ZoomControls getSize={getSize} />
       {flags.debug && <CanvasDebugOverlay read={readDebug} />}
     </div>

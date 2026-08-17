@@ -24,11 +24,24 @@ function stubContext() {
     setTransform: vi.fn(() => void calls.setTransform++),
     clearRect: vi.fn(() => void calls.clearRect++),
     fillRect: vi.fn(() => void calls.fillRect++),
+    // Shapes render for real from Phase 5, so the stub needs the path API.
+    beginPath: vi.fn(),
+    rect: vi.fn(),
+    roundRect: vi.fn(),
+    ellipse: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    quadraticCurveTo: vi.fn(),
+    stroke: vi.fn(),
+    fill: vi.fn(),
     fillStyle: '',
+    strokeStyle: '',
     globalAlpha: 1,
     lineWidth: 1,
+    lineCap: 'butt',
+    lineJoin: 'miter',
   }
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls }
+  return { ctx: ctx as unknown as CanvasRenderingContext2D & typeof ctx, calls }
 }
 
 function makeObject(i: number, overrides: Partial<BoardObject> = {}): BoardObject {
@@ -157,13 +170,14 @@ describe('culling in the draw path', () => {
     ]
     const { renderer, objectsTarget } = build(objects)
     renderer.renderOnce()
-    expect(objectsTarget.calls.fillRect).toBe(2)
+    // Rects stroke a path from Phase 5 onward rather than filling a blockout.
+    expect(objectsTarget.ctx.stroke).toHaveBeenCalledTimes(2)
   })
 
   it('draws nothing when every object is off-screen', () => {
     const { renderer, objectsTarget } = build([makeObject(1, { x: 50_000, y: 50_000 })])
     renderer.renderOnce()
-    expect(objectsTarget.calls.fillRect).toBe(0)
+    expect(objectsTarget.ctx.stroke).not.toHaveBeenCalled()
   })
 })
 

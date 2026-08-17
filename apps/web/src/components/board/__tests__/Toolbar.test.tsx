@@ -90,25 +90,28 @@ describe('Toolbar — FLOWS §14.2', () => {
     const disabled = (name: string) =>
       (screen.getByRole('button', { name }) as HTMLButtonElement).disabled
 
-    for (const name of ['Select', 'Hand', 'Pen', 'Eraser'])
-      expect(disabled(name)).toBe(false)
     for (const name of [
+      'Select',
+      'Hand',
+      'Pen',
+      'Eraser',
       'Rectangle',
       'Ellipse',
       'Line',
       'Arrow',
       'Sticky note',
       'Text',
-      'Image',
     ]) {
-      expect(disabled(name)).toBe(true)
+      expect(disabled(name)).toBe(false)
     }
+    // Image alone is still unbuilt — FR-CANVAS-010 [P1], Phase 12.
+    expect(disabled('Image')).toBe(true)
   })
 
   it('cannot activate a disabled tool by clicking it', async () => {
     const user = userEvent.setup()
     render(<Board />)
-    await user.click(screen.getByRole('button', { name: 'Rectangle' }))
+    await user.click(screen.getByRole('button', { name: 'Image' }))
     expect(boardStore.getState().activeTool).toBe('select')
   })
 

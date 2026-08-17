@@ -9,6 +9,13 @@ import {
   cancelRotate,
   nudgeSelection,
 } from './handlers/transform.js'
+import { cancelCreate } from './handlers/create.js'
+import {
+  copySelection,
+  cutSelection,
+  duplicateSelection,
+  pasteAt,
+} from './handlers/clipboardActions.js'
 
 /** Arrow key → unit direction. FR-CANVAS-011. */
 const ARROW_DELTAS: Record<string, { x: number; y: number } | undefined> = {
@@ -47,6 +54,13 @@ export interface KeyboardOptions {
   getSize: () => { width: number; height: number }
   /** The canvas element, so a cancelled interaction can release its pointer. */
   getElement?: () => Element | null
+  /**
+   * Last known pointer position in CANVAS coordinates.
+   *
+   * FR-CANVAS-015 pastes "at the pointer position", but a keyboard event does
+   * not carry one — so the pointer handler records it and this reads it back.
+   */
+  getPointer?: () => { x: number; y: number }
 }
 
 export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolean } {
@@ -89,6 +103,14 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
           case 'ROTATING':
             cancelRotate(el)
             return
+          case 'CREATING':
+            cancelCreate(el)
+            return
+          case 'EDITING_TEXT':
+            // Handled by the overlay itself, which owns focus. Reaching here
+            // means the overlay is gone but the state is not — unwind it.
+            store.endTextEdit()
+            return
           default:
             // FR-CANVAS-022: Escape deselects and returns to the Select tool.
             store.clearSelection()
@@ -128,6 +150,30 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
             // FR-CANVAS-022: ALL objects, not just the visible ones.
             e.preventDefault()
             store.selectAll()
+            return
+          // Clipboard — FR-CANVAS-015.
+          case 'c':
+            if (store.selection.length === 0) return
+            e.preventDefault()
+            copySelection()
+            return
+          case 'x':
+            if (store.selection.length === 0) return
+            e.preventDefault()
+            cutSelection()
+            return
+          case 'v': {
+            e.preventDefault()
+            // "Paste places objects at the pointer position" — the last known
+            // pointer position, since a keyboard event carries none.
+            const at = optionsRef.current.getPointer?.() ?? { x: 0, y: 0 }
+            void pasteAt(at.x, at.y)
+            return
+          }
+          case 'd':
+            if (store.selection.length === 0) return
+            e.preventDefault()
+            duplicateSelection()
             return
           case '0':
             e.preventDefault()
@@ -177,7 +223,24 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
         case 'e':
           store.setActiveTool('eraser')
           break
-        // E R O L A N T are bound by the phases that implement those tools.
+        case 'r':
+          store.setActiveTool('rect')
+          break
+        case 'o':
+          store.setActiveTool('ellipse')
+          break
+        case 'l':
+          store.setActiveTool('line')
+          break
+        case 'a':
+          store.setActiveTool('arrow')
+          break
+        case 'n':
+          store.setActiveTool('sticky')
+          break
+        case 't':
+          store.setActiveTool('text')
+          break
         default:
           break
       }

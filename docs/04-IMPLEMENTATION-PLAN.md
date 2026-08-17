@@ -1351,6 +1351,17 @@ Alignment guides must appear instantly. A guide that fades in is a guide that ar
 14. Alignment guides with 6-screen-px threshold, snapping, and `Ctrl` to disable.
 15. Word wrapping and text measurement helpers shared by sticky and text rendering.
 
+> **Corrections applied during implementation.**
+>
+> - **Phase 5 necessarily delivers a slice of `FR-CANVAS-016`.** The context menu is specified to contain "Bring to front, Send to back", but z-order is `FR-CANVAS-016`, which Appendix A assigns to **Phase 9**. Shipping a menu with two dead entries is worse than implementing them, and `nextZIndex` already existed from Phase 3. Front and back land here; bring-forward, send-backward, the `]`/`[` shortcuts and generating a key BETWEEN two neighbours stay with the full requirement in Phase 9.
+> - **A new `CREATING` machine state.** FLOWS §15.1's `DRAWING` covers freehand only. A shape drag has no point list, re-derives its whole geometry from two corners on every move, and changes meaning under Shift and Alt — folding it into `DRAWING` would mean one state with two incompatible payloads. Like `DRAWING` and `ERASING`, it cannot be suspended by `PANNING`.
+> - **Alignment guides are skipped above 50 selected objects.** Behavioural before it is a performance decision: aligning the union box of hundreds of objects to one neighbour's edge is not something anyone is attempting, and `FR-CANVAS-020` describes placing an object beside another object.
+> - **Text and sticky reflow-on-resize, deferred from Phase 4, is now live.** `applyBoxTransform`'s marked branch is filled: a sticky's `fontSize: 'auto'` re-fits on every resize, so the text reflows rather than the glyphs scaling.
+> - **`ColorSwatch` labels are context-qualified.** The shape panel shows stroke and fill rows over the same ten colours; without a prefix every swatch in one row has an accessible name identical to its twin in the other, which satisfies `R-A11Y-002` on a technicality while telling a screen-reader user nothing.
+> - **`SelectionProperties` became type-aware.** §14.4's "Selection (single) — that object's full property set" was only implemented for strokes in Phase 4, because strokes were the only type. Selecting a rectangle offered nothing but opacity. It now branches per kind and still collapses to opacity alone for a mixed-type selection, which is exactly §14.4's third row.
+>
+> **Deferred, and stated rather than quietly dropped:** `FR-CANVAS-015`'s "cross-BOARD paste" cannot be exercised — there is one board until Phase 8. The clipboard payload is board-agnostic, so it will work when boards exist; only the test is missing.
+
 ### Files
 
 ```

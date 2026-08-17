@@ -35,6 +35,7 @@
 
 import type { BoardObject, ObjectId, Rect } from '@coboard/shared'
 import type { HandleId } from '../geometry/bounds.js'
+import type { Guide } from '../geometry/alignmentGuides.js'
 
 export type InteractionState =
   | { type: 'IDLE' }
@@ -70,6 +71,8 @@ export type InteractionState =
       origin: Map<ObjectId, BoardObject>
       /** True once the pointer has moved far enough to count as a drag. */
       moved: boolean
+      /** Active alignment guides — FR-CANVAS-020. Drawn on layer 2. */
+      guides: Guide[]
     }
   | {
       type: 'RESIZING'
@@ -94,6 +97,23 @@ export type InteractionState =
     }
   /** Object eraser drag — FR-CANVAS-006. */
   | { type: 'ERASING'; pointerId: number }
+  /**
+   * Drag-defining a new shape — FR-CANVAS-007.
+   *
+   * Not in FLOWS §15.1's diagram, whose DRAWING state covers freehand only.
+   * A shape drag is a distinct gesture: it has no point list, it re-derives
+   * its whole geometry from two corners on every move, and Shift/Alt change
+   * its meaning. Folding it into DRAWING would mean one state with two
+   * incompatible payloads.
+   */
+  | {
+      type: 'CREATING'
+      pointerId: number
+      tool: 'rect' | 'ellipse' | 'line' | 'arrow'
+      startX: number
+      startY: number
+      box: Rect
+    }
   | { type: 'DRAWING'; pointerId: number; opId: string }
   | { type: 'EDITING_TEXT'; objectId: ObjectId }
 
@@ -108,6 +128,7 @@ export const CAPTURING_STATES: readonly InteractionType[] = [
   'ROTATING',
   'DRAWING',
   'ERASING',
+  'CREATING',
 ]
 
 export const isCapturing = (t: InteractionType): boolean => CAPTURING_STATES.includes(t)
@@ -125,6 +146,10 @@ export const isCapturing = (t: InteractionType): boolean => CAPTURING_STATES.inc
  * destructive pointer drag over a path; suspending it to pan would leave the
  * user holding a live delete gesture while the board slides underneath them.
  * The conservative reading is the safe one where deletion is involved.
+ *
+ * CREATING is absent too: a shape drag is defining geometry from a fixed
+ * origin, and moving the paper under it would silently change what the user
+ * is drawing.
  */
 export const PAN_ENTRY_STATES: readonly InteractionType[] = [
   'IDLE',

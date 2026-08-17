@@ -2,20 +2,24 @@ import {
   POLYLINE_ZOOM_THRESHOLD,
   type BoardObject,
   type ObjectType,
+  type ShapeObject,
+  type StickyObject,
   type StrokeObject,
+  type TextObject,
   type Viewport,
 } from '@coboard/shared'
 import { collectVisible, getViewRect } from '../geometry/culling.js'
 import { applyStrokeStyle, strokePath, strokeStyleKey } from './shapes/stroke.js'
+import { applyShapeStyle, drawShape, shapeStyleKey } from './shapes/shapes.js'
+import { drawSticky, drawText } from './shapes/textual.js'
 
 /**
  * Layer 1 — committed objects.
  *
- * PHASE 3 SCOPE: strokes render for real (TRD §7.5, quadratic curves through
- * midpoints). The other seven types still draw as tinted bounding boxes — the
+ * PHASE 5 SCOPE: strokes, shapes, sticky notes and text all render for real.
+ * Only images still draw as a tinted bounding box — the last survivor of the
  * transitional BLOCKOUT renderer Phase 2 added so the 10,000-object frame-rate
- * gate could be measured honestly. Shapes and sticky notes replace their
- * blockout in Phase 5, text and images in Phase 5 and 12.
+ * gate could be measured honestly. FR-CANVAS-010 retires it in Phase 12.
  *
  * R-CANVAS-021: apply the viewport transform ONCE per frame, not per object.
  * R-CANVAS-024: never allocate inside the draw loop.
@@ -57,17 +61,13 @@ export interface DrawObjectsArgs {
 const DANGER = '#DC2626'
 
 /**
- * Blockout tints for the types that have no real renderer yet. Phase 5 deletes
- * the entries it replaces; the palette exists only so the stress board is
- * legible while we measure.
+ * Blockout tint for the ONE type still without a real renderer.
+ *
+ * Phase 5 replaced shapes, sticky notes and text; images are FR-CANVAS-010
+ * [P1] and land in Phase 12, so the placeholder rectangle survives for them
+ * alone. When that goes, so does this and the whole blockout branch below.
  */
 const TINTS: Partial<Record<ObjectType, string>> = {
-  rect: '#3B82F6',
-  ellipse: '#22C55E',
-  line: '#71717A',
-  arrow: '#A855F7',
-  sticky: '#FEF08A',
-  text: '#18181B',
   image: '#E4E4E7',
 }
 
@@ -137,6 +137,44 @@ export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs
       ctx.globalAlpha = 0.85
       ctx.fillRect(o.x, o.y, o.width, o.height)
       ctx.restore()
+      continue
+    }
+
+    if (
+      o.type === 'rect' ||
+      o.type === 'ellipse' ||
+      o.type === 'line' ||
+      o.type === 'arrow'
+    ) {
+      const s = o as ShapeObject
+      const key = shapeStyleKey(s)
+      if (key !== styleKey) {
+        applyShapeStyle(ctx, s)
+        styleKey = key
+        blockoutTint = ''
+      }
+      drawShape(ctx, s)
+      continue
+    }
+
+    /*
+     * Sticky notes and text each save/restore their own context. They set
+     * font, alignment, baseline, clip regions and gradients — far more state
+     * than a style key can usefully describe, and leaking any of it into the
+     * next object would be a rendering bug that only shows up on boards with a
+     * particular ordering. Batching is for the cheap uniform cases.
+     */
+    if (o.type === 'sticky') {
+      drawSticky(ctx, o as StickyObject)
+      styleKey = ''
+      blockoutTint = ''
+      continue
+    }
+
+    if (o.type === 'text') {
+      drawText(ctx, o as TextObject)
+      styleKey = ''
+      blockoutTint = ''
       continue
     }
 

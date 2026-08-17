@@ -1,6 +1,8 @@
 import { useBoardStore } from '../../stores/boardStore.js'
 import { PenProperties } from './properties/PenProperties.js'
 import { SelectionProperties } from './properties/SelectionProperties.js'
+import { ShapeProperties } from './properties/ShapeProperties.js'
+import { StickyProperties, TextProperties } from './properties/StickyTextProperties.js'
 
 /**
  * Properties panel — FLOWS §14.2 and §14.4. 240 px, floating right, 16 px from
@@ -38,6 +40,15 @@ export function PropertiesPanel() {
     <SelectionProperties />
   ) : activeTool === 'pen' ? (
     <PenProperties />
+  ) : activeTool === 'rect' ||
+    activeTool === 'ellipse' ||
+    activeTool === 'line' ||
+    activeTool === 'arrow' ? (
+    <ShapeProperties />
+  ) : activeTool === 'sticky' ? (
+    <StickyProperties />
+  ) : activeTool === 'text' ? (
+    <TextProperties />
   ) : activeTool === 'eraser' ? (
     // FLOWS §14.4: "Eraser — eraser size indicator only". The object eraser
     // has no size to configure (the pixel eraser that would is [P2] and out of
