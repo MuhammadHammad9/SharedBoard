@@ -2,9 +2,9 @@
 
 **A real-time collaborative whiteboard.** Multiple people open the same board URL and simultaneously draw freehand strokes, place shapes, write text and drop sticky notes. Every action appears on every other screen within a few hundred milliseconds, with live labelled cursors.
 
-> **Status: Phase 4 complete.** Monorepo, shared package, design tokens, CI gates, the canvas surface with pan and zoom, the pen tool, and the **full selection toolkit** — click, shift-click, marquee, move, resize, rotate, delete, nudge, and an object eraser. Shapes, sticky notes and text arrive in Phase 5. See [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md).
+> **Status: Phase 5 complete — milestone M1 all but done.** Monorepo, shared package, design tokens, CI gates, the canvas with pan and zoom, the pen, the full selection toolkit, and **every remaining object type** — rectangles, ellipses, lines, arrows, sticky notes and text, with a DOM text overlay, copy/paste, a context menu and alignment guides. Undo/redo is Phase 6. See [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md).
 >
-> Try it: `pnpm dev`, then `http://localhost:5173/?debug=1`. Press `P` to draw, `V` to select, `E` to erase. Add `&stress=1` for the 10,000-object stress board with the frame-timing and input-latency overlay.
+> Try it: `pnpm dev`, then `http://localhost:5173/?debug=1`. `V` select · `P` pen · `E` eraser · `R O L A` shapes · `N` sticky · `T` text. Add `&stress=1` for the 10,000-object stress board with the frame-timing overlay.
 
 ---
 

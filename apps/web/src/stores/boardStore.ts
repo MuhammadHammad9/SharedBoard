@@ -3,6 +3,7 @@ import {
   COORD_MAX,
   COORD_MIN,
   PEN_COLOURS,
+  STICKY_COLOURS,
   STROKE_WIDTH_MAX,
   STROKE_WIDTH_MIN,
   ZOOM_MAX,
@@ -59,7 +60,18 @@ export type Tool =
  * a shortcut that selects a tool which draws nothing is worse than no
  * shortcut. Extended by each phase that lands a tool.
  */
-export const ACTIVE_TOOLS: readonly Tool[] = ['select', 'hand', 'pen', 'eraser']
+export const ACTIVE_TOOLS: readonly Tool[] = [
+  'select',
+  'hand',
+  'pen',
+  'eraser',
+  'rect',
+  'ellipse',
+  'line',
+  'arrow',
+  'sticky',
+  'text',
+]
 
 export const isActiveTool = (t: string): t is Tool =>
   (ACTIVE_TOOLS as readonly string[]).includes(t)
@@ -72,6 +84,47 @@ export interface PenSettings {
 }
 
 const DEFAULT_PEN: PenSettings = { color: PEN_COLOURS[0], strokeWidth: 3, opacity: 1 }
+
+/** Shape settings — FR-CANVAS-007, FLOWS §14.4. */
+export interface ShapeSettings {
+  stroke: string
+  strokeWidth: number
+  fill: string
+  cornerRadius: number
+  opacity: number
+}
+
+const DEFAULT_SHAPE: ShapeSettings = {
+  stroke: PEN_COLOURS[0],
+  strokeWidth: 2,
+  fill: 'none',
+  cornerRadius: 0,
+  opacity: 1,
+}
+
+/** Sticky settings — FR-CANVAS-008. Colour is one of the 8 frozen values. */
+export interface StickySettings {
+  color: string
+}
+
+const DEFAULT_STICKY: StickySettings = { color: STICKY_COLOURS.yellow }
+
+/** Text settings — FR-CANVAS-009. */
+export interface TextSettings {
+  color: string
+  fontSize: number
+  bold: boolean
+  italic: boolean
+  textAlign: 'left' | 'center' | 'right'
+}
+
+const DEFAULT_TEXT: TextSettings = {
+  color: PEN_COLOURS[0],
+  fontSize: 16,
+  bold: false,
+  italic: false,
+  textAlign: 'left',
+}
 
 interface BoardState {
   // ─── Document state ───
@@ -87,6 +140,9 @@ interface BoardState {
   // ─── Local UI state, never synced ───
   activeTool: Tool
   pen: PenSettings
+  shape: ShapeSettings
+  sticky: StickySettings
+  text: TextSettings
   interaction: InteractionState
 
   /**
@@ -106,6 +162,26 @@ interface BoardState {
   eraseCandidate: ObjectId | null
 
   /**
+   * The object the DOM text overlay is editing — TRD §9.1, FLOWS §15.1.
+   *
+   * `justCreated` drives the empty-discard rule (FLOWS §8.2.2 step 4): an
+   * empty note is deleted on blur only if it was created in THIS interaction.
+   * Clearing an existing note's text and clicking away is a deliberate edit,
+   * not an accident, and must not silently destroy the object.
+   */
+  editingTextId: ObjectId | null
+  editingJustCreated: boolean
+
+  /**
+   * In-memory clipboard — FR-CANVAS-015.
+   *
+   * The system clipboard is the primary channel (it is what makes cross-tab
+   * paste work), but reading it can be denied by permission policy. This is
+   * the fallback so copy/paste never simply stops working inside one tab.
+   */
+  clipboard: BoardObject[]
+
+  /**
    * The in-flight stroke. Points are pushed IN PLACE and `draftVersion` bumped
    * — R-STATE-002. Cloning a 400-element array on every pointermove at 240 Hz
    * is exactly the allocation churn R-CANVAS-024 exists to prevent.
@@ -122,6 +198,12 @@ interface BoardState {
   zoomToFit: (viewWidth: number, viewHeight: number) => void
   setActiveTool: (t: Tool) => void
   setPen: (patch: Partial<PenSettings>) => void
+  setShape: (patch: Partial<ShapeSettings>) => void
+  setSticky: (patch: Partial<StickySettings>) => void
+  setText: (patch: Partial<TextSettings>) => void
+  beginTextEdit: (id: ObjectId, justCreated: boolean) => void
+  endTextEdit: () => void
+  setClipboard: (objects: BoardObject[]) => void
   setInteraction: (i: InteractionState) => void
   loadObjects: (objects: BoardObject[]) => void
   addObject: (o: BoardObject) => void
@@ -131,6 +213,8 @@ interface BoardState {
   /** Delete many objects in one commit — FR-CANVAS-014. */
   deleteObjects: (ids: readonly ObjectId[]) => void
   setSelection: (ids: readonly ObjectId[]) => void
+  /** Recompute the cached z-order after zIndex values change — R-CONV-009. */
+  reorder: () => void
   toggleSelection: (id: ObjectId) => void
   clearSelection: () => void
   selectAll: () => void
@@ -161,9 +245,15 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
   activeTool: restored.activeTool as Tool,
   pen: restored.pen,
+  shape: DEFAULT_SHAPE,
+  sticky: DEFAULT_STICKY,
+  text: DEFAULT_TEXT,
   interaction: { type: 'IDLE' },
   selection: [],
   eraseCandidate: null,
+  editingTextId: null,
+  editingJustCreated: false,
+  clipboard: [],
 
   draft: null,
   draftVersion: 0,
@@ -235,6 +325,31 @@ export const useBoardStore = create<BoardState>((set, get) => ({
       savePrefs({ activeTool: s.activeTool, pen })
       return { pen }
     }),
+
+  setShape: patch => set(s => ({ shape: { ...s.shape, ...patch } })),
+  setSticky: patch => set(s => ({ sticky: { ...s.sticky, ...patch } })),
+  setText: patch => set(s => ({ text: { ...s.text, ...patch } })),
+
+  beginTextEdit: (id, justCreated) =>
+    set({
+      editingTextId: id,
+      editingJustCreated: justCreated,
+      interaction: { type: 'EDITING_TEXT', objectId: id },
+    }),
+
+  endTextEdit: () =>
+    set(s =>
+      s.editingTextId === null
+        ? {}
+        : {
+            editingTextId: null,
+            editingJustCreated: false,
+            interaction:
+              s.interaction.type === 'EDITING_TEXT' ? { type: 'IDLE' } : s.interaction,
+          },
+    ),
+
+  setClipboard: objects => set({ clipboard: objects }),
 
   setInteraction: i => set({ interaction: i }),
 
@@ -356,6 +471,22 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         objectsVersion: s.objectsVersion + 1,
       }
     }),
+
+  /**
+   * Rebuild `sortedIds` from the objects' zIndex values.
+   *
+   * Only needed when z-order CHANGES — `updateObjects` deliberately leaves the
+   * cached order alone, because a drag changes geometry thousands of times and
+   * re-sorting 10,000 ids on each of those frames would be the whole frame
+   * budget spent on an order that did not move.
+   */
+  reorder: () =>
+    set(s => ({
+      sortedIds: [...s.objects.values()]
+        .sort((a, b) => (a.zIndex < b.zIndex ? -1 : a.zIndex > b.zIndex ? 1 : 0))
+        .map(o => o.id),
+      objectsVersion: s.objectsVersion + 1,
+    })),
 
   setSelection: ids =>
     set(s => {

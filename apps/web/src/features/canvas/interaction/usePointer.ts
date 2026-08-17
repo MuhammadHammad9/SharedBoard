@@ -25,6 +25,15 @@ import {
   updateRotate,
 } from './handlers/transform.js'
 import { beginErase, endErase, eraseAt, updateEraseHover } from './handlers/erase.js'
+import {
+  beginCreate,
+  cancelCreate,
+  endCreate,
+  isShapeTool,
+  placeAndEdit,
+  updateCreate,
+} from './handlers/create.js'
+import { commitTextEdit, editExisting } from './handlers/textEdit.js'
 
 /**
  * Pointer handling. FLOWS §15.1.
@@ -42,8 +51,18 @@ import { beginErase, endErase, eraseAt, updateEraseHover } from './handlers/eras
 
 const MIDDLE_BUTTON = 1
 
-/** Tools that draw on pointerdown. Grows as Phase 5 lands shapes. */
+/** Tools that draw a freehand stroke on pointerdown. */
 const DRAW_TOOLS = new Set(['pen'])
+
+/**
+ * Last pointer position in canvas coordinates, module-level.
+ *
+ * Mutated in place rather than stored in React or Zustand: it changes on every
+ * pointermove and nothing renders from it (R-STATE-003). Only the paste
+ * handler reads it, once per paste.
+ */
+const lastPointer = { x: 0, y: 0 }
+export const getLastPointer = (): { x: number; y: number } => ({ ...lastPointer })
 
 export interface PointerOptions {
   /** Renderer hook for input-to-pixel latency. Called with the event clock. */
@@ -102,7 +121,13 @@ export function usePointer(
     }
 
     const onPointerDown = (e: PointerEvent) => {
-      const { activeTool } = boardStore.getState()
+      const { activeTool, editingTextId } = boardStore.getState()
+
+      // A press anywhere on the canvas ends an open text edit first — the
+      // overlay's own capture-phase handler usually gets there first, but a
+      // press that lands inside the overlay's rect while it is already closing
+      // must not start a gesture against a half-committed object.
+      if (editingTextId) commitTextEdit()
 
       // Pan outranks everything. Middle-mouse and Space are explicit "move the
       // paper" gestures and must work regardless of which tool is selected.
@@ -126,6 +151,15 @@ export function usePointer(
         started = beginErase(e.pointerId, c.x, c.y)
       } else if (DRAW_TOOLS.has(activeTool)) {
         started = beginDraw(e.pointerId, p.x, p.y, e.pressure)
+      } else if (isShapeTool(activeTool)) {
+        started = beginCreate(e.pointerId, activeTool, c.x, c.y)
+      } else if (activeTool === 'sticky' || activeTool === 'text') {
+        // Click-placed and straight into edit mode — FR-CANVAS-008's "click
+        // and type without a second action". No pointer capture: there is no
+        // drag to track.
+        placeAndEdit(activeTool, c.x, c.y)
+        e.preventDefault()
+        return
       } else if (activeTool === 'select') {
         started = beginSelectGesture(e, c.x, c.y)
       }
@@ -139,6 +173,13 @@ export function usePointer(
     const onPointerMove = (e: PointerEvent) => {
       const { interaction, activeTool } = boardStore.getState()
       const p = localPoint(e)
+
+      // Remember where the pointer is, in CANVAS space, so Cmd+V can paste
+      // "at the pointer position" (FR-CANVAS-015) — a keyboard event has none
+      // of its own.
+      const here = toCanvas(p.x, p.y)
+      lastPointer.x = here.x
+      lastPointer.y = here.y
 
       switch (interaction.type) {
         case 'PANNING':
@@ -178,7 +219,15 @@ export function usePointer(
 
         case 'DRAGGING': {
           const c = toCanvas(p.x, p.y)
-          updateDrag(c.x, c.y)
+          // FR-CANVAS-020: Ctrl temporarily disables snapping.
+          updateDrag(c.x, c.y, !e.ctrlKey)
+          onInput?.(e.timeStamp)
+          return
+        }
+
+        case 'CREATING': {
+          const c = toCanvas(p.x, p.y)
+          updateCreate(c.x, c.y, e.shiftKey, e.altKey)
           onInput?.(e.timeStamp)
           return
         }
@@ -235,6 +284,9 @@ export function usePointer(
         case 'ERASING':
           endErase(element)
           return
+        case 'CREATING':
+          endCreate(element)
+          return
         default:
           endPan(element)
       }
@@ -269,11 +321,35 @@ export function usePointer(
         case 'ERASING':
           endErase(element)
           return
+        case 'CREATING':
+          // A cancelled shape drag commits nothing: the user never released
+          // the pointer, so they never said "this is the shape I want".
+          cancelCreate(element)
+          return
         default:
           endPan(element)
       }
     }
 
+    /**
+     * Double-click a sticky note or text object to edit it — FLOWS §15.1's
+     * EDITING_TEXT entry.
+     *
+     * A single click selects; only a deliberate double-click opens the editor.
+     * Otherwise every attempt to drag a note would drop the user into typing.
+     */
+    const onDoubleClick = (e: MouseEvent) => {
+      if (boardStore.getState().activeTool !== 'select') return
+      const rect = element.getBoundingClientRect()
+      const c = toCanvas(e.clientX - rect.left, e.clientY - rect.top)
+      const target = probe(c.x, c.y)
+      if (target.kind === 'object') {
+        e.preventDefault()
+        editExisting(target.id)
+      }
+    }
+
+    element.addEventListener('dblclick', onDoubleClick)
     element.addEventListener('pointerdown', onPointerDown)
     element.addEventListener('pointermove', onPointerMove)
     element.addEventListener('pointerup', onPointerUp)
@@ -283,6 +359,7 @@ export function usePointer(
     element.addEventListener('lostpointercapture', onCancel)
 
     return () => {
+      element.removeEventListener('dblclick', onDoubleClick)
       element.removeEventListener('pointerdown', onPointerDown)
       element.removeEventListener('pointermove', onPointerMove)
       element.removeEventListener('pointerup', onPointerUp)

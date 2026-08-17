@@ -2,6 +2,7 @@ import type { BoardObject, Rect, Viewport } from '@coboard/shared'
 import { drawObjects } from './drawObjects.js'
 import { drawInteraction, type DraftStroke } from './drawInteraction.js'
 import { drawOverlay } from './drawOverlay.js'
+import type { Guide } from '../geometry/alignmentGuides.js'
 
 /**
  * THE render loop. TRD §7.2.
@@ -44,6 +45,10 @@ export interface SelectionView {
   rotationDeg: number | null
   /** Object under the eraser, or null. */
   eraseCandidate: string | null
+  /** The shape being drag-defined — FR-CANVAS-007. */
+  creating: BoardObject | null
+  /** Active alignment guides — FR-CANVAS-020. */
+  guides: readonly Guide[]
 }
 
 const EMPTY_SELECTION_VIEW: SelectionView = {
@@ -52,6 +57,8 @@ const EMPTY_SELECTION_VIEW: SelectionView = {
   marquee: null,
   rotationDeg: null,
   eraseCandidate: null,
+  creating: null,
+  guides: [],
 }
 
 export interface RenderTargets {
@@ -188,6 +195,8 @@ export class Renderer {
         dpr,
         draft: this.sources.getDraft?.() ?? null,
         marquee: view.marquee,
+        creating: view.creating,
+        guides: view.guides,
       })
       this.dirty.interaction = false
       this.interactionPaints++

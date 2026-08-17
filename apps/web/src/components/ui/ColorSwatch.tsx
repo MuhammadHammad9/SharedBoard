@@ -24,6 +24,17 @@ export interface ColorSwatchProps {
   onSelect: (color: string) => void
   /** Human-readable name for the accessible label. Falls back to the hex. */
   name?: string
+  /**
+   * The COMPLETE label prefix — "Stroke colour", "Fill colour". Defaults to
+   * "Colour".
+   *
+   * Required wherever a panel shows two palettes. The shape panel has stroke
+   * AND fill rows over the same ten colours, and without this every swatch in
+   * one row is indistinguishable from its twin in the other to anyone using a
+   * screen reader. R-A11Y-002 asks for an accessible NAME, and two identical
+   * names are not two names.
+   */
+  context?: string
 }
 
 /**
@@ -43,12 +54,19 @@ export function isLight(hex: string): boolean {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4
 }
 
-export function ColorSwatch({ color, selected, onSelect, name }: ColorSwatchProps) {
+export function ColorSwatch({
+  color,
+  selected,
+  onSelect,
+  name,
+  context,
+}: ColorSwatchProps) {
+  const label = `${context ?? 'Colour'} ${name ?? color}`
   return (
     <button
       type="button"
       aria-pressed={selected}
-      aria-label={name ? `Colour ${name}` : `Colour ${color}`}
+      aria-label={label}
       data-testid={`swatch-${color.toLowerCase()}`}
       onClick={() => onSelect(color)}
       className={

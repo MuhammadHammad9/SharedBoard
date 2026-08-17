@@ -224,11 +224,22 @@ describe('drawObjects — run-length batching, defect D-5', () => {
     expect(moves).toEqual(['moveTo(0,0)', 'moveTo(2,2)', 'moveTo(4,4)'])
   })
 
-  it('still blockout-renders the types that have no real renderer yet', () => {
+  it('still blockout-renders IMAGES, the last type without a renderer', () => {
+    // Phase 5 gave shapes, sticky notes and text real renderers. Images are
+    // FR-CANVAS-010 [P1] and land in Phase 12, so the placeholder rectangle
+    // survives for them alone.
     const { ctx, ops } = recorder()
     const mixed = [
       stroke(0, { points: [0, 0, 0.5, 5, 5, 0.5] }),
-      { ...stroke(1), type: 'rect', x: 10 } as unknown as BoardObject,
+      {
+        ...stroke(1),
+        type: 'image',
+        x: 10,
+        url: 'https://example.test/a.png',
+        naturalWidth: 10,
+        naturalHeight: 10,
+        cornerRadius: 0,
+      } as unknown as BoardObject,
     ]
     drawObjects(ctx, args(mixed))
     expect(ops).toContain('fillRect(10)')
