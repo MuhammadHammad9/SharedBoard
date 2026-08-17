@@ -16,6 +16,9 @@ import {
   duplicateSelection,
   pasteAt,
 } from './handlers/clipboardActions.js'
+import { applyAndEmit, deleteOps } from '../history/apply.js'
+import { LABELS } from '../history/grouping.js'
+import { history } from '../history/history.js'
 
 /** Arrow key → unit direction. FR-CANVAS-011. */
 const ARROW_DELTAS: Record<string, { x: number; y: number } | undefined> = {
@@ -28,9 +31,10 @@ const ARROW_DELTAS: Record<string, { x: number; y: number } | undefined> = {
 /**
  * Keyboard handling for the canvas. PRD Appendix A.
  *
- * Implemented so far: V, H, P, Escape, Space, Cmd+0, Cmd+1, Cmd +/-. The
- * remaining tool keys (E R O L A N T) are bound by the phases that make those
- * tools do something — see ACTIVE_TOOLS.
+ * Implemented so far: V H P E R O L A N T, Escape, Delete, arrows, Space,
+ * Cmd+A/C/X/V/D/Z, Cmd+Shift+Z, Cmd+0, Cmd+1, Cmd +/-. What remains belongs
+ * to later phases: `[`/`]` with the rest of FR-CANVAS-016 in Phase 9, and the
+ * image tool whenever uploads land.
  *
  * R-A11Y-009 (Blocking): EVERY shortcut is suppressed while a text input, the
  * on-canvas text overlay, or a modal has focus — except Escape and
@@ -119,13 +123,13 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
         return
       }
 
-      // Delete the selection — FR-CANVAS-014. Not yet undoable; HistoryManager
-      // arrives in Phase 6 and hooks the store's deleteObjects.
+      // Delete the selection — FR-CANVAS-014, one entry for the whole
+      // selection however large it is (R-UNDO-004).
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (store.selection.length === 0) return
         if (!canChangeTool(store.interaction.type)) return
         e.preventDefault()
-        store.deleteObjects(store.selection)
+        applyAndEmit(deleteOps(store.selection), LABELS.delete)
         return
       }
 
@@ -146,6 +150,28 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
       if (mod) {
         const c = centre()
         switch (e.key.toLowerCase()) {
+          /*
+           * Undo and redo — FR-CANVAS-018, PRD Appendix A.
+           *
+           * Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z. `e.key` for Shift+Z is 'Z', so
+           * the lowercase switch catches both and the shiftKey flag picks the
+           * direction.
+           *
+           * R-A11Y-009 is already satisfied by the isTextEntryTarget guard at
+           * the top of this handler: while the on-canvas text overlay has
+           * focus, Cmd+Z belongs to the textarea's own undo, and stealing it
+           * would make typing in a sticky note feel broken.
+           *
+           * Gated on canChangeTool for the same reason every other shortcut
+           * is: undoing halfway through a drag would apply an inverse against
+           * a document the gesture is still rewriting.
+           */
+          case 'z':
+            if (!canChangeTool(store.interaction.type)) return
+            e.preventDefault()
+            if (e.shiftKey) history.redo()
+            else history.undo()
+            return
           case 'a':
             // FR-CANVAS-022: ALL objects, not just the visible ones.
             e.preventDefault()

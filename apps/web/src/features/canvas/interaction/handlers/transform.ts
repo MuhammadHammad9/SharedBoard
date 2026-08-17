@@ -11,6 +11,8 @@ import { selectionBounds, type HandleId } from '../../geometry/bounds.js'
 import { findSnaps, type Guide } from '../../geometry/alignmentGuides.js'
 import { getViewRect, isVisible } from '../../geometry/culling.js'
 import { canTransition } from '../machine.js'
+import { applyAndEmit, snapshotReader, updateOps } from '../../history/apply.js'
+import { LABELS, nudgeKey } from '../../history/grouping.js'
 import { releaseCapture } from './select.js'
 
 /**
@@ -30,6 +32,12 @@ import { releaseCapture } from './select.js'
  *
  * Every commit goes through `updateObjects`, one call for the whole selection
  * — E-07's "batch into one op message", R-UNDO-004's "one history entry".
+ *
+ * These three are the only gestures that mutate the store BEFORE they commit:
+ * the user has to see the objects move while dragging. So `applyAndEmit` is
+ * handed `interaction.origin` — the pointerdown snapshot — as its
+ * pre-mutation reader, which is what keeps R-UNDO-007 satisfied on a path
+ * where the store itself has already forgotten where anything started.
  */
 
 /** Pointer travel, in canvas units, before a press counts as a drag. */
@@ -180,9 +188,39 @@ export function endDrag(element: Element | null): void {
   releaseCapture(element, interaction.pointerId)
   setInteraction({ type: 'IDLE' })
 
-  // PHASE 6 SLOT: if interaction.moved, push ONE history entry holding an
-  // inverse UPDATE per object, built from interaction.origin.
-  // PHASE 9 SLOT: emit one batched op:update message.
+  // A press that never crossed the threshold moved nothing. Recording it would
+  // put an entry on the stack whose undo is invisible.
+  if (interaction.moved) commitTransform(interaction.ids, interaction.origin, LABELS.move)
+}
+
+/**
+ * Record a finished live gesture as ONE history entry — R-UNDO-004,
+ * R-UNDO-010's "pushed on pointerup, never on pointermove".
+ *
+ * The forward ops are minimal UPDATEs diffed from the pointerdown snapshot, so
+ * a drag records `{x, y, updatedAt}` and a rotate records `{x, y, rotation,
+ * updatedAt}` — never the whole object, which is what would clobber a
+ * teammate's concurrent edit to an untouched field (R-UNDO-007).
+ *
+ * Re-applying those UPDATEs inside `applyAndEmit` writes values the store
+ * already holds. That is intentional: one commit path, no second "record but
+ * do not apply" branch to keep in step with it.
+ */
+function commitTransform(
+  ids: readonly ObjectId[],
+  origin: ReadonlyMap<ObjectId, BoardObject>,
+  label: string,
+): void {
+  const { objects } = boardStore.getState()
+  const next: BoardObject[] = []
+  for (const id of ids) {
+    const o = objects.get(id)
+    if (o) next.push(o)
+  }
+
+  const before = snapshotReader(origin)
+  applyAndEmit(updateOps(next, before), label, { before })
+  // PHASE 9 SLOT: applyAndEmit emits the same batch as one op message (E-07).
 }
 
 /** Restore every object to its pointerdown state — pointercancel, Escape. */
@@ -231,7 +269,7 @@ export function endResize(element: Element | null): void {
   if (interaction.type !== 'RESIZING') return
   releaseCapture(element, interaction.pointerId)
   setInteraction({ type: 'IDLE' })
-  // PHASE 6 SLOT: one history entry, pushed here on pointerup (R-UNDO-010).
+  commitTransform(interaction.ids, interaction.origin, LABELS.resize)
 }
 
 export function cancelResize(element: Element | null): void {
@@ -296,6 +334,7 @@ export function endRotate(element: Element | null): void {
   if (interaction.type !== 'ROTATING') return
   releaseCapture(element, interaction.pointerId)
   setInteraction({ type: 'IDLE' })
+  commitTransform(interaction.ids, interaction.origin, LABELS.rotate)
 }
 
 export function cancelRotate(element: Element | null): void {
@@ -308,12 +347,23 @@ export function cancelRotate(element: Element | null): void {
 
 /* ── Keyboard nudge ───────────────────────────────────────────────────────── */
 
-/** FR-CANVAS-011: arrows nudge 1 canvas px, Shift+arrow 10. */
+/**
+ * FR-CANVAS-011: arrows nudge 1 canvas px, Shift+arrow 10.
+ *
+ * Unlike a drag, this does not mutate first — the store is still in its
+ * pre-nudge state here, so `applyAndEmit` reads the previous values straight
+ * out of it and applies the ops itself.
+ *
+ * Coalesced per burst: key repeat fires around thirty times a second, and
+ * sixty history entries for a two-second press is not an undo stack anyone can
+ * use. See grouping.ts for why this row is an extension of TRD §8.4 rather
+ * than a transcription of it.
+ */
 export function nudgeSelection(dx: number, dy: number): void {
-  const { selection, updateObjects } = boardStore.getState()
+  const { selection } = boardStore.getState()
   if (selection.length === 0) return
-  updateObjects(selectedObjects().map(o => translateObject(o, dx, dy)))
-  // PHASE 6 SLOT: one entry per burst, coalescing within 1 s (R-UNDO-010).
+  const next = selectedObjects().map(o => translateObject(o, dx, dy))
+  applyAndEmit(updateOps(next), LABELS.nudge, { coalesceKey: nudgeKey(selection) })
 }
 
 /** Exported for the overlay's live readout and for tests. */

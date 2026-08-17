@@ -13,6 +13,7 @@ import {
   unionRects,
   zoomAtPoint,
   type BoardObject,
+  type ClientOp,
   type ObjectId,
   type Viewport,
 } from '@coboard/shared'
@@ -212,6 +213,11 @@ interface BoardState {
   updateObjects: (objects: readonly BoardObject[]) => void
   /** Delete many objects in one commit — FR-CANVAS-014. */
   deleteObjects: (ids: readonly ObjectId[]) => void
+  /**
+   * Apply a batch of ops to the document — the ONLY write path that undo,
+   * redo and (from Phase 9) remote ops share. See features/canvas/history.
+   */
+  applyOps: (ops: readonly ClientOp[]) => void
   setSelection: (ids: readonly ObjectId[]) => void
   /** Recompute the cached z-order after zIndex values change — R-CONV-009. */
   reorder: () => void
@@ -385,18 +391,8 @@ export const useBoardStore = create<BoardState>((set, get) => ({
       const clamped = { ...o, x: clampCoordValue(o.x), y: clampCoordValue(o.y) }
       s.objects.set(clamped.id, clamped)
 
-      // Binary search for the insertion point by lexicographic zIndex.
-      const ids = s.sortedIds
-      let lo = 0
-      let hi = ids.length
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1
-        const z = s.objects.get(ids[mid]!)?.zIndex ?? ''
-        if (z <= clamped.zIndex) lo = mid + 1
-        else hi = mid
-      }
-      const sortedIds = ids.slice()
-      sortedIds.splice(lo, 0, clamped.id)
+      const sortedIds = s.sortedIds.slice()
+      insertByZ(sortedIds, s.objects, clamped)
 
       return { sortedIds, objectsVersion: s.objectsVersion + 1 }
     }),
@@ -447,10 +443,11 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   /**
    * Delete many objects at once — FR-CANVAS-014, and the eraser's commit path.
    *
-   * NOT UNDOABLE YET. FR-CANVAS-014 requires deletion to be undoable and it
-   * will be: HistoryManager arrives in Phase 6 and hooks exactly here, where
-   * the full set of removed objects is still in hand to build the inverse
-   * CREATE ops from. Nothing about this signature needs to change for that.
+   * The undoable route is `applyAndEmit` with DELETE ops, which is what every
+   * caller of the delete key, the context menu and the properties panel now
+   * takes. This remains the raw mutator underneath it, plus the eraser's
+   * "remove it from under the cursor now, record the sweep on pointerup" path,
+   * where the history entry is pushed once for the whole drag (R-UNDO-004).
    */
   deleteObjects: ids =>
     set(s => {
@@ -460,15 +457,129 @@ export const useBoardStore = create<BoardState>((set, get) => ({
       }
       if (removed.size === 0) return {}
 
-      // PHASE 6 SLOT: push one history entry containing an inverse CREATE per
-      // removed object (R-UNDO-004 — a multi-object action is ONE entry).
-      // PHASE 9 SLOT: emit one batched op:delete message.
       return {
         sortedIds: s.sortedIds.filter(id => !removed.has(id)),
         selection: s.selection.filter(id => !removed.has(id)),
         eraseCandidate:
           s.eraseCandidate && removed.has(s.eraseCandidate) ? null : s.eraseCandidate,
         objectsVersion: s.objectsVersion + 1,
+      }
+    }),
+
+  /**
+   * Apply a batch of ops — TRD §5.2, §8.
+   *
+   * The single document write path shared by local commits (`applyAndEmit`),
+   * undo, redo and, from Phase 9, remote ops (`applyRemoteOp`). Sharing it is
+   * the point: a bug in how an UPDATE merges is then one bug, in one place,
+   * rather than a divergence between what the author sees and what everyone
+   * else does.
+   *
+   * R-CONV-002 (Blocking): an UPDATE payload is PARTIAL and merges only the
+   * fields it names. Replacing the whole object would turn every concurrent
+   * edit into a lost update.
+   *
+   * This is a COMMIT-BOUNDARY path — pointerup, a keypress, an arriving batch.
+   * It is never the 60 Hz path; `updateObjects` remains that. The z-order
+   * bookkeeping below would be too expensive per frame and does not need to be
+   * cheap here.
+   */
+  applyOps: ops =>
+    set(s => {
+      if (ops.length === 0) return {}
+
+      const touched = new Set<ObjectId>()
+      let zDirty = false
+
+      for (const op of ops) {
+        const id = op.objectId as ObjectId
+        touched.add(id)
+
+        switch (op.type) {
+          case 'CREATE': {
+            const raw = op.payload as BoardObject
+            const previous = s.objects.get(raw.id)
+            const object = {
+              ...raw,
+              x: clampCoordValue(raw.x),
+              y: clampCoordValue(raw.y),
+            }
+            // A CREATE for an id already present is a resurrection whose
+            // z-index may differ from the one already in the cached order.
+            if (previous && previous.zIndex !== object.zIndex) zDirty = true
+            s.objects.set(object.id, object)
+            break
+          }
+
+          case 'UPDATE': {
+            const before = s.objects.get(id)
+            // R-UNDO-005 / R-SYNC-021: an update naming an object that is not
+            // here is dropped, never used to conjure a partial object.
+            if (!before) break
+            const merged = {
+              ...before,
+              ...(op.payload as Partial<BoardObject>),
+            } as BoardObject
+            if (merged.zIndex !== before.zIndex) zDirty = true
+            s.objects.set(id, {
+              ...merged,
+              x: clampCoordValue(merged.x),
+              y: clampCoordValue(merged.y),
+            })
+            break
+          }
+
+          case 'DELETE':
+            s.objects.delete(id)
+            break
+        }
+      }
+
+      /*
+       * Rebuild the cached z-order only as much as the batch actually
+       * disturbed it.
+       *
+       * A full re-sort is correct for all three cases and would be four lines
+       * shorter, but it is O(n log n) on every stroke commit, and on the
+       * 10,000-object stress board that lands inside the ≤16 ms input-to-pixel
+       * budget at exactly the moment the user is watching the line settle.
+       * A create splices; a delete filters; only a z-index change re-sorts,
+       * and that happens on bring-to-front, which nobody does sixty times a
+       * second.
+       */
+      let sortedIds = s.sortedIds
+      if (zDirty) {
+        sortedIds = [...s.objects.values()]
+          .sort((a, b) => (a.zIndex < b.zIndex ? -1 : a.zIndex > b.zIndex ? 1 : 0))
+          .map(o => o.id)
+      } else {
+        const listed = new Set(s.sortedIds)
+        const gone = new Set<ObjectId>()
+        const fresh: BoardObject[] = []
+        for (const id of touched) {
+          const object = s.objects.get(id)
+          if (!object && listed.has(id)) gone.add(id)
+          else if (object && !listed.has(id)) fresh.push(object)
+        }
+        if (gone.size > 0) sortedIds = sortedIds.filter(id => !gone.has(id))
+        if (fresh.length > 0) {
+          sortedIds = sortedIds === s.sortedIds ? sortedIds.slice() : sortedIds
+          for (const object of fresh) insertByZ(sortedIds, s.objects, object)
+        }
+      }
+
+      const removedAny = sortedIds.length < s.sortedIds.length || zDirty
+      const selection = removedAny
+        ? s.selection.filter(id => s.objects.has(id))
+        : s.selection
+
+      return {
+        sortedIds,
+        objectsVersion: s.objectsVersion + 1,
+        ...(selection.length === s.selection.length ? {} : { selection }),
+        ...(s.eraseCandidate && !s.objects.has(s.eraseCandidate)
+          ? { eraseCandidate: null }
+          : {}),
       }
     }),
 
@@ -512,6 +623,31 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   setEraseCandidate: id =>
     set(s => (s.eraseCandidate === id ? {} : { eraseCandidate: id })),
 }))
+
+/**
+ * Splice one id into the cached z-order at its lexicographic position.
+ *
+ * Binary search rather than a re-sort: a board is appended to thousands of
+ * times over a session and re-sorting 10,000 ids per stroke is O(n log n) on
+ * the commit frame, where the ≤16 ms input-to-pixel budget is already spoken
+ * for. Mutates `sortedIds`, which is always a copy by the time it gets here —
+ * React-side consumers may be holding the original.
+ */
+function insertByZ(
+  sortedIds: ObjectId[],
+  objects: Map<ObjectId, BoardObject>,
+  object: BoardObject,
+): void {
+  let lo = 0
+  let hi = sortedIds.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    const z = objects.get(sortedIds[mid]!)?.zIndex ?? ''
+    if (z <= object.zIndex) lo = mid + 1
+    else hi = mid
+  }
+  sortedIds.splice(lo, 0, object.id)
+}
 
 /** Order-sensitive id comparison, used to avoid pointless selection writes. */
 function sameIds(a: readonly ObjectId[], b: readonly ObjectId[]): boolean {

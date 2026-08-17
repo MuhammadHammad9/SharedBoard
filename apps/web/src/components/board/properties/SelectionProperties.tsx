@@ -9,6 +9,12 @@ import {
   type BoardObject,
 } from '@coboard/shared'
 import { selectedObjects, useBoardStore } from '../../../stores/boardStore.js'
+import {
+  applyAndEmit,
+  deleteOps,
+  updateOps,
+} from '../../../features/canvas/history/apply.js'
+import { LABELS } from '../../../features/canvas/history/grouping.js'
 import { ColorSwatch } from '../../ui/ColorSwatch.js'
 import { Slider } from '../../ui/Slider.js'
 import { MIXED, MixedValue, commonValue } from './MixedValue.js'
@@ -57,8 +63,6 @@ export function SelectionProperties() {
   // Reading the version rather than the objects keeps the subscription narrow
   // while still refreshing after a transform or an edit commits.
   useBoardStore(s => s.objectsVersion)
-  const updateObjects = useBoardStore(s => s.updateObjects)
-  const deleteObjects = useBoardStore(s => s.deleteObjects)
   const selection = useBoardStore(s => s.selection)
 
   const objects = selectedObjects()
@@ -67,9 +71,19 @@ export function SelectionProperties() {
   const kind = kindOf(objects)
   const opacity = commonValue(objects, o => o.opacity)
 
-  /** Apply a patch to every selected object, in one batched commit. */
+  /**
+   * Apply a patch to every selected object, in one batched commit and one undo
+   * entry (R-UNDO-004).
+   *
+   * `updateOps` diffs each object against the store, so re-selecting the
+   * colour a shape already has produces no op and no history entry — the undo
+   * stack records changes, not clicks.
+   */
   const patch = (fn: (o: BoardObject) => BoardObject) =>
-    updateObjects(objects.map(o => ({ ...fn(o), updatedAt: Date.now() })))
+    applyAndEmit(
+      updateOps(objects.map(o => ({ ...fn(o), updatedAt: Date.now() }))),
+      LABELS.style,
+    )
 
   /** A colour row, reused by every type that has one. */
   const colourRow = (
@@ -205,9 +219,9 @@ export function SelectionProperties() {
 
       <button
         type="button"
-        // FR-CANVAS-014. PHASE 6 SLOT: this becomes undoable when
-        // HistoryManager lands; deleteObjects is already the single hook.
-        onClick={() => deleteObjects(selection)}
+        // FR-CANVAS-014, and undoable: applyAndEmit snapshots each object
+        // before it goes, so the inverse CREATEs restore them intact.
+        onClick={() => applyAndEmit(deleteOps(selection), LABELS.delete)}
         data-testid="selection-delete"
         className={
           'flex h-8 cursor-pointer items-center justify-center gap-2 rounded-sm ' +
