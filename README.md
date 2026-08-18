@@ -2,7 +2,7 @@
 
 **A real-time collaborative whiteboard.** Multiple people open the same board URL and simultaneously draw freehand strokes, place shapes, write text and drop sticky notes. Every action appears on every other screen within a few hundred milliseconds, with live labelled cursors.
 
-> **Status: Phase 6 complete — milestone M1 "It draws" is done.** Monorepo, shared package, design tokens, CI gates, the canvas with pan and zoom, the pen, the full selection toolkit, every object type bar images — rectangles, ellipses, lines, arrows, sticky notes and text with a DOM overlay, copy/paste, a context menu, alignment guides — and **per-user undo and redo** on inverse-op stacks, with the local and remote apply paths already separated for Phase 9. Nothing persists yet; that is Phase 7 onward. See [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md).
+> **Status: Phase 7 complete — milestone M2 "It persists" has begun.** M1 shipped the whole canvas: pan and zoom, the pen, selection and transforms, every object type bar images, and per-user undo/redo. Phase 7 adds the first server code — REST authentication with bcrypt, JWT access tokens, refresh rotation with reuse detection and family revocation, rate limiting, password reset and Google account linking — plus React Router, route guards that never flash the login screen, and the five auth screens. Boards still do not persist; that is Phase 8. See [`docs/04-IMPLEMENTATION-PLAN.md`](./docs/04-IMPLEMENTATION-PLAN.md).
 >
 > Try it: `pnpm dev`, then `http://localhost:5173/?debug=1`. `V` select · `P` pen · `E` eraser · `R O L A` shapes · `N` sticky · `T` text. Add `&stress=1` for the 10,000-object stress board with the frame-timing overlay.
 

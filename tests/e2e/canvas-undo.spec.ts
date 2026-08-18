@@ -11,7 +11,12 @@ import { expect, test, type Page } from '@playwright/test'
  * HistoryManager.
  */
 
-const BOARD = '/?debug=1'
+/*
+ * The board route now needs a board id — Phase 7 introduced the router.
+ * Boards are not persisted until Phase 8, so any id renders the same empty
+ * canvas; the id is a route parameter, not a lookup.
+ */
+const BOARD = '/board/e2e?debug=1'
 
 interface TestObject {
   id: string

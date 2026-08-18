@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test'
 
+/*
+ * Phase 7 added the router, so `/` is no longer the canvas — it redirects
+ * to /login. The smoke checks are about the canvas mounting and the design
+ * tokens applying, so they address the board route directly.
+ */
+const BOARD = '/board/e2e'
+
 /**
  * Application smoke test.
  *
@@ -13,13 +20,13 @@ import { expect, test } from '@playwright/test'
  */
 
 test('app boots and mounts the canvas', async ({ page }) => {
-  await page.goto('/')
+  await page.goto(BOARD)
   await expect(page.getByTestId('canvas-surface')).toHaveAttribute('data-ready', 'true')
   await expect(page.locator('canvas#objects')).toBeAttached()
 })
 
 test('PRD §15 canvas background token is applied in the browser', async ({ page }) => {
-  await page.goto('/')
+  await page.goto(BOARD)
   const surface = page.getByTestId('canvas-surface')
   await expect(surface).toBeVisible()
   // --color-bg-canvas #FAFAFA — conflict C-7. If this is teal, someone pasted
@@ -31,7 +38,7 @@ test('PRD §15 canvas background token is applied in the browser', async ({ page
 })
 
 test('PRD §15 accent token is applied to board chrome', async ({ page }) => {
-  await page.goto('/')
+  await page.goto(BOARD)
   // The zoom controls are the only chrome in Phase 2. Their focus ring uses
   // --color-accent #4F46E5.
   await expect(page.getByTestId('zoom-controls')).toBeVisible()
@@ -46,7 +53,7 @@ test('two independent browser contexts can load the app', async ({ browser }) =>
   const pageA = await a.newPage()
   const pageB = await b.newPage()
 
-  await Promise.all([pageA.goto('/'), pageB.goto('/')])
+  await Promise.all([pageA.goto(BOARD), pageB.goto(BOARD)])
   await expect(pageA.getByTestId('canvas-surface')).toHaveAttribute('data-ready', 'true')
   await expect(pageB.getByTestId('canvas-surface')).toHaveAttribute('data-ready', 'true')
 
