@@ -8,6 +8,7 @@ import {
   diffOp,
   type ObjectReader,
 } from './inverseOps.js'
+import { emitOps } from '../../sync/persistence.js'
 import type { CoalesceKey } from './grouping.js'
 
 /**
@@ -16,7 +17,7 @@ import type { CoalesceKey } from './grouping.js'
  * There are exactly two ways the document changes, and they are separate
  * modules on purpose:
  *
- *   applyAndEmit   (here)            local action → store, history, socket
+ *   applyAndEmit   (here)            local action → store, history, outbox
  *   applyRemoteOp  (applyRemote.ts)  arriving op  → store. Nothing else.
  *
  * Phase 9 is when that separation starts mattering, and Phase 9 is far too
@@ -53,7 +54,7 @@ export interface ApplyOptions {
 const liveReader: ObjectReader = id => boardStore.getState().objects.get(id)
 
 /**
- * Apply a batch of ops locally, record one undo entry, and (Phase 9) emit.
+ * Apply a batch of ops locally, record one undo entry, and emit for persistence.
  *
  * ONE call is ONE history entry, whatever the batch size — R-UNDO-004. That is
  * why every commit path takes an array: dragging ten objects is one action and
@@ -79,10 +80,15 @@ export function applyAndEmit(
   boardStore.getState().applyOps(ops)
 
   /*
-   * PHASE 9 SLOT: emit { t:'op', op } per op and add each to the outbox, then
-   * clear it on ack. Ops are already batched by the caller, so this is one
-   * socket message per call (R-SYNC-017, FLOWS E-07).
+   * Persist. One call is one batch, which is what keeps a ten-object drag a
+   * single request rather than ten (R-SYNC-017, FLOWS E-07).
+   *
+   * Deliberately AFTER the local apply and never awaited. The user's own
+   * change must land on their screen at pointer speed; whether it has reached
+   * Postgres yet is the outbox's problem, not theirs. Phase 9 swaps the
+   * transport underneath this line for the socket.
    */
+  emitOps(ops)
 
   // An un-invertible batch is applied but not recorded. Dropping the entry is
   // deliberate: a partial inverse would restore the board to a state the user

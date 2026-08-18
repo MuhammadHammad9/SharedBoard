@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stubSession } from './support/session.js'
 
 /**
  * Undo and redo end to end — FR-CANVAS-018, PRD §11.5 AT-42/43/44,
@@ -72,6 +73,7 @@ async function drawStroke(page: Page, x: number, y: number) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await stubSession(page)
   await page.goto(BOARD)
   await surface(page)
   await page.getByTestId('tool-select').click()

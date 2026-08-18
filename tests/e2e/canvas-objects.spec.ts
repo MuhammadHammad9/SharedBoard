@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stubSession } from './support/session.js'
 
 /**
  * Shapes, sticky notes and text e2e — FR-CANVAS-007/008/009/015/019/020.
@@ -63,6 +64,7 @@ async function drawShape(
 }
 
 test.beforeEach(async ({ page }) => {
+  await stubSession(page)
   await page.goto(BOARD)
   await surface(page)
   await page.getByTestId('tool-select').click()

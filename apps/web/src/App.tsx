@@ -93,16 +93,23 @@ export default function App() {
         />
 
         {/*
-         * BOARD. `requireBoardAccess` (FLOWS §2.3) needs board membership,
-         * which is Phase 8 — so for now the board is behind requireAuth only,
-         * and the canvas remains reachable for the Phase 2–6 e2e suites.
+         * BOARD — FLOWS §2.1, §2.3.
+         *
+         * `RequireAuth` gets the session; the board-level half of
+         * `requireBoardAccess` is enforced by the server and rendered by the
+         * route itself, which shows S-19/S-20 rather than redirecting. That
+         * split is deliberate: a guard cannot decide access without asking the
+         * server anyway, and doing it inside the route means one request
+         * answers both "may I?" and "what is on it?".
          */}
         <Route
           path="/board/:boardId"
           element={
-            <Suspense fallback={<FullScreenSpinner label="Opening board" />}>
-              <Board />
-            </Suspense>
+            <RequireAuth>
+              <Suspense fallback={<FullScreenSpinner label="Opening board" />}>
+                <Board />
+              </Suspense>
+            </RequireAuth>
           }
         />
 

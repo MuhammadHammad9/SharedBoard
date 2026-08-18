@@ -1,5 +1,6 @@
-import type { ObjectId } from '@coboard/shared'
+import type { ClientOp, ObjectId } from '@coboard/shared'
 import { boardStore } from '../../../stores/boardStore.js'
+import { emitOps } from '../../sync/persistence.js'
 import { HistoryManager } from './HistoryManager.js'
 
 /**
@@ -22,10 +23,29 @@ export const history = new HistoryManager(
      * R-UNDO-003: an undo is applied and emitted as an ORDINARY op. There is
      * no "undo" message type, and remote clients see a normal change.
      *
-     * PHASE 9 SLOT: emit each op on the socket and add it to the outbox, the
-     * same as `applyAndEmit` does. Not `applyRemoteOp` — these ops are ours.
+     * Not `applyRemoteOp` — these ops are ours, and they must reach the
+     * server like any other local change or the undone work reappears on the
+     * next reload.
      */
     boardStore.getState().applyOps(ops)
+    emitOps(withFreshIds(ops))
   },
   objectId => boardStore.getState().objects.has(objectId as ObjectId),
 )
+
+/**
+ * Re-mint the op ids before sending.
+ *
+ * A history entry holds ONE `inverse` array and ONE `forward` array, and undo
+ * → redo → undo replays the very same objects. Their op ids are the server's
+ * idempotency keys (R-SYNC-014), so sending them a second time is re-acked as
+ * a duplicate and writes nothing — the second undo would be visible locally
+ * and absent from the database, and the divergence would only surface on
+ * reload.
+ *
+ * Only the WIRE identity is new. The objectId and the payload are untouched,
+ * so the change the server applies is exactly the change the user made.
+ */
+function withFreshIds(ops: readonly ClientOp[]): ClientOp[] {
+  return ops.map(op => ({ ...op, id: crypto.randomUUID() }))
+}

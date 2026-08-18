@@ -4,6 +4,7 @@ import express, { type Express } from 'express'
 import { CLOSE_CODES, MAX_OBJECTS_PER_BOARD, ZOOM_MAX } from '@coboard/shared'
 import { env } from '../lib/env.js'
 import { createAuthRouter } from './routes/auth.js'
+import { createBoardsRouter } from './routes/boards.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 
 /**
@@ -49,7 +50,7 @@ export function createApp(): Express {
   app.get('/health', (_req, res) => {
     res.json({
       status: 'ok',
-      phase: 7,
+      phase: 8,
       // Proves the shared package resolved on the server side (R-ARCH-007).
       shared: {
         maxObjectsPerBoard: MAX_OBJECTS_PER_BOARD,
@@ -60,6 +61,7 @@ export function createApp(): Express {
   })
 
   app.use('/api/auth', createAuthRouter())
+  app.use('/api/boards', createBoardsRouter())
 
   // Order matters: 404 for unmatched routes, then the error handler last, so
   // everything thrown anywhere above lands in one envelope (TRD §4).

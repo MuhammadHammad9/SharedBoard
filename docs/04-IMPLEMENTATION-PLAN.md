@@ -2050,6 +2050,28 @@ Stagger caps at the first ~12 cards; beyond that everything appears at once. A 5
 
 Card hover must not scale — scaling shifts layout and makes the grid jitter under the cursor (anti-pattern `A-70`).
 
+### Corrections to this phase, found while building it
+
+Recorded here rather than in the delivered specs (`R-PREC-020`). Each blocking one also has a row in the `RULES.md` §2.4 defect register.
+
+**1. Phase 8 is split into two pull requests.** Nineteen tasks across two unrelated workstreams — server persistence and the dashboard UI — would land as roughly 7,000 lines in one review, against the ~400-line guidance in `R-GIT-003`. **8a** is tasks 1-8: models, services, endpoints, client persistence and board load, with `AT-10` as its gate. **8b** is tasks 9-19: the dashboard, Trash, thumbnails and the UI primitives they need.
+
+**2. `BoardMember` and the `Role` enum land in Phase 8, not Phase 12.** The model list above omits them, but `GET /boards/:id` is specified to return `myRole`, and the owner needs a membership row from the moment the board is created — otherwise members, sharing and role changes all have to special-case one participant. Sharing itself (invites, share links) stays in Phase 12.
+
+**3. `DELETE /boards/:id/permanent` is implemented as `POST /boards/:id/permanent-delete`** — defect `D-9`. A DELETE with a required body is unreliable in transit, and a confirmation that can be dropped is not a confirmation. Every other path in the TRD §4.2 table is implemented verbatim.
+
+**4. `objectCount` needs the same treatment as `seq`** — defect `D-10`. `R-SYNC-013` names only the sequence number, but the read-then-write race is identical for any denormalised counter, and the concurrency test caught it losing 11 objects out of 79.
+
+**5. An undo must be re-emitted with a fresh op id** — defect `D-11`. Otherwise the second undo of the same entry is re-acked as a duplicate and never reaches the database.
+
+**6. `/board/:boardId` gets its guard, with the board-level half inside the route.** FLOWS §2.1 assigns `requireBoardAccess`; `RequireAuth` supplies the session and the route itself renders S-19/S-20 from the load result rather than redirecting. One request then answers both "may I?" and "what is on it?", which a guard could not do without asking the server anyway.
+
+**7. A non-uuid board id is a DEV-only scratch board.** No fetch, no outbox, an empty document — which is what lets the Phase 2-6 canvas suites drive the renderer without a database, and `pnpm dev` work before you have signed in. In production the id goes to the server, which answers 404.
+
+**8. Vitest is split into `unit` and `integration` projects.** The integration files share one Postgres and one Redis and truncate between cases; run in parallel they delete each other's rows. The integration project runs in a single fork, so the 24 pure files keep their parallelism.
+
+**Deferred from 8a and stated rather than quietly dropped:** thumbnails (task 18) need the dashboard to display them; `board:renamed` / `board:deleted` broadcasts (tasks in FR-BOARD-004/005) need the Phase 9 socket; the snapshot-on-last-client-leaving trigger needs rooms, so only the every-500-ops trigger exists.
+
 ### Tasks
 
 1. Prisma `Board`, `Operation`, `Snapshot` models and migration. Replace the Phase 1 seed stub with one that loads `fixtures/stress-board.json` into the database, and drop `--skip-generate` from `db:migrate` now that models exist.

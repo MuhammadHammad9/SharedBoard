@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stubSession } from './support/session.js'
 
 /**
  * Canvas viewport e2e — FR-CANVAS-001/002/003.
@@ -39,6 +40,7 @@ async function surface(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await stubSession(page)
   await page.goto(BOARD)
   await surface(page)
 })
