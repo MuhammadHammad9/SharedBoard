@@ -76,6 +76,21 @@ export default defineConfig({
         // build over build.
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
+          /*
+           * framer-motion is DELIBERATELY not assigned a manual chunk.
+           *
+           * Naming any chunk for it — even its own — makes Rollup treat it as
+           * an eager part of the graph, and it lands in the initial download
+           * for every page including the board. That silently undoes
+           * R-SKILL-060 and conflict C-3: the library exists to animate the
+           * dashboard grid and must arrive only when that grid does.
+           *
+           * Returning undefined leaves it to Rollup's automatic splitting,
+           * which follows the dynamic `import()` in BoardGrid and emits it as
+           * an async chunk. The measured cost of getting this wrong was
+           * +58 KB gzipped on the initial bundle.
+           */
+          if (id.includes('framer-motion') || id.includes('motion-dom')) return undefined
           if (id.includes('react') || id.includes('scheduler')) return 'vendor-react'
           if (id.includes('zod')) return 'vendor-zod'
           return 'vendor'

@@ -216,6 +216,10 @@ export function createBoardsRouter(): Router {
         objects: state.objects,
         seq: state.seq,
         myRole: access.role,
+        // Safe to include HERE and nowhere else: this endpoint has already
+        // established the caller may read the board. R-SEC-018 is about the
+        // refusal path, and the refusal path is a 404 with no body.
+        name: access.name,
         meta: { fromSnapshot: state.fromSnapshot, replayed: state.replayed },
       })
     }),
