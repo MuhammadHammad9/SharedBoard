@@ -3,7 +3,7 @@
 // Phase 1: datasource and generator only, with one empty initial migration to
 // prove the connection. Models arrive with the phases that need them:
 //   Phase 7  — User, RefreshToken, PasswordResetToken (DONE)
-//   Phase 8  — Board, Operation, Snapshot
+//   Phase 8  — Board, Operation, Snapshot, BoardMember (DONE)
 //   Phase 12 — BoardMember, ShareLink, Role
 //
 // TRD §3.2, decision D-3: the op log is the source of truth. Do NOT add a
@@ -41,6 +41,9 @@ model User {
 
   refreshTokens  RefreshToken[]
   passwordResets PasswordResetToken[]
+  ownedBoards    Board[]              @relation("BoardOwner")
+  memberships    BoardMember[]
+  operations     Operation[]
 
   @@index([emailLower])
 }
@@ -84,4 +87,114 @@ model PasswordResetToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+// ── Phase 8 — boards, the op log, and snapshots ──────────────────────────────
+
+model Board {
+  id           String    @id @default(uuid())
+  name         String    @default("Untitled board") @db.VarChar(80)
+  ownerId      String
+  thumbnailUrl String?
+  /// Last assigned op sequence number. Incremented inside the same
+  /// transaction that inserts the op, which is what makes seq gap-free
+  /// under concurrency (R-SYNC-013).
+  currentSeq   Int       @default(0)
+  /// Denormalised so the dashboard and the load path can decide whether a
+  /// board is large without counting rows or replaying the log.
+  objectCount  Int       @default(0)
+  /// Soft delete — FR-BOARD-005. Trash keeps it for 30 days.
+  deletedAt    DateTime?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  lastActivityAt DateTime @default(now())
+
+  owner      User          @relation("BoardOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members    BoardMember[]
+  operations Operation[]
+  snapshots  Snapshot[]
+
+  @@index([ownerId, deletedAt])
+  @@index([lastActivityAt])
+}
+
+/// Membership and role. Sharing lands in Phase 12; the model exists now
+/// because `GET /boards/:id` must report `myRole`, and because the owner
+/// needs a membership row from the moment the board is created.
+model BoardMember {
+  id        String   @id @default(uuid())
+  boardId   String
+  userId    String
+  role      Role
+  createdAt DateTime @default(now())
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One membership per person per board. The unique constraint is the
+  /// enforcement — an invite race must not produce two rows with two roles.
+  @@unique([boardId, userId])
+  @@index([userId])
+}
+
+enum Role {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+/// The op log — TRD §3.2, decision D-3. THE source of truth.
+///
+/// Append-only. There is deliberately no mutable `Object` table: the log
+/// answers "what did I miss since seq 412?" with one indexed query, makes
+/// outbox replay idempotent for free, and carries its own ordering authority.
+/// The cost is that reading a board means replaying — which is what Snapshot
+/// exists to bound.
+model Operation {
+  /// CLIENT-generated uuid, and the primary key. That is what makes replay
+  /// idempotent (R-SYNC-014): a retried op collides on insert instead of
+  /// duplicating the object.
+  id         String   @id
+  boardId    String
+  /// Server-assigned, monotonic per board. The sole ordering authority
+  /// (R-ARCH-008) — never a client timestamp.
+  seq        Int
+  type       OpType
+  objectId   String
+  payload    Json
+  actorId    String?
+  /// Guests have no User row, so their identity is a bare string.
+  actorGuest String?
+  createdAt  DateTime @default(now())
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  /// SetNull, not Cascade: deleting a user must not delete the board history
+  /// everyone else is still working on.
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@unique([boardId, seq])
+  @@index([boardId, seq])
+  @@index([boardId, objectId])
+}
+
+enum OpType {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+/// Materialised state at a sequence number, so loading a board does not mean
+/// replaying 50,000 ops — TRD §3.4.
+model Snapshot {
+  id        String   @id @default(uuid())
+  boardId   String
+  seq       Int
+  /// { objects: BoardObject[] }
+  state     Json
+  createdAt DateTime @default(now())
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, seq])
 }
