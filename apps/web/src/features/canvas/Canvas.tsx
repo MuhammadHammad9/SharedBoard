@@ -4,6 +4,8 @@ import { boardStore, objectsInZOrder, useBoardStore } from '../../stores/boardSt
 import { Toolbar } from '../../components/board/Toolbar.js'
 import { PropertiesPanel } from '../../components/board/PropertiesPanel.js'
 import { ZoomControls } from '../../components/board/ZoomControls.js'
+import { UndoRedoControls } from '../../components/board/UndoRedoControls.js'
+import { history } from './history/history.js'
 import {
   CanvasDebugOverlay,
   type DebugSnapshot,
@@ -290,12 +292,23 @@ export function Canvas() {
        * a stale pan and a click target tens of pixels off.
        */
       w.__coboardViewport = () => ({ ...boardStore.getState().viewport })
+      // Stack depths, so the AT-42..AT-44 e2e specs can assert on grouping —
+      // "ten actions produced ten entries" is not visible from the board.
+      w.__coboardHistory = () => ({
+        undo: history.undoDepth(),
+        redo: history.redoDepth(),
+      })
     }
 
     return () => {
       // R-CANVAS-014 / R-STATE-007: cancel the loop, drop every listener.
       renderer.stop()
       unsubscribe()
+      // R-UNDO-006: history does not outlive the board. Keeping a stack whose
+      // entries name objects on a board the user has left is worse than
+      // keeping none — the first Ctrl+Z on the next board would be a silent
+      // run of ten stale skips.
+      history.clear()
       resizeObserver.disconnect()
       document.removeEventListener('visibilitychange', onVisibility)
       rendererRef.current = null
@@ -408,6 +421,7 @@ export function Canvas() {
       <PropertiesPanel />
       <ContextMenu container={container} getSize={getSize} />
       <ZoomControls getSize={getSize} />
+      <UndoRedoControls />
       {flags.debug && <CanvasDebugOverlay read={readDebug} />}
     </div>
   )

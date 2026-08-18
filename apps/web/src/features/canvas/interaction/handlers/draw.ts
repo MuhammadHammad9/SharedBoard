@@ -10,6 +10,8 @@ import {
   type StrokeObject,
 } from '@coboard/shared'
 import { boardStore, nextZIndex } from '../../../../stores/boardStore.js'
+import { applyAndEmit, createOps } from '../../history/apply.js'
+import { LABELS } from '../../history/grouping.js'
 import { canTransition } from '../machine.js'
 
 /**
@@ -23,10 +25,9 @@ import { canTransition } from '../machine.js'
  *   Escape /
  *   pointercancel → discard entirely, commit nothing
  *
- * Phase 6 adds the inverse op onto the undo stack at commit; Phase 9 adds the
- * socket emit and the outbox; Phase 10 adds the throttled presence broadcast
- * inside `appendPoint`. The call sites are marked so those phases have an
- * unambiguous home rather than re-deriving the sequence.
+ * The commit goes through `applyAndEmit`, which is where the undo entry is
+ * recorded and where Phase 9 will emit the op and fill the outbox. Phase 10
+ * adds the throttled presence broadcast inside `appendPoint`.
  */
 
 /** Local author id until accounts exist in Phase 7. */
@@ -112,8 +113,7 @@ export function appendPoint(screenX: number, screenY: number, pressure: number):
  * produced nothing worth storing.
  */
 export function commitDraw(element: Element | null): StrokeObject | null {
-  const { interaction, draft, addObject, clearDraft, setInteraction } =
-    boardStore.getState()
+  const { interaction, draft, clearDraft, setInteraction } = boardStore.getState()
   if (interaction.type !== 'DRAWING') return null
 
   releaseCapture(element, interaction.pointerId)
@@ -151,10 +151,9 @@ export function commitDraw(element: Element | null): StrokeObject | null {
     simplified: true,
   }
 
-  addObject(object)
-
-  // Phase 6: push { forward:[CREATE], inverse:[DELETE] } as ONE history entry.
-  // Phase 9: emit { t:'op', op:{ id, type:'CREATE', … } } and add to the outbox.
+  // ONE history entry, { forward:[CREATE], inverse:[DELETE] } — TRD §8.4's
+  // "one stroke = 1". Phase 9 emits the same op from inside applyAndEmit.
+  applyAndEmit(createOps([object]), LABELS.draw)
   return object
 }
 

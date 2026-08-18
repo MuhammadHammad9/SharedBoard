@@ -13,6 +13,8 @@ import {
   serialize,
   writeSystemClipboard,
 } from '../../../../lib/clipboard.js'
+import { applyAndEmit, createOps, deleteOps, updateOps } from '../../history/apply.js'
+import { LABELS } from '../../history/grouping.js'
 import { buildObject } from './create.js'
 
 /**
@@ -34,7 +36,8 @@ export function copySelection(): BoardObject[] {
 export function cutSelection(): BoardObject[] {
   const objects = copySelection()
   if (objects.length === 0) return []
-  boardStore.getState().deleteObjects(objects.map(o => o.id))
+  // One entry for the whole cut, whatever its size — R-UNDO-004.
+  applyAndEmit(deleteOps(objects.map(o => o.id)), LABELS.cut)
   return objects
 }
 
@@ -62,7 +65,7 @@ export async function pasteAt(canvasX: number, canvasY: number): Promise<BoardOb
     )
     if (created) {
       const withText = { ...created, text: raw.slice(0, 5_000) } as TextObject
-      state.addObject(withText)
+      applyAndEmit(createOps([withText]), LABELS.paste)
       state.setSelection([withText.id])
       return [withText]
     }
@@ -81,11 +84,9 @@ export async function pasteAt(canvasX: number, canvasY: number): Promise<BoardOb
   }
 
   const pasted = rekey(objects, canvasX - minX, canvasY - minY, nextZIndex)
-  for (const o of pasted) state.addObject(o)
+  // TRD §8.4: "paste 5 objects → 1 entry". One call, one entry, whatever N is.
+  applyAndEmit(createOps(pasted), LABELS.paste)
   state.setSelection(pasted.map(o => o.id))
-
-  // PHASE 6 SLOT: ONE history entry for the whole paste (R-UNDO-010).
-  // PHASE 9 SLOT: one batched op:create message.
   return pasted
 }
 
@@ -96,7 +97,7 @@ export function duplicateSelection(): BoardObject[] {
   if (objects.length === 0) return []
 
   const copies = rekey(objects, DUPLICATE_OFFSET, DUPLICATE_OFFSET, nextZIndex)
-  for (const o of copies) state.addObject(o)
+  applyAndEmit(createOps(copies), LABELS.duplicate)
   state.setSelection(copies.map(o => o.id))
   return copies
 }
@@ -114,13 +115,14 @@ export function duplicateSelection(): BoardObject[] {
  * generating a key BETWEEN two neighbours.
  */
 export function bringToFront(): void {
-  const state = boardStore.getState()
   const objects = selectedObjects()
   if (objects.length === 0) return
-  state.updateObjects(
-    objects.map(o => ({ ...o, zIndex: nextZIndex(), updatedAt: Date.now() })),
+  // applyOps re-sorts the cached z-order when a zIndex changes, so there is no
+  // separate reorder() call and no window where the two disagree.
+  applyAndEmit(
+    updateOps(objects.map(o => ({ ...o, zIndex: nextZIndex(), updatedAt: Date.now() }))),
+    LABELS.reorder,
   )
-  state.reorder()
 }
 
 export function sendToBack(): void {
@@ -135,16 +137,18 @@ export function sendToBack(): void {
   const parsed = Number.parseInt(base.slice(1), 36)
   const start = Number.isFinite(parsed) ? parsed : 0
 
-  state.updateObjects(
-    objects.map((o, i) => ({
-      ...o,
-      zIndex: `a${Math.max(0, start - objects.length + i)
-        .toString(36)
-        .padStart(6, '0')}`,
-      updatedAt: Date.now(),
-    })),
+  applyAndEmit(
+    updateOps(
+      objects.map((o, i) => ({
+        ...o,
+        zIndex: `a${Math.max(0, start - objects.length + i)
+          .toString(36)
+          .padStart(6, '0')}`,
+        updatedAt: Date.now(),
+      })),
+    ),
+    LABELS.reorder,
   )
-  state.reorder()
 }
 
 /** Move the selection by a canvas delta. Used by the context menu's nudges. */

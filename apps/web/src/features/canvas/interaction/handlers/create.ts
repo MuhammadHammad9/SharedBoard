@@ -11,6 +11,8 @@ import {
   type TextObject,
 } from '@coboard/shared'
 import { boardStore, nextZIndex, type Tool } from '../../../../stores/boardStore.js'
+import { applyAndEmit, createOps } from '../../history/apply.js'
+import { LABELS } from '../../history/grouping.js'
 import { canTransition } from '../machine.js'
 import { releaseCapture } from './select.js'
 
@@ -225,10 +227,8 @@ export function endCreate(element: Element | null): BoardObject | null {
   const object = buildObject(interaction.tool, box, crypto.randomUUID() as ObjectId)
   if (!object) return null
 
-  state.addObject(object)
+  applyAndEmit(createOps([object]), LABELS.create)
   state.setSelection([object.id])
-  // PHASE 6 SLOT: one history entry { forward:[CREATE], inverse:[DELETE] }.
-  // PHASE 9 SLOT: emit op:create and add to the outbox.
   return object
 }
 
@@ -249,6 +249,13 @@ export function cancelCreate(element: Element | null): void {
  * this both creates the object and opens the editor. The note is a real object
  * from the moment it exists; the empty-discard on blur is what keeps the board
  * clean (step 4).
+ *
+ * UNDO: nothing is recorded here. The object exists in the store but not yet
+ * in history, and `commitTextEdit` pushes ONE entry — a CREATE carrying the
+ * finished text — when the editor closes on something worth keeping. Recording
+ * the empty placeholder instead would cost two Ctrl+Zs for one sticky note
+ * (create, then type), and a third undoing a note the empty-discard already
+ * threw away.
  */
 export function placeAndEdit(
   tool: 'sticky' | 'text',

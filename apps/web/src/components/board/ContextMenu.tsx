@@ -8,6 +8,8 @@ import {
   sendToBack,
 } from '../../features/canvas/interaction/handlers/clipboardActions.js'
 import { probe, toCanvas } from '../../features/canvas/interaction/handlers/select.js'
+import { applyAndEmit, deleteOps } from '../../features/canvas/history/apply.js'
+import { LABELS } from '../../features/canvas/history/grouping.js'
 
 /**
  * Right-click menu — FR-CANVAS-019 [P1], FLOWS §14.2.
@@ -133,7 +135,7 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
           shortcut: '⌫',
           danger: true,
           onSelect: () =>
-            boardStore.getState().deleteObjects(boardStore.getState().selection),
+            applyAndEmit(deleteOps(boardStore.getState().selection), LABELS.delete),
         },
       ]
     : [

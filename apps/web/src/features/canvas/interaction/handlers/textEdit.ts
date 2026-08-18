@@ -7,6 +7,8 @@ import {
   type TextObject,
 } from '@coboard/shared'
 import { boardStore } from '../../../../stores/boardStore.js'
+import { applyAndEmit, createOps, updateOps } from '../../history/apply.js'
+import { LABELS, typingKey } from '../../history/grouping.js'
 
 /**
  * Text editing — FR-CANVAS-008, FR-CANVAS-009, FLOWS §8.2.2.
@@ -35,7 +37,8 @@ const maxLengthFor = (o: BoardObject): number =>
  * on the *network* emit, which is Phase 9's job and is marked below.
  */
 export function updateEditingText(text: string): void {
-  const { editingTextId, objects, updateObjects } = boardStore.getState()
+  const { editingTextId, editingJustCreated, objects, updateObjects } =
+    boardStore.getState()
   if (!editingTextId) return
 
   const object = objects.get(editingTextId)
@@ -44,10 +47,30 @@ export function updateEditingText(text: string): void {
   const clipped = text.slice(0, maxLengthFor(object))
   if (clipped === object.text) return
 
-  updateObjects([{ ...object, text: clipped, updatedAt: Date.now() }])
+  const next = { ...object, text: clipped, updatedAt: Date.now() }
+
+  /*
+   * UNDO, TRD §8.4's typing row: "1 per burst — coalesce updates that occur
+   * within 1 s of each other on the same object".
+   *
+   * A note still being created records nothing yet. Its whole existence,
+   * text included, becomes one CREATE entry when the editor closes — see
+   * placeAndEdit. Recording keystrokes onto an object that has no CREATE
+   * behind it would leave undo able to empty a note it cannot then remove.
+   */
+  if (editingJustCreated) {
+    updateObjects([next])
+    return
+  }
+
+  applyAndEmit(updateOps([next]), LABELS.typing, {
+    coalesceKey: typingKey(editingTextId),
+  })
 
   // PHASE 9 SLOT: debounced TEXT_DEBOUNCE_MS, emit op:update with the new
-  // text so remote users see it appear as it is typed.
+  // text so remote users see it appear as it is typed. Note the asymmetry —
+  // the STORE write is immediate (the canvas renders under the caret) and only
+  // the NETWORK emit is debounced.
 }
 
 /**
@@ -73,9 +96,19 @@ export function commitTextEdit(): boolean {
   if (!object || !isEditable(object)) return false
 
   if (object.text.trim() === '' && editingJustCreated) {
+    // Nothing was ever recorded for a just-created note, so this leaves the
+    // undo stack exactly as it found it — which is right: placing a note and
+    // immediately abandoning it is not an action to undo.
     state.deleteObjects([editingTextId])
     return true
   }
+
+  /*
+   * The one entry a click-placed sticky or text object produces — ONE CREATE
+   * carrying the finished text, pushed once the user has committed to keeping
+   * it. See placeAndEdit for why the create is deferred to here.
+   */
+  if (editingJustCreated) applyAndEmit(createOps([object]), LABELS.create)
 
   // Left selected, so the properties panel stays on the thing just edited.
   state.setSelection([editingTextId])
