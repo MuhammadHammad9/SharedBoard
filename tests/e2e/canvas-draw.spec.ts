@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stubSession } from './support/session.js'
 
 /**
  * Drawing e2e — FR-CANVAS-005, FLOWS §8.2.1, §14.4.
@@ -63,6 +64,7 @@ async function scribble(page: Page, steps = 40) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await stubSession(page)
   await page.goto(BOARD)
   await surface(page)
   // Start every test from the same tool, regardless of what localStorage

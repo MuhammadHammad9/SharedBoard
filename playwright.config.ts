@@ -41,12 +41,30 @@ export default defineConfig({
       },
     },
   ],
+  /*
+   * TWO servers from Phase 8: Vite proxies /api to the API server, and the
+   * persistence suite needs a real one behind it.
+   *
+   * The canvas suites do not — they run on a scratch board and stub auth — so
+   * the API server starting is not a new dependency for them, only a new
+   * process. Phase 8's own suite is the one that requires Postgres and Redis,
+   * and it skips itself when they are absent rather than failing (see
+   * tests/e2e/board-persistence.spec.ts).
+   */
   webServer: process.env.E2E_NO_SERVER
     ? undefined
-    : {
-        command: 'pnpm --filter @coboard/web dev',
-        url: 'http://localhost:5173',
-        reuseExistingServer: !process.env.CI,
-        timeout: 60_000,
-      },
+    : [
+        {
+          command: 'pnpm --filter @coboard/server dev',
+          url: 'http://localhost:3000/health',
+          reuseExistingServer: !process.env.CI,
+          timeout: 60_000,
+        },
+        {
+          command: 'pnpm --filter @coboard/web dev',
+          url: 'http://localhost:5173',
+          reuseExistingServer: !process.env.CI,
+          timeout: 60_000,
+        },
+      ],
 })

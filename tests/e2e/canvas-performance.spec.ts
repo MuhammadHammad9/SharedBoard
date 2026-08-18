@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stubSession } from './support/session.js'
 
 /**
  * Canvas performance — PRD G-3, §7.1, rule R-PERF-025.
@@ -61,6 +62,7 @@ async function resetMetrics(page: Page): Promise<void> {
 test('pans the 10,000-object stress board within the frame budget', async ({ page }) => {
   test.slow() // fixture is ~5.5 MB; give it room on a cold runner
 
+  await stubSession(page)
   await page.goto(STRESS_BOARD)
   await expect(page.getByTestId('canvas-surface')).toHaveAttribute('data-ready', 'true')
 
@@ -111,6 +113,7 @@ test('draws on the 10,000-object stress board within the frame budget', async ({
    */
   test.slow()
 
+  await stubSession(page)
   await page.goto(STRESS_BOARD)
   await expect(page.getByTestId('canvas-surface')).toHaveAttribute('data-ready', 'true')
   await expect(page.getByTestId('dbg-objects')).toContainText('/ 10000', {
@@ -168,6 +171,7 @@ test('drags 500 objects at once as ONE operation — FLOWS E-07', async ({ page 
    */
   test.slow()
 
+  await stubSession(page)
   await page.goto(STRESS_BOARD)
   await expect(page.getByTestId('canvas-surface')).toHaveAttribute('data-ready', 'true')
   await expect(page.getByTestId('dbg-objects')).toContainText('/ 10000', {
@@ -231,6 +235,7 @@ test('drags 500 objects at once as ONE operation — FLOWS E-07', async ({ page 
 test('culls off-screen objects rather than drawing all 10,000', async ({ page }) => {
   test.slow()
 
+  await stubSession(page)
   await page.goto(STRESS_BOARD)
   await expect(page.getByTestId('dbg-objects')).toContainText('/ 10000', {
     timeout: 30_000,

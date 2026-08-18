@@ -147,6 +147,42 @@ jobs:
     runs-on: ubuntu-latest
     # Gate 7 — blocking on main, advisory on PRs. TRD §14.3.
     continue-on-error: ${{ github.event_name == 'pull_request' }}
+
+    # Phase 8's suite drives the real stack: browser → Vite → Express →
+    # Postgres. AT-10 asks whether the work is still there after a refresh,
+    # and that question has no meaning against a stubbed API.
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: coboard
+          POSTGRES_PASSWORD: coboard
+          POSTGRES_DB: coboard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coboard -d coboard"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://coboard:coboard@localhost:5432/coboard
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci-access-secret-not-used-anywhere-real
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-used-anywhere-real
+      CLIENT_ORIGIN: http://localhost:5173
+      NODE_ENV: development
+
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -155,6 +191,12 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm --filter @coboard/server exec prisma generate
+
+      - name: Apply migrations
+        run: pnpm --filter @coboard/server exec prisma migrate deploy
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium

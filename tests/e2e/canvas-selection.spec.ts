@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stubSession } from './support/session.js'
 
 /**
  * Selection and transform e2e — FR-CANVAS-004/006/011/012/014/022,
@@ -61,6 +62,7 @@ async function draw(page: Page, x1: number, y1: number, x2: number, y2: number) 
 }
 
 test.beforeEach(async ({ page }) => {
+  await stubSession(page)
   await page.goto(BOARD)
   await surface(page)
   await page.getByTestId('tool-select').click()
