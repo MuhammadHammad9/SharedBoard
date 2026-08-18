@@ -1,5 +1,6 @@
 import { useParams } from 'react-router'
 import { Canvas } from '../features/canvas/Canvas.js'
+import { BoardHeader } from '../components/board/BoardHeader.js'
 import { SessionExpiredBanner } from '../components/board/SessionExpiredBanner.js'
 import { FullScreenSpinner } from '../components/ui/Spinner.js'
 import { BackToDashboard, FullScreenState } from '../components/ui/FullScreenState.js'
@@ -10,10 +11,11 @@ import { actions, states } from '../lib/strings.js'
 /**
  * S-10 Board shell.
  *
- * Phase 8 gives the route its content: the board's objects are fetched, the
+ * Phase 8a gave the route its content: the board's objects are fetched, the
  * outbox is started, and the four states FLOWS §12 specifies are rendered —
- * loading, ready, not-found and error. The header, presence avatars, share and
- * export are Phase 8b and Phase 12.
+ * loading, ready, not-found and error. Phase 8b adds the header, with its
+ * inline rename and the `?new=1` naming hand-off from Create. Presence
+ * avatars, share and export are Phase 9 onward.
  *
  * Lazy-loaded from App.tsx (TRD §12.2) so the auth screens never pull in the
  * canvas engine.
@@ -71,6 +73,11 @@ export default function Board() {
       data-board-role={load.role ?? 'OWNER'}
     >
       <Canvas />
+      <BoardHeader
+        boardId={boardId ?? ''}
+        name={load.name}
+        role={load.role ?? 'OWNER'}
+      />
       <SessionExpiredBanner />
     </main>
   )

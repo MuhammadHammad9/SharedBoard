@@ -45,7 +45,7 @@ export const gzipSize = (path: string): number => gzipSync(readFileSync(path)).l
 
 /**
  * Classify a chunk. The board route chunk is anything Vite named for the board
- * route; everything else that ships on first load counts toward `initial`.
+ * route; everything else counts toward `initial`.
  *
  * Match on the BASENAME only, never the full path. This repository lives at
  * `.../SharedBoard/`, so testing the whole path classified every chunk as the
@@ -55,19 +55,74 @@ export function classify(file: string): 'board' | 'initial' {
   return /board/i.test(basename(file)) ? 'board' : 'initial'
 }
 
+/**
+ * The chunks the browser actually downloads before the app renders.
+ *
+ * Read out of the built `index.html`: the entry `<script type="module">` plus
+ * every `<link rel="modulepreload">`, which is exactly the set Vite marks as
+ * statically reachable from the entry. Async chunks — a lazy route, the
+ * animation library behind the dashboard grid — appear in neither.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │  This replaces "every chunk that is not the board chunk".                │
+ * │                                                                          │
+ * │  That approximation was honest while everything except the board loaded  │
+ * │  eagerly. Once Framer Motion moved behind a dynamic import it counted    │
+ * │  38 KB gzipped against a budget it does not spend, and the reported      │
+ * │  figure was 40 KB worse than the truth. A budget that over-reports is    │
+ * │  not "safely conservative": it is a number nobody can act on, and it     │
+ * │  eventually fails a build for bytes no user downloads.                   │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Returns null when there is no index.html to read, so callers can fall back
+ * rather than silently reporting a budget of zero.
+ */
+export function initialChunks(distDir: string): Set<string> | null {
+  const html = join(distDir, 'index.html')
+  if (!existsSync(html)) return null
+
+  const source = readFileSync(html, 'utf8')
+  const names = new Set<string>()
+  const patterns = [
+    /<script[^>]+type="module"[^>]+src="([^"]+)"/g,
+    /<link[^>]+rel="modulepreload"[^>]+href="([^"]+)"/g,
+  ]
+  for (const re of patterns) {
+    let m: RegExpExecArray | null
+    while ((m = re.exec(source)) !== null) if (m[1]) names.add(basename(m[1]))
+  }
+  return names.size > 0 ? names : null
+}
+
 export interface CheckResult {
   ok: boolean
   totals: Record<string, number>
   failures: string[]
   chunks: ChunkSize[]
+  /** Chunks in neither budget — lazy routes and their vendors. */
+  async: ChunkSize[]
 }
 
 export function checkSizes(distDir: string, budgets: BudgetsFile): CheckResult {
   const files = collectJsFiles(distDir)
   const chunks: ChunkSize[] = files.map(f => ({ file: f, gzipBytes: gzipSize(f) }))
 
+  const eager = initialChunks(distDir)
   const totals: Record<string, number> = { initial: 0, board: 0 }
-  for (const c of chunks) totals[classify(c.file)] += c.gzipBytes
+  const asyncChunks: ChunkSize[] = []
+
+  for (const c of chunks) {
+    const kind = classify(c.file)
+    if (kind === 'board') {
+      totals.board! += c.gzipBytes
+      continue
+    }
+    // With no index.html to read, fall back to the old behaviour: count
+    // everything. Over-reporting is the safe direction for a gate, and the
+    // unit tests build fixture directories with no HTML in them.
+    if (eager === null || eager.has(basename(c.file))) totals.initial! += c.gzipBytes
+    else asyncChunks.push(c)
+  }
 
   const failures: string[] = []
   for (const [key, budget] of Object.entries(budgets.bundles)) {
@@ -79,7 +134,7 @@ export function checkSizes(distDir: string, budgets: BudgetsFile): CheckResult {
     }
   }
 
-  return { ok: failures.length === 0, totals, failures, chunks }
+  return { ok: failures.length === 0, totals, failures, chunks, async: asyncChunks }
 }
 
 /* ── CLI ──────────────────────────────────────────────────────────────────── */
@@ -111,6 +166,17 @@ if (isMain) {
     console.log(
       `  ${mark.padEnd(4)} ${budget.label}: ${(actual / 1024).toFixed(1)} KB / ${budget.maxLabel} (${pct}%)`,
     )
+  }
+
+  if (result.async.length > 0) {
+    // Printed, not budgeted. These are downloaded only when their route is,
+    // and seeing them keeps a lazy chunk from quietly becoming enormous just
+    // because nothing measures it.
+    const total = result.async.reduce((n, c) => n + c.gzipBytes, 0)
+    console.log(`  --   async chunks (not in either budget): ${(total / 1024).toFixed(1)} KB`)
+    for (const c of [...result.async].sort((a, b) => b.gzipBytes - a.gzipBytes).slice(0, 5)) {
+      console.log(`         ${basename(c.file)} ${(c.gzipBytes / 1024).toFixed(1)} KB`)
+    }
   }
 
   if (!result.ok) {
