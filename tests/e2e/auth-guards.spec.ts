@@ -42,6 +42,19 @@ async function stubValidSession(page: Page, { refreshDelayMs = 0 } = {}) {
       body: JSON.stringify({ user: USER }),
     }),
   )
+  /*
+   * The dashboard fetches its board list from Phase 8b onward. Stubbed empty
+   * here because this suite is about ROUTING — did the guard flash the login
+   * screen — and an unstubbed list would land the dashboard in its error
+   * state, which is a true rendering of a different thing entirely.
+   */
+  await page.route('**/api/boards**', route =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ boards: [], nextCursor: null }),
+    }),
+  )
 }
 
 /** No session: refresh 401s, as it would with no cookie. */

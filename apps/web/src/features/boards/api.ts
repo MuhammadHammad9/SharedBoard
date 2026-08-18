@@ -27,6 +27,7 @@ export interface BoardSummary {
 
 export interface BoardState {
   objects: BoardObject[]
+  name: string
   /** The sequence number this state is current as of — R-SYNC-035. */
   seq: number
   myRole: Role

@@ -41,6 +41,7 @@ export type BoardLoadStatus = 'loading' | 'ready' | 'not-found' | 'forbidden' | 
 export interface BoardLoad {
   status: BoardLoadStatus
   role: Role | null
+  name: string
   /** Server sequence the loaded document is current as of. */
   seq: number
   objectCount: number
@@ -50,6 +51,7 @@ export interface BoardLoad {
 export function useBoardLoad(boardId: string | undefined): BoardLoad {
   const [status, setStatus] = useState<BoardLoadStatus>('loading')
   const [role, setRole] = useState<Role | null>(null)
+  const [name, setName] = useState('')
   const [seq, setSeq] = useState(0)
   const [objectCount, setObjectCount] = useState(0)
   const [attempt, setAttempt] = useState(0)
@@ -67,6 +69,7 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
 
     if (isScratchBoard(boardId)) {
       setRole('OWNER')
+      setName('Scratch board')
       setStatus('ready')
       return
     }
@@ -88,6 +91,7 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
         history.clear()
 
         setRole(state.myRole)
+        setName(state.name)
         setSeq(state.seq)
         setObjectCount(state.objects.length)
         setStatus('ready')
@@ -120,5 +124,5 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
     }
   }, [boardId, attempt])
 
-  return { status, role, seq, objectCount, retry: () => setAttempt(n => n + 1) }
+  return { status, role, name, seq, objectCount, retry: () => setAttempt(n => n + 1) }
 }
