@@ -26,7 +26,7 @@ const CI_P95_CEILING_MS = 33
  * three frames of slack, for the same shared-runner reason as the frame gate.
  */
 const CI_INPUT_P95_CEILING_MS = 50
-const STRESS_BOARD = '/?stress=1&debug=1'
+const STRESS_BOARD = '/board/e2e?stress=1&debug=1'
 
 interface Metrics {
   p50: number

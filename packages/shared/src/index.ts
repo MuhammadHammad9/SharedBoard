@@ -10,6 +10,7 @@
 export * from './types/branded.js'
 export * from './constants.js'
 export * from './geometry.js'
+export * from './errors.js'
 export * from './protocol.js'
 export * from './schemas/object.js'
 export * from './schemas/op.js'

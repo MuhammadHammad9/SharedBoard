@@ -63,3 +63,54 @@ export type LoginInput = z.infer<typeof LoginSchema>
 export type ForgotPasswordInput = z.infer<typeof ForgotPasswordSchema>
 export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>
 export type GuestIdentity = z.infer<typeof GuestIdentitySchema>
+
+/**
+ * The user as the client is allowed to see it.
+ *
+ * Named `PublicUser` rather than `User` deliberately: the Prisma row carries
+ * `passwordHash`, `googleId` and `emailLower`, and none of those may ever
+ * reach a response body. Having one schema whose whole job is "what leaves the
+ * server" means the redaction happens in a single place instead of being
+ * re-remembered at every endpoint.
+ */
+export const PublicUserSchema = z.object({
+  id: z.string().uuid(),
+  email: EmailSchema,
+  displayName: z.string().min(1).max(DISPLAY_NAME_MAX),
+  avatarUrl: z.string().url().nullable(),
+  /** True once a password has been set; false for an OAuth-only account. */
+  hasPassword: z.boolean(),
+  createdAt: z.string(),
+})
+
+export type PublicUser = z.infer<typeof PublicUserSchema>
+
+/** POST /auth/register and /auth/login. The refresh token rides in a cookie. */
+export const AuthResponseSchema = z.object({
+  user: PublicUserSchema,
+  accessToken: z.string().min(1),
+})
+
+export type AuthResponse = z.infer<typeof AuthResponseSchema>
+
+export const RefreshResponseSchema = z.object({ accessToken: z.string().min(1) })
+
+export const UpdateProfileSchema = z.object({
+  displayName: DisplayNameSchema.optional(),
+  avatarUrl: z.string().url().max(2048).nullable().optional(),
+})
+
+export const ChangePasswordSchema = z.object({
+  /** Optional: an OAuth-only account is SETTING a password, not changing one. */
+  currentPassword: z.string().min(1).max(PASSWORD_MAX_LENGTH).optional(),
+  newPassword: PasswordSchema,
+})
+
+/**
+ * Deleting an account requires typing the exact display name — FR-SET-001.
+ * Checked server-side too: a client-only confirmation is theatre.
+ */
+export const DeleteAccountSchema = z.object({ confirm: z.string().min(1).max(200) })
+
+export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>
+export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>

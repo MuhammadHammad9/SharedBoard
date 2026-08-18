@@ -24,6 +24,48 @@ jobs:
   quality:
     name: Types, lint, tests
     runs-on: ubuntu-latest
+
+    # Phase 7 brings the first code that cannot be honestly tested without a
+    # database. The auth suite is almost entirely integration tests, and an
+    # integration test that mocks Prisma verifies nothing about Postgres --
+    # not the unique constraints, not the cascade deletes, not the
+    # transaction that revokes a token family. So CI gets real services.
+    #
+    # These mirror docker-compose.yml exactly, so a failure here reproduces
+    # locally with `bash scripts/dev-services.sh`.
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: coboard
+          POSTGRES_PASSWORD: coboard
+          POSTGRES_DB: coboard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coboard -d coboard"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://coboard:coboard@localhost:5432/coboard
+      REDIS_URL: redis://localhost:6379
+      # Test-only values. Real secrets never appear in a workflow file
+      # (R-SEC-016); these exist so the JWT module has something to sign with.
+      JWT_ACCESS_SECRET: ci-access-secret-not-used-anywhere-real
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-used-anywhere-real
+      CLIENT_ORIGIN: http://localhost:5173
+
     steps:
       - uses: actions/checkout@v4
 
@@ -35,6 +77,14 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # Prisma Client is generated code and is NOT committed, so it must be
+      # produced before typecheck -- the server imports its types.
+      - name: Generate Prisma Client
+        run: pnpm --filter @coboard/server exec prisma generate
+
+      - name: Apply migrations
+        run: pnpm --filter @coboard/server exec prisma migrate deploy
 
       # Gate 1 — blocking
       - name: Typecheck

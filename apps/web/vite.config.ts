@@ -49,6 +49,21 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    /*
+     * Proxy the API through the dev server so the browser sees one origin.
+     *
+     * Same-origin in development is not a convenience: the refresh token is an
+     * httpOnly SameSite=Lax cookie scoped to /api/auth, and a cross-origin
+     * fetch to :3000 would need CORS credentials plus SameSite=None plus
+     * Secure — a configuration that differs from production in exactly the
+     * area most likely to break silently.
+     */
+    proxy: {
+      '/api': {
+        target: process.env.API_ORIGIN ?? 'http://localhost:3000',
+        changeOrigin: false,
+      },
+    },
   },
   build: {
     outDir: 'dist',

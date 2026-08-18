@@ -8,8 +8,7 @@
     "build": "tsc --build",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "_comment:db:migrate": "--skip-generate is required only while the schema has zero models. Remove it in Phase 7 when User and RefreshToken land.",
-    "db:migrate": "dotenv -e ../../.env -- prisma migrate dev --skip-generate",
+    "db:migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "db:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
     "db:studio": "dotenv -e ../../.env -- prisma studio",
     "db:reset": "dotenv -e ../../.env -- prisma migrate reset --force",
@@ -22,16 +21,27 @@
   "dependencies": {
     "@coboard/shared": "workspace:*",
     "@prisma/client": "^5.22.0",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
     "pino": "^9.5.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.7",
+    "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/supertest": "^6.0.2",
     "dotenv-cli": "^7.4.4",
     "pino-pretty": "^13.0.0",
     "prisma": "^5.22.0",
+    "supertest": "^7.0.0",
     "tsx": "^4.19.2"
   }
 }

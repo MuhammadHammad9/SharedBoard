@@ -105,6 +105,7 @@ export const validation = {
   emailInvalid: "That doesn't look like an email address.",
   passwordRules: 'Password needs at least 8 characters, including a letter and a number.',
   displayNameRequired: 'Enter a name so others know who you are.',
+  passwordRequired: 'Enter your password.',
   networkFailure: "Couldn't reach the server. Check your connection.",
 } as const
 
@@ -174,7 +175,128 @@ export const exportStrings = {
   scaledDown: 'Scaled down to fit the maximum export size.',
 } as const
 
+/**
+ * FLOWS §3, §4, §5 — the auth screens.
+ *
+ * PRD §8 does not enumerate every label on every auth screen, so the strings
+ * below that are not quoted in the specs are authored here to its tone rules
+ * (§8.1): second person, present tense, never blame the user, every error
+ * says what to do next. The ones that ARE specified — the validation table,
+ * the login failure, the reset confirmation — are verbatim.
+ */
+export const auth = {
+  signup: {
+    title: 'Create your account',
+    subtitle: 'Start drawing with your team in seconds.',
+    submit: actions.createAccount,
+    haveAccount: 'Already have an account?',
+    logIn: 'Log in',
+    google: 'Continue with Google',
+    or: 'or',
+    // FLOWS §3.1 branch 8b — inline on the email field, beside a route out.
+    emailTaken: errors.emailAlreadyRegistered,
+    genericFailure: errors.genericServerError,
+    // FLOWS §3.1 step 5.
+    checklist: {
+      length: '8+ characters',
+      letter: 'a letter',
+      number: 'a number',
+    },
+    strength: {
+      weak: 'Weak',
+      fair: 'Fair',
+      strong: 'Strong',
+    },
+  },
+
+  login: {
+    title: 'Welcome back',
+    subtitle: 'Log in to get back to your boards.',
+    submit: 'Log in',
+    noAccount: "Don't have an account?",
+    signUp: actions.signUp,
+    forgot: 'Forgot password?',
+    google: 'Continue with Google',
+    // FLOWS §3.3 — the two OAuth failure banners.
+    oauthCancelled: 'Google sign-in was cancelled.',
+    oauthFailed: "Couldn't sign in with Google. Try email instead.",
+    // FLOWS §5, shown after a successful reset.
+    passwordUpdated: 'Password updated. Log in with your new password.',
+    accountDisabled: 'This account has been disabled. Contact support.',
+  },
+
+  forgot: {
+    title: 'Reset your password',
+    subtitle: "Enter your email and we'll send you a link.",
+    submit: 'Send reset link',
+    // FLOWS §5 confirmation state, verbatim.
+    sentTitle: 'Check your email',
+    sentBody: (email: string) =>
+      `If an account exists for ${email}, we've sent a reset link. It expires in 60 minutes.`,
+    resend: 'Resend',
+    resendIn: (seconds: number) => `Resend in ${seconds}s`,
+    backToLogin: actions.backToLogin,
+  },
+
+  reset: {
+    title: 'Choose a new password',
+    submit: 'Update password',
+    newPassword: 'New password',
+    confirmPassword: 'Confirm password',
+    mismatch: "Those passwords don't match.",
+    checking: 'Checking your link…',
+    // FLOWS §5 — one banner per token state.
+    expired: 'That reset link expired. Request a new one.',
+    invalid: "That reset link isn't valid. Request a new one.",
+    used: 'That link was already used. Request a new one.',
+  },
+
+  callback: {
+    signingIn: 'Signing you in…',
+    // S-06 must never be visible for long — 5 s and 15 s thresholds.
+    stillWorking: 'Still working…',
+  },
+
+  settings: {
+    title: 'Settings',
+    profile: 'Profile',
+    displayName: 'Display name',
+    email: 'Email',
+    emailReadOnly: 'Your email address cannot be changed yet.',
+    save: 'Save changes',
+    saved: 'Saved',
+    password: 'Password',
+    currentPassword: 'Current password',
+    newPassword: 'New password',
+    setPassword: 'Set a password',
+    setPasswordHint:
+      'You signed in with Google. Set a password to also log in with your email.',
+    changePassword: 'Change password',
+    wrongCurrentPassword: "That password isn't right.",
+    passwordChanged: 'Password updated. Log in again on your other devices.',
+    dangerZone: 'Delete account',
+    dangerBody: 'This removes your account and everything on it. This cannot be undone.',
+    deleteConfirmLabel: (name: string) => `Type ${name} to confirm`,
+    deleteMismatch: "That doesn't match your display name.",
+    deleteSubmit: 'Delete my account',
+    logOut: 'Log out',
+  },
+
+  // E-17 — the session expired while a board was open.
+  sessionExpired: {
+    message: 'Your session expired.',
+    action: 'Log in again',
+  },
+
+  fields: {
+    email: 'Email',
+    password: 'Password',
+    displayName: 'Your name',
+  },
+} as const
+
 export const strings = {
+  auth,
   errors,
   actions,
   emptyStates,
