@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "CoBoard — real-time collaborative whiteboard",
+  "description": "CoBoard \u2014 real-time collaborative whiteboard",
   "engines": {
     "node": ">=20"
   },
@@ -31,7 +31,7 @@
     "fixtures:generate": "tsx scripts/generate-stress-board.ts"
   },
   "pnpm": {
-    "_comment:overrides": "Security overrides. R-SEC-019 blocks the build on high/critical advisories, and R-PREC-001 puts security at Tier 1 — above the TRD §1.1 version pin. GHSA-fx2h-pf6j-xcff (vite server.fs.deny bypass) is patched only in >=6.4.3, so every transitive copy is forced there.",
+    "_comment:overrides": "Security overrides. R-SEC-019 blocks the build on high/critical advisories, and R-PREC-001 puts security at Tier 1 \u2014 above the TRD \u00a71.1 version pin. GHSA-fx2h-pf6j-xcff (vite server.fs.deny bypass) is patched only in >=6.4.3, so every transitive copy is forced there.",
     "overrides": {
       "vite": "^6.4.3"
     },
@@ -48,6 +48,7 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.4",
     "@types/node": "^22.10.0",
+    "dotenv": "^16.4.5",
     "eslint": "^9.15.0",
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.0.0",
