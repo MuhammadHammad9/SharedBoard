@@ -3,13 +3,16 @@ import { config as loadDotenv } from 'dotenv'
 import { createApp } from './http/app.js'
 import { env } from './lib/env.js'
 import { logger } from './lib/logger.js'
+import { attachGateway } from './ws/gateway.js'
 
 /**
- * Phase 8 server: REST auth, boards, the op log and snapshots.
+ * Phase 9 server: REST auth, boards, the op log, snapshots, and the WebSocket
+ * gateway.
  *
- * The WebSocket gateway arrives in Phase 9 — per TRD §16, not before Phases
- * 2-8 are genuinely solid. Ops persist over REST until then, through the same
- * `OpService` the gateway will call.
+ * The gateway and the REST op endpoint funnel into the SAME `OpService`, which
+ * is the point of that service existing: TRD §5.4 fixes the order of
+ * operations for appending an op, and two implementations of it is how a rule
+ * gets enforced on one path and forgotten on the other.
  */
 
 /*
@@ -28,9 +31,10 @@ const app = createApp()
 // Only listen when run directly, so integration tests can build their own app
 // with supertest and never bind a port.
 if (env().NODE_ENV !== 'test') {
-  app.listen(env().PORT, () => {
+  const server = app.listen(env().PORT, () => {
     logger.info({ port: env().PORT }, 'CoBoard server listening')
   })
+  attachGateway(server, { fanout: true })
 }
 
 export { app, createApp }

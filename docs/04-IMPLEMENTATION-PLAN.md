@@ -2466,6 +2466,30 @@ This is a deliberate decision. A remote object arriving with a 300 ms fade is a 
 
 The one exception: the connection indicator's amber "connecting" dot pulses — a 1.2 s `opacity` loop. It is status, not decoration, and it is the only continuous animation permitted in the board chrome.
 
+### Corrections to this phase, found while building it
+
+Recorded here rather than in the delivered specs (`R-PREC-020`).
+
+**1. Phase 9 is split into two pull requests.** **9a** is tasks 1-11 — the server gateway, proven on its own by a socket suite driving a real `ws` client. **9b** is tasks 12-20 — `SocketClient`, `SyncEngine`, fractional indexing, the parallel load and `AT-01` … `AT-05`. TRD §16's warning is the reason for that order: landing a gateway that is provably correct before anything depends on it means that when two windows disagree in 9b, the answer is not "somewhere in the stack".
+
+**2. Op envelopes are routed on `t` alone, not validated whole at the boundary.** The obvious gateway runs `ClientMessageSchema` over every frame and drops what fails — which silently swallows a well-formed `{t:'op'}` carrying a malformed op. Silence is the worst possible answer there: the client's outbox is waiting for an ack or a nack and will retry the same bad op forever. TRD §5.4 step 2 requires an `INVALID_OP` nack, so the ops reach `handleOps` as raw values and are validated one at a time. That is also what lets one bad op in a batch of forty be refused without discarding the other thirty-nine. **Caught by the socket suite** — the outer schema was quietly doing the rejecting and nobody was being told.
+
+**3. Broadcast exclusion is per-op, by `actorSessionId`, not per-batch.** Ops from different authors share a 16 ms window, so excluding the whole batch from each author means A never receives B's op purely because they wrote in the same frame.
+
+**4. `POST /api/ws/ticket` is how the socket authenticates.** TRD §5.1 offers the `Sec-WebSocket-Protocol` subprotocol or a short-lived ticket; this is the ticket, redeemed with `GETDEL` so it is genuinely single-use rather than single-use-unless-you-are-quick. The browser `WebSocket` constructor cannot set an `Authorization` header, and a 15-minute bearer token in a query string is a credential leak with a schedule — it lands in server logs, proxy logs and the next `Referer`.
+
+**5. The role is re-resolved at upgrade, not read from the ticket.** A ticket may be 59 seconds old, and a demotion inside that window must take effect (`R-SEC-002`).
+
+**6. The `join` message's `boardId` must match the ticket's.** Without the check, a ticket for a board you *can* read becomes a join to any board you name, and the authorization was performed against the wrong resource entirely.
+
+**7. Steps 4 and 5 delegate to `OpService.append`.** Phase 8 already wrote and tested the idempotency check and the transactional block-allocated seq. Reimplementing them in the socket handler is exactly how TRD §5.4 ends up enforced on one path and forgotten on the other.
+
+**8. The rate limiter is a Redis token bucket evaluated as one Lua script.** Ops are bursty — a forty-object paste is one user action — so a fixed window either refuses the paste or permits a sustained flood. The single script matters for the same reason the seq assignment does: read, refill and take across three round trips lets two concurrent messages spend the same token. It **fails open**, because a limiter that becomes a total outage when its own dependency blips has traded a small abuse risk for a large availability one.
+
+**9. Redis pub/sub fan-out ships now, with a test that runs two `RoomManager`s.** v1 is a single instance, so nothing else in the suite would catch a fan-out that silently does nothing — and that failure only appears the day a second instance exists, as "two people on the same board cannot see each other".
+
+**Deferred to 9b, stated rather than quietly dropped:** the client `SocketClient` and `SyncEngine`, ordered draining and gap fill, tombstones, optimistic rollback on nack, fractional z-indexing, the parallel snapshot + socket load, the connection indicator, and `AT-01` … `AT-05`. Presence messages (`cursor`, `sel`, `stroke`, `xform`) are accepted and ignored by the gateway until Phase 10.
+
 ### Tasks
 
 1. WebSocket gateway with upgrade handling and handshake authentication.
