@@ -6,6 +6,7 @@ import {
   checkSizes,
   classify,
   collectJsFiles,
+  initialChunks,
   type BudgetsFile,
 } from '../check-bundle-size.js'
 
@@ -119,6 +120,61 @@ describe('checkSizes — the gate must actually fail', () => {
     const r = checkSizes(d, budgets)
     // Each alone is under 2 KB gzipped; together they must breach it.
     expect(r.totals.initial).toBeGreaterThan(budgets.bundles.initial!.maxBytes)
+    expect(r.ok).toBe(false)
+  })
+})
+
+/* ── The initial set comes from index.html — Phase 8b ─────────────────────── */
+
+describe('initialChunks', () => {
+  it('reads the entry script and its modulepreloads', () => {
+    const d = join(dir, 'html')
+    mkdirSync(join(d, 'assets'), { recursive: true })
+    writeFileSync(
+      join(d, 'index.html'),
+      `<!doctype html><html><head>
+        <script type="module" crossorigin src="/assets/index-a1.js"></script>
+        <link rel="modulepreload" crossorigin href="/assets/vendor-react-b2.js">
+      </head><body></body></html>`,
+    )
+
+    const set = initialChunks(d)
+    expect(set).not.toBeNull()
+    expect([...set!].sort()).toEqual(['index-a1.js', 'vendor-react-b2.js'])
+  })
+
+  it('returns null with no index.html, so callers can fall back', () => {
+    expect(initialChunks(join(dir, 'nothing-here'))).toBeNull()
+  })
+})
+
+describe('async chunks are excluded from the initial budget', () => {
+  it('counts only what index.html actually loads', () => {
+    const d = join(dir, 'lazy')
+    mkdirSync(join(d, 'assets'), { recursive: true })
+    writeFileSync(
+      join(d, 'index.html'),
+      `<script type="module" src="/assets/index-a.js"></script>`,
+    )
+    writeFileSync(join(d, 'assets', 'index-a.js'), incompressible(1_000))
+    // A lazy chunk far over the budget. It must not fail the gate, because
+    // nobody downloads it until they open the route that imports it — this is
+    // the Framer-Motion-behind-the-dashboard case.
+    writeFileSync(join(d, 'assets', 'AnimatedGrid-b.js'), incompressible(50_000))
+
+    const r = checkSizes(d, budgets)
+    expect(r.ok).toBe(true)
+    expect(r.totals.initial).toBeLessThan(budgets.bundles.initial!.maxBytes)
+    expect(r.async.map(c => c.file.split('/').pop())).toEqual(['AnimatedGrid-b.js'])
+  })
+
+  it('still counts everything when there is no index.html — the safe fallback', () => {
+    const d = join(dir, 'no-html')
+    mkdirSync(join(d, 'assets'), { recursive: true })
+    writeFileSync(join(d, 'assets', 'index-a.js'), incompressible(1_500))
+    writeFileSync(join(d, 'assets', 'lazy-b.js'), incompressible(1_500))
+
+    const r = checkSizes(d, budgets)
     expect(r.ok).toBe(false)
   })
 })

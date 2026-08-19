@@ -2070,7 +2070,17 @@ Recorded here rather than in the delivered specs (`R-PREC-020`). Each blocking o
 
 **8. Vitest is split into `unit` and `integration` projects.** The integration files share one Postgres and one Redis and truncate between cases; run in parallel they delete each other's rows. The integration project runs in a single fork, so the 24 pure files keep their parallelism.
 
-**Deferred from 8a and stated rather than quietly dropped:** thumbnails (task 18) need the dashboard to display them; `board:renamed` / `board:deleted` broadcasts (tasks in FR-BOARD-004/005) need the Phase 9 socket; the snapshot-on-last-client-leaving trigger needs rooms, so only the every-500-ops trigger exists.
+**9. `framer-motion` must not be given a manual chunk name.** Naming any chunk for it — even its own — makes Rollup treat it as eagerly reachable, and it lands in the initial download for every page including the board, silently undoing `R-SKILL-060` and conflict `C-3`. Leaving it to automatic splitting follows the dynamic `import()` in `BoardGrid`. Measured cost of getting it wrong: **+58 KB gzipped** on the initial bundle.
+
+**10. The bundle gate now reads `index.html` to decide what "initial" means** — defect `D-12`. Summing every non-board chunk was correct only while everything except the board loaded eagerly.
+
+**11. The Dashboard and Trash routes are lazy**, for the reason TRD §12.2 gives for the board: someone landing on `/login` should not download TanStack Query or the grid's animation library.
+
+**12. A dropdown must not close on `scroll`.** The menu is `position: absolute` inside its trigger, so page scroll carries it along and it never detaches — and opening it moves focus to the first item, which scrolls that item into view, which fired the handler and closed the menu it was opening. The e2e suite caught it; the happy-dom component test could not, because happy-dom's `focus()` does not scroll. A portaled or fixed-position menu would need scroll handling again.
+
+**13. The `E-16` create latch releases on FAILURE only, never on success.** `isPending` alone is not enough: a fast server resolves in under the ~80 ms between the two clicks of a real double-click, so the second lands after `isPending` has gone false and creates a second board. The component test caught it doing exactly that.
+
+**Deferred, and stated rather than quietly dropped:** `board:renamed` / `board:deleted` broadcasts (FR-BOARD-004/005) need the Phase 9 socket — the endpoints do the work, but nobody is notified; the snapshot-on-last-client-leaving trigger needs rooms, so only the every-500-ops trigger exists; **thumbnails (task 18) move to Phase 13**, because generating a 640x400 JPEG is the easy half and storing it needs the S3 presigning that phase brings — the specified empty-board placeholder renders on every card until then; **Starred** resolves to the same set as All, since there is no `Star` model until Phase 12 and an empty list would read as "you have no boards"; **member avatars on the card** (FLOWS §6.2) need the members list, which is Phase 12's `GET /boards/:id/members`.
 
 ### Tasks
 
