@@ -14,6 +14,17 @@ on:
     branches: [main]
   pull_request:
 
+# One run per branch. Pushing a fix cancels the superseded run instead of
+# leaving it to finish against a commit nobody is looking at any more — which
+# matters most when the run being superseded is a stuck one, since otherwise it
+# holds a runner until the job timeout.
+#
+# `main` is exempt: a push to main is the record of what was merged, and
+# cancelling it would leave a merged commit with no completed CI.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 # NOTE: do not set PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD here. GitHub runners ship no
 # browser, so skipping the download turns the e2e job's `playwright install`
 # into a no-op and the tests then fail with a missing executable. Sandboxes that
@@ -148,6 +159,14 @@ jobs:
     # Gate 7 — blocking on main, advisory on PRs. TRD §14.3.
     continue-on-error: ${{ github.event_name == 'pull_request' }}
 
+    # The suite itself runs in ~4 minutes. Without a cap, a hung step — an
+    # apt mirror that stops responding during `playwright install --with-deps`
+    # is the one we have actually hit — burns the default 6-hour job timeout
+    # and leaves the PR reporting "in progress" all day. 25 minutes is roughly
+    # five times the real runtime: generous for a slow runner, decisive about
+    # a stuck one.
+    timeout-minutes: 25
+
     # Phase 8's suite drives the real stack: browser → Vite → Express →
     # Postgres. AT-10 asks whether the work is still there after a refresh,
     # and that question has no meaning against a stubbed API.
@@ -198,8 +217,24 @@ jobs:
       - name: Apply migrations
         run: pnpm --filter @coboard/server exec prisma migrate deploy
 
+      # Split from the system dependencies below so the browser download —
+      # the large, cacheable half — is skipped on a hit. The apt half cannot
+      # be cached and has to run either way.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright system dependencies
+        run: pnpm exec playwright install-deps chromium
+        timeout-minutes: 10
+
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install chromium
+        timeout-minutes: 10
 
       - name: Run Playwright
         run: pnpm test:e2e
