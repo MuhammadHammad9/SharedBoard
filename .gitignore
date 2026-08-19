@@ -10,8 +10,6 @@ build/
 .vite/
 
 # Environment — R-SEC-016: .env is never committed, .env.example is
-.env
-.env.local
 .env.*.local
 !.env.example
 
@@ -33,9 +31,9 @@ pnpm-debug.log*
 # Editor / OS
 .DS_Store
 .idea/
-.vscode/*
 !.vscode/extensions.json
 
 # Prisma generated client
 packages/**/generated/
 apps/server/src/generated/
+config.bat
