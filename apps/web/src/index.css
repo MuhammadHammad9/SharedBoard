@@ -276,4 +276,29 @@
       opacity 150ms var(--ease-out),
       translate 150ms var(--ease-out);
   }
+
+  /*
+   * The connecting dot — components/board/ConnectionIndicator.tsx.
+   *
+   * The ONE continuous animation allowed in the board chrome (§10.2), because
+   * a static amber dot is indistinguishable from a broken green one. Opacity
+   * only, so it stays on the compositor and costs the canvas nothing.
+   *
+   * Applied through Tailwind's `motion-safe:` variant, so reduced motion drops
+   * it to a static dot — the meaning still carries through the colour and the
+   * "Connecting…" text beside it.
+   */
+  @keyframes coboard-pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .animate-pulse-dot {
+    animation: coboard-pulse-dot 1.2s ease-in-out infinite;
+  }
 }

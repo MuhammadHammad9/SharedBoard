@@ -6,6 +6,7 @@ import {
   STICKY_COLOURS,
   STROKE_WIDTH_MAX,
   STROKE_WIDTH_MIN,
+  TOMBSTONE_CAP,
   ZOOM_MAX,
   ZOOM_MIN,
   clampZoom,
@@ -20,6 +21,7 @@ import {
 import type { InteractionState } from '../features/canvas/interaction/machine.js'
 import type { DraftStroke } from '../features/canvas/renderer/drawInteraction.js'
 import { loadPrefs, savePrefs } from '../lib/persist.js'
+import { keyAfterTop } from '../features/canvas/geometry/zIndex.js'
 
 /**
  * The board store.
@@ -190,6 +192,34 @@ interface BoardState {
   draft: DraftStroke | null
   draftVersion: number
 
+  /**
+   * Objects deleted during this session, and the seq the delete happened at —
+   * TRD §6.2, R-CONV-004, defect `D-13`.
+   *
+   * A `Map` to a sequence number rather than the bare `Set` the TRD pseudocode
+   * shows, and the difference is load-bearing.
+   *
+   * ┌──────────────────────────────────────────────────────────────────────┐
+   * │  "A tombstoned object is never resurrected" is right about           │
+   * │  CONCURRENT ops and wrong about LATER ones.                          │
+   * │                                                                      │
+   * │  Delete X at seq 40, then press Ctrl+Z. Undo emits an ordinary       │
+   * │  CREATE (R-UNDO-003) which the server stores at seq 41 and           │
+   * │  broadcasts. Under a bare Set every other client drops it, and the   │
+   * │  object comes back for the person who undid and for nobody else —    │
+   * │  a permanent divergence, from the most ordinary action there is.     │
+   * │                                                                      │
+   * │  So the rule is by sequence: an op at or below the tombstone's seq   │
+   * │  lost the race and is dropped; an op ABOVE it is a later decision    │
+   * │  and wins, clearing the tombstone. A local op has no seq yet and is  │
+   * │  always the user's own current intent, so it always applies.         │
+   * └──────────────────────────────────────────────────────────────────────┘
+   *
+   * In-memory only, and capped: a board edited all afternoon would otherwise
+   * grow one entry per deletion forever (R-PERF-023).
+   */
+  tombstones: Map<ObjectId, number>
+
   // ─── Actions ───
   setViewport: (v: Viewport) => void
   panBy: (dxScreen: number, dyScreen: number) => void
@@ -221,6 +251,8 @@ interface BoardState {
   setSelection: (ids: readonly ObjectId[]) => void
   /** Recompute the cached z-order after zIndex values change — R-CONV-009. */
   reorder: () => void
+  /** Forget every tombstone. Board load only — a new document, a new session. */
+  clearTombstones: () => void
   toggleSelection: (id: ObjectId) => void
   clearSelection: () => void
   selectAll: () => void
@@ -228,6 +260,37 @@ interface BoardState {
   startDraft: (d: DraftStroke) => void
   touchDraft: () => void
   clearDraft: () => void
+}
+
+/**
+ * The seq an op carries, if any.
+ *
+ * Local ops have none — they have not been to the server yet. That absence is
+ * meaningful: it marks the op as the user's own current intent, which always
+ * wins over anything already on their screen.
+ */
+const seqOf = (op: ClientOp): number | undefined =>
+  (op as { seq?: number }).seq
+
+/**
+ * True when this op lost to a delete and must be dropped.
+ *
+ * A local DELETE records `MAX_SAFE_INTEGER`, because until the server assigns
+ * it a seq nothing arriving from the network can be known to be later — and
+ * optimistically resurrecting the object the user just deleted, only to delete
+ * it again when the ack lands, is a visible flicker on their own screen.
+ */
+function losesToTombstone(
+  tombstones: ReadonlyMap<ObjectId, number>,
+  id: ObjectId,
+  op: ClientOp,
+): boolean {
+  const deletedAt = tombstones.get(id)
+  if (deletedAt === undefined) return false
+  const seq = seqOf(op)
+  // No seq: a local op, the user's own intent. It always applies.
+  if (seq === undefined) return false
+  return seq <= deletedAt
 }
 
 const clampCoordValue = (n: number) =>
@@ -263,6 +326,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
   draft: null,
   draftVersion: 0,
+  tombstones: new Map(),
 
   setViewport: v => set({ viewport: { ...v, zoom: clampZoom(v.zoom) } }),
 
@@ -366,6 +430,9 @@ export const useBoardStore = create<BoardState>((set, get) => ({
    * or non-finite value.
    */
   loadObjects: objects => {
+    // A fresh document means fresh tombstones. Carrying them across a load
+    // would silently swallow objects the snapshot legitimately contains.
+    const tombstones = new Map<ObjectId, number>()
     const map = new Map<ObjectId, BoardObject>()
     for (const o of objects) {
       map.set(o.id, { ...o, x: clampCoordValue(o.x), y: clampCoordValue(o.y) })
@@ -373,7 +440,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     const sortedIds = [...map.values()]
       .sort((a, b) => (a.zIndex < b.zIndex ? -1 : a.zIndex > b.zIndex ? 1 : 0))
       .map(o => o.id)
-    set(s => ({ objects: map, sortedIds, objectsVersion: s.objectsVersion + 1 }))
+    set(s => ({ objects: map, sortedIds, tombstones, objectsVersion: s.objectsVersion + 1 }))
   },
 
   /**
@@ -497,6 +564,11 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
         switch (op.type) {
           case 'CREATE': {
+            // R-CONV-004, by sequence rather than by presence — see the
+            // `tombstones` doc comment. A remote CREATE that lost to a delete
+            // stays lost; a later one (an undo) brings the object back.
+            if (losesToTombstone(s.tombstones, id, op)) break
+            s.tombstones.delete(id)
             const raw = op.payload as BoardObject
             const previous = s.objects.get(raw.id)
             const object = {
@@ -512,6 +584,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
           }
 
           case 'UPDATE': {
+            if (losesToTombstone(s.tombstones, id, op)) break
             const before = s.objects.get(id)
             // R-UNDO-005 / R-SYNC-021: an update naming an object that is not
             // here is dropped, never used to conjure a partial object.
@@ -531,6 +604,18 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
           case 'DELETE':
             s.objects.delete(id)
+            /*
+             * Capped — R-PERF-023. A board edited all afternoon would grow one
+             * entry per deletion forever. Past the cap the oldest are dropped,
+             * which risks resurrecting an object deleted ten thousand ops ago
+             * by an op that has been in flight since then. That is not a
+             * scenario; unbounded memory growth is.
+             */
+            if (s.tombstones.size >= TOMBSTONE_CAP) {
+              const oldest = s.tombstones.keys().next().value
+              if (oldest !== undefined) s.tombstones.delete(oldest)
+            }
+            s.tombstones.set(id, seqOf(op) ?? Number.MAX_SAFE_INTEGER)
             break
         }
       }
@@ -591,6 +676,9 @@ export const useBoardStore = create<BoardState>((set, get) => ({
    * re-sorting 10,000 ids on each of those frames would be the whole frame
    * budget spent on an order that did not move.
    */
+  clearTombstones: () =>
+    set(s => (s.tombstones.size === 0 ? {} : { tombstones: new Map() })),
+
   reorder: () =>
     set(s => ({
       sortedIds: [...s.objects.values()]
@@ -681,22 +769,17 @@ export function objectsInZOrder(): BoardObject[] {
 }
 
 /**
- * Fractional z-index key for a locally created object — TRD §6.4, D-8.
+ * The z key for a new object, above everything currently on the board.
  *
- * A STRING ordered lexicographically, never an integer. Real key generation
- * BETWEEN two neighbours (so a remote insert can land mid-stack without
- * renumbering) arrives with the op log in Phase 9. Until then every local
- * object appends to the top, which is correct for the append-only case and
- * matches the fixture's `a` + fixed-width base-36 format so the two orderings
- * interleave correctly.
+ * Delegates to `features/canvas/geometry/zIndex.ts`, which uses proper
+ * fractional indexing (TRD §6.4, D-8). Phase 3 shipped a monotonic base-36
+ * counter here as a documented placeholder for exactly this moment; the two
+ * formats interleave correctly because both are just strings compared
+ * lexicographically, so nothing already on a board needs rewriting.
  */
 export function nextZIndex(): string {
   const { objects, sortedIds } = useBoardStore.getState()
-  const topId = sortedIds[sortedIds.length - 1]
-  const top = topId ? objects.get(topId) : undefined
-  const parsed = top ? Number.parseInt(top.zIndex.slice(1), 36) : NaN
-  const next = Number.isFinite(parsed) ? parsed + 1 : sortedIds.length + 1
-  return `a${next.toString(36).padStart(6, '0')}`
+  return keyAfterTop(objects, sortedIds)
 }
 
 /** Non-React accessor for the renderer and interaction handlers. */

@@ -2513,6 +2513,20 @@ Recorded here rather than in the delivered specs (`R-PREC-020`).
 19. `E-13`: unknown object id — log, ignore, request a fresh snapshot after 3 occurrences in a minute.
 20. Connection indicator (Connected and Connecting states).
 
+### Corrections found while building 9b
+
+**10. Tombstones must record a sequence number, not merely membership** — defect `D-13`. A bare `Set` makes undo-of-delete invisible to everyone except the person who pressed Ctrl+Z.
+
+**11. Vite must proxy `/ws` with `ws: true`.** Without it Vite serves the path itself, the upgrade never reaches the API server, and the client sits in "connecting" forever with nothing in the failure that says why. Production puts both behind one origin, so this exists purely so `pnpm dev` and the e2e suite behave like it.
+
+**12. The per-IP login limiter cleared on failure but not on success** — defect `D-14`, found by this phase's e2e suite and fixed here. It is a Phase 7 bug, not a Phase 9 one, but an office behind one NAT locking out its twenty-first person is not something to leave for later.
+
+**13. `expect.poll(() => hash(b)).toBe(await hash(a))` is not a convergence assertion.** The right-hand side is evaluated once, freezing A mid-settle, so B converges on a later state of A and the comparison never matches — a false failure indistinguishable from a real divergence. Both sides have to be re-read on every tick.
+
+**14. A socket has no request/response pairing**, so the outbox's promise-shaped transport is rebuilt from the message stream: in-flight batches are held in a map and settled as `ack`/`nack` arrive. A batch nobody answers **rejects** on a timeout, which requeues it — resolving with an empty result would silently drop the user's work, which is the one thing the outbox exists to prevent.
+
+**Deferred from Phase 9, stated rather than quietly dropped:** presence (cursors, avatars, remote selection, live strokes) is Phase 10, and the gateway accepts and ignores those message types until then; the four remaining connection states and the pending-change count are Phase 11 with the full state machine; `board_renamed` / `role_changed` / `access_revoked` are handled by the client but nothing emits them until Phase 12's sharing.
+
 ### Files
 
 ```
