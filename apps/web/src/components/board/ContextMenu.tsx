@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { boardStore, useBoardStore } from '../../stores/boardStore.js'
 import {
+  bringForward,
   bringToFront,
   copySelection,
   duplicateSelection,
   pasteAt,
+  sendBackward,
   sendToBack,
 } from '../../features/canvas/interaction/handlers/clipboardActions.js'
 import { probe, toCanvas } from '../../features/canvas/interaction/handlers/select.js'
@@ -128,8 +130,10 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
     ? [
         { label: 'Duplicate', shortcut: '⌘D', onSelect: duplicateSelection },
         { label: 'Copy', shortcut: '⌘C', onSelect: copySelection },
-        { label: 'Bring to front', onSelect: bringToFront },
-        { label: 'Send to back', onSelect: sendToBack },
+        { label: 'Bring to front', onSelect: bringToFront, shortcut: '⌘]' },
+        { label: 'Bring forward', onSelect: bringForward, shortcut: ']' },
+        { label: 'Send backward', onSelect: sendBackward, shortcut: '[' },
+        { label: 'Send to back', onSelect: sendToBack, shortcut: '⌘[' },
         {
           label: 'Delete',
           shortcut: '⌫',

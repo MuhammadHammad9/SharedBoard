@@ -67,9 +67,31 @@ export async function assertLoginAllowed(email: string, ip: string): Promise<voi
   }
 }
 
-/** A successful login wipes the strike count for that email. */
-export async function clearLoginAttempts(email: string): Promise<void> {
-  await clearCounter(emailKey(email))
+/**
+ * A successful login wipes BOTH strike counts — the email's and the IP's.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │  Clearing only the email counter was a real lockout bug.                 │
+ * │                                                                          │
+ * │  `assertLoginAllowed` increments both counters on every attempt, before  │
+ * │  it can know whether the password was right. Clearing only the email     │
+ * │  side meant the IP counter accumulated on SUCCESSFUL logins too, so an   │
+ * │  office behind one NAT hit 20 in fifteen minutes and the twenty-first    │
+ * │  person — with a correct password — got a 429.                           │
+ * │                                                                          │
+ * │  That is precisely what the "counted on failure only" comment above      │
+ * │  promises does not happen. Found when the Phase 9 e2e suite, which logs  │
+ * │  in twice per test from one address, started failing on `login 429`.     │
+ * │                                                                          │
+ * │  The spray defence is unaffected: an attacker trying many accounts is    │
+ * │  failing, and failures are exactly what still accumulate.                │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export async function clearLoginAttempts(email: string, ip?: string): Promise<void> {
+  await Promise.all([
+    clearCounter(emailKey(email)),
+    ip ? clearCounter(ipKey(ip)) : Promise.resolve(),
+  ])
 }
 
 /**

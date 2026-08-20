@@ -8,7 +8,7 @@
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Product    | **CoBoard** — real-time collaborative whiteboard                                                                                                                    |
 | Repository | `MuhammadHammad9/SharedBoard`                                                                                                                                       |
-| Status     | Phase 9a of 15 complete — M1 and M2 done, M3 begun. Full canvas, auth, persistent boards, the dashboard, and the WebSocket gateway. The client sync engine is 9b. See `docs/04-IMPLEMENTATION-PLAN.md` |
+| Status     | Phase 9 of 15 complete — M1, M2 and M3 done. Two windows sync live and converge. Presence is Phase 10. See `docs/04-IMPLEMENTATION-PLAN.md` |
 | Stack      | React 18.3 · TypeScript 5.4 strict · Vite 6 (defect `D-4`) · Zustand 4 · Canvas 2D · Tailwind 3.x · Node 20 · Express 4 · `ws` · PostgreSQL 15 · Prisma 5 · Redis 7 |
 
 ---
