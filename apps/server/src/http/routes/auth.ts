@@ -131,7 +131,7 @@ export function createAuthRouter(): Router {
         password,
         userAgent: req.headers['user-agent'],
       })
-      await clearLoginAttempts(email)
+      await clearLoginAttempts(email, clientIp(req))
 
       respondWithSession(res, session, 200, {
         user: session.user,

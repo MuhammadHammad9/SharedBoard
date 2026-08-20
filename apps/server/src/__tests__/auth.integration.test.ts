@@ -4,6 +4,7 @@ import type { Express } from 'express'
 import {
   ERROR_CODES,
   RATE_LIMIT_LOGIN_ATTEMPTS,
+  RATE_LIMIT_LOGIN_PER_IP,
   PASSWORD_RESET_TTL_MS,
 } from '@coboard/shared'
 import { createApp } from '../http/app.js'
@@ -83,6 +84,61 @@ afterAll(async () => {
   await prisma.$disconnect()
   await closeRedis()
 })
+
+/* ── The per-IP limiter must not punish success ───────────────────────────── */
+
+describe('login rate limiting counts FAILURES, not logins', () => {
+  // bcrypt at cost 12 is ~250 ms per attempt by design, so these are slow by
+  // construction rather than by accident.
+  it(
+    'lets one address log in far past the per-IP limit when it keeps succeeding',
+    { timeout: 60_000 },
+    async () => {
+      const { email } = await registerUser()
+
+      /*
+       * The per-IP limit is 20 per fifteen minutes, and BOTH counters are
+       * incremented on every attempt before the password is checked. Clearing
+       * only the email counter on success meant the IP counter accumulated on
+       * successful logins too — so an office behind one NAT hit 20 and locked
+       * out the twenty-first person, who had done nothing wrong.
+       *
+       * Twenty-five in a row, all correct, all from the same address.
+       */
+      for (let i = 0; i < RATE_LIMIT_LOGIN_PER_IP + 5; i++) {
+        const response = await request(app)
+          .post('/api/auth/login')
+          .send({ email, password })
+        expect(response.status, `attempt ${i + 1} should succeed`).toBe(200)
+      }
+    },
+  )
+
+  it(
+    'still locks out a spray of FAILED attempts from one address',
+    { timeout: 60_000 },
+    async () => {
+      /*
+       * The defence this limiter exists for is unaffected. Distinct addresses
+       * so the per-EMAIL limit (5) is never the thing that trips — what is
+       * under test is the per-IP one, and it must still stop someone trying
+       * one password against many accounts.
+       */
+      let sawRateLimit = false
+      for (let i = 0; i < RATE_LIMIT_LOGIN_PER_IP + 5; i++) {
+        const response = await request(app)
+          .post('/api/auth/login')
+          .send({ email: freshEmail(), password: 'wrong-password-1' })
+        if (response.status === 429) {
+          sawRateLimit = true
+          break
+        }
+      }
+      expect(sawRateLimit).toBe(true)
+    },
+  )
+})
+
 
 /* ── Registration — FR-AUTH-001 ───────────────────────────────────────────── */
 

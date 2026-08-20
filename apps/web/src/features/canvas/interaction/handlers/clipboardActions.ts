@@ -4,6 +4,12 @@ import {
   type ObjectId,
   type TextObject,
 } from '@coboard/shared'
+import {
+  keysAfter,
+  keysAfterTop,
+  keysBefore,
+  keysBeforeBottom,
+} from '../../geometry/zIndex.js'
 import { boardStore, nextZIndex, selectedObjects } from '../../../../stores/boardStore.js'
 import {
   DUPLICATE_OFFSET,
@@ -107,48 +113,107 @@ export function duplicateSelection(): BoardObject[] {
 /**
  * Bring to front / send to back.
  *
- * `FR-CANVAS-016` is assigned to Phase 9, but Phase 5's context menu is
- * specified to contain both of these items (FLOWS §14.2 via the plan's §14.4
- * notes), and shipping a menu with two dead entries is worse than
- * implementing them. Only these two land here — bring-forward, send-backward
- * and the `]`/`[` shortcuts stay with the full requirement in Phase 9, as does
- * generating a key BETWEEN two neighbours.
+ * `FR-CANVAS-016` in full, from Phase 9: all four commands, and keys
+ * generated BETWEEN two neighbours rather than only at the extremes.
  */
-export function bringToFront(): void {
+
+/** The four z-order commands, sharing one shape: pick keys, emit one batch. */
+function reorderSelection(pick: (indices: number[]) => string[] | null): void {
   const objects = selectedObjects()
   if (objects.length === 0) return
+
+  const { sortedIds } = boardStore.getState()
+  const position = new Map(sortedIds.map((id, i) => [id, i]))
+  // Sorted by current z, so relative order inside the selection is preserved.
+  const ordered = [...objects].sort(
+    (a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0),
+  )
+
+  const keys = pick(ordered.map(o => position.get(o.id) ?? 0))
+  if (!keys) return
+
   // applyOps re-sorts the cached z-order when a zIndex changes, so there is no
   // separate reorder() call and no window where the two disagree.
   applyAndEmit(
-    updateOps(objects.map(o => ({ ...o, zIndex: nextZIndex(), updatedAt: Date.now() }))),
+    updateOps(ordered.map((o, i) => ({ ...o, zIndex: keys[i]!, updatedAt: Date.now() }))),
     LABELS.reorder,
   )
 }
 
-export function sendToBack(): void {
-  const state = boardStore.getState()
-  const objects = selectedObjects()
-  if (objects.length === 0) return
-
-  // Keys below the current minimum. The fixture format is `a` + base-36, so
-  // a shorter suffix sorts before every existing key lexicographically.
-  const lowest = state.sortedIds[0]
-  const base = lowest ? (state.objects.get(lowest)?.zIndex ?? 'a000000') : 'a000000'
-  const parsed = Number.parseInt(base.slice(1), 36)
-  const start = Number.isFinite(parsed) ? parsed : 0
-
-  applyAndEmit(
-    updateOps(
-      objects.map((o, i) => ({
-        ...o,
-        zIndex: `a${Math.max(0, start - objects.length + i)
-          .toString(36)
-          .padStart(6, '0')}`,
-        updatedAt: Date.now(),
-      })),
-    ),
-    LABELS.reorder,
+export function bringToFront(): void {
+  reorderSelection(indices =>
+    keysAfterTop(boardStore.getState().objects, boardStore.getState().sortedIds, indices.length),
   )
+}
+
+export function sendToBack(): void {
+  reorderSelection(indices =>
+    keysBeforeBottom(
+      boardStore.getState().objects,
+      boardStore.getState().sortedIds,
+      indices.length,
+    ),
+  )
+}
+
+/**
+ * One step up — FR-CANVAS-016.
+ *
+ * "Forward" means above the nearest object that is currently above the
+ * selection, not above everything. Finding that neighbour is the only fiddly
+ * part: it is the first id above the selection's TOP member that is not itself
+ * selected, because stepping over another selected object would reorder the
+ * selection against itself.
+ */
+export function bringForward(): void {
+  const { objects, sortedIds } = boardStore.getState()
+  const selected = new Set(selectedObjects().map(o => o.id))
+  if (selected.size === 0) return
+
+  let topIndex = -1
+  for (let i = sortedIds.length - 1; i >= 0; i--) {
+    if (selected.has(sortedIds[i]!)) {
+      topIndex = i
+      break
+    }
+  }
+  // Find the first unselected object above it.
+  let reference = -1
+  for (let i = topIndex + 1; i < sortedIds.length; i++) {
+    if (!selected.has(sortedIds[i]!)) {
+      reference = i
+      break
+    }
+  }
+  // Already at the top — nothing to do, and emitting a no-op batch would put
+  // a pointless entry on the undo stack.
+  if (reference === -1) return
+
+  reorderSelection(indices => keysAfter(objects, sortedIds, reference, indices.length))
+}
+
+export function sendBackward(): void {
+  const { objects, sortedIds } = boardStore.getState()
+  const selected = new Set(selectedObjects().map(o => o.id))
+  if (selected.size === 0) return
+
+  let bottomIndex = -1
+  for (let i = 0; i < sortedIds.length; i++) {
+    if (selected.has(sortedIds[i]!)) {
+      bottomIndex = i
+      break
+    }
+  }
+  let reference = -1
+  for (let i = bottomIndex - 1; i >= 0; i--) {
+    if (!selected.has(sortedIds[i]!)) {
+      reference = i
+      break
+    }
+  }
+  if (reference === -1) return
+
+  reorderSelection(indices => keysBefore(objects, sortedIds, reference, indices.length))
 }
 
 /** Move the selection by a canvas delta. Used by the context menu's nudges. */
