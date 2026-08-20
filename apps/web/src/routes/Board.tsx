@@ -77,6 +77,7 @@ export default function Board() {
         boardId={boardId ?? ''}
         name={load.name}
         role={load.role ?? 'OWNER'}
+        connection={load.connection}
       />
       <SessionExpiredBanner />
     </main>

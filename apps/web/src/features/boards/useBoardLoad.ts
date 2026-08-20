@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Role } from '@coboard/shared'
+import type { ConnectionState, Role } from '@coboard/shared'
 import { ApiError } from '../../lib/api.js'
-import { boardStore } from '../../stores/boardStore.js'
-import { history } from '../canvas/history/history.js'
-import { startPersistence, stopPersistence } from '../sync/persistence.js'
-import { getBoardState } from './api.js'
+import { useToast } from '../../components/ui/Toast.js'
+import { errors } from '../../lib/strings.js'
+import { BoardSession } from '../sync/session.js'
 
 /**
  * A board id the server could never own — anything that is not a uuid.
@@ -42,6 +41,8 @@ export interface BoardLoad {
   status: BoardLoadStatus
   role: Role | null
   name: string
+  /** Live socket state, for the header indicator — FR-RT-009. */
+  connection: ConnectionState
   /** Server sequence the loaded document is current as of. */
   seq: number
   objectCount: number
@@ -55,14 +56,9 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
   const [seq, setSeq] = useState(0)
   const [objectCount, setObjectCount] = useState(0)
   const [attempt, setAttempt] = useState(0)
-  const mounted = useRef(true)
-
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
+  const [connection, setConnection] = useState<ConnectionState>('connecting')
+  const sessionRef = useRef<BoardSession | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     if (!boardId) return
@@ -74,55 +70,67 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
       return
     }
 
-    const controller = new AbortController()
+    /*
+     * ONE session owns the snapshot fetch, the socket and the outbox, and it
+     * runs them in the order FLOWS §2.3 STEP 5 requires — see
+     * features/sync/session.ts. The hook's job is only to translate its
+     * outcome into the four screens this route can render.
+     */
+    const session = new BoardSession(boardId, {
+      onState: next => setConnection(next),
+      onRole: next => setRole(next),
+      onNack: () => toast.show({ message: errors.opRejected, variant: 'danger' }),
+      onFatal: kind => setStatus(kind === 'deleted' ? 'not-found' : 'forbidden'),
+      onBoardRenamed: next => setName(next),
+    })
+    sessionRef.current = session
+
     setStatus('loading')
 
     void (async () => {
       try {
-        const state = await getBoardState(boardId, controller.signal)
-        if (controller.signal.aborted) return
-
-        boardStore.getState().loadObjects(state.objects)
-        /*
-         * A fresh document means a fresh stack — R-UNDO-006. Carrying entries
-         * across a load would leave undo holding inverses that name objects
-         * this board has never heard of.
-         */
-        history.clear()
-
-        setRole(state.myRole)
-        setName(state.name)
-        setSeq(state.seq)
-        setObjectCount(state.objects.length)
+        const result = await session.start()
+        if (sessionRef.current !== session) return
+        setRole(result.role)
+        setName(result.name)
+        setSeq(result.seq)
+        setObjectCount(result.objects)
         setStatus('ready')
-
-        // Only editors get an outbox. A viewer cannot write, so queueing their
-        // ops would be building a pile of work the server will always refuse.
-        if (state.myRole !== 'VIEWER') startPersistence(boardId)
       } catch (error) {
-        if (controller.signal.aborted) return
+        if (sessionRef.current !== session) return
         if (!(error instanceof ApiError)) {
           setStatus('error')
           return
         }
         /*
          * 404 covers both "no such board" and "not yours" — the server answers
-         * 404 to a board the caller cannot see, on purpose (R-SEC-018). The
-         * 'forbidden' branch is reachable only once share links exist and a
-         * revoked member hits it.
+         * 404 to a board the caller cannot see, on purpose (R-SEC-018).
          */
-        setStatus(error.status === 404 ? 'not-found' : error.status === 403 ? 'forbidden' : 'error')
+        setStatus(
+          error.status === 404 ? 'not-found' : error.status === 403 ? 'forbidden' : 'error',
+        )
       }
     })()
 
-    return () => {
-      controller.abort()
-      stopPersistence()
-      // Leave the document in the store on unmount rather than clearing it:
-      // React StrictMode mounts twice in development, and clearing here would
-      // blank a board that the second mount is about to reuse.
-    }
-  }, [boardId, attempt])
+    // Flush and reconnect the moment the browser says it is back, rather than
+    // waiting out whatever backoff was in flight.
+    const onOnline = () => session.resume()
+    window.addEventListener('online', onOnline)
 
-  return { status, role, name, seq, objectCount, retry: () => setAttempt(n => n + 1) }
+    return () => {
+      window.removeEventListener('online', onOnline)
+      sessionRef.current = null
+      session.dispose()
+    }
+  }, [boardId, attempt, toast])
+
+  return {
+    status,
+    role,
+    name,
+    seq,
+    objectCount,
+    connection,
+    retry: () => setAttempt(n => n + 1),
+  }
 }

@@ -11,10 +11,14 @@ import {
 } from './handlers/transform.js'
 import { cancelCreate } from './handlers/create.js'
 import {
+  bringForward,
+  bringToFront,
   copySelection,
   cutSelection,
   duplicateSelection,
   pasteAt,
+  sendBackward,
+  sendToBack,
 } from './handlers/clipboardActions.js'
 import { applyAndEmit, deleteOps } from '../history/apply.js'
 import { LABELS } from '../history/grouping.js'
@@ -130,6 +134,28 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
         if (!canChangeTool(store.interaction.type)) return
         e.preventDefault()
         applyAndEmit(deleteOps(store.selection), LABELS.delete)
+        return
+      }
+
+      /*
+       * Z-order — FR-CANVAS-016, PRD Appendix A.
+       *
+       *   ]        bring forward        Cmd/Ctrl+]   bring to front
+       *   [        send backward        Cmd/Ctrl+[   send to back
+       *
+       * Checked before the arrow nudge because both are plain single keys and
+       * the first match wins.
+       */
+      if (e.key === ']' || e.key === '[') {
+        if (store.selection.length === 0) return
+        if (!canChangeTool(store.interaction.type)) return
+        e.preventDefault()
+        const toExtreme = e.metaKey || e.ctrlKey
+        if (e.key === ']') {
+          if (toExtreme) bringToFront()
+          else bringForward()
+        } else if (toExtreme) sendToBack()
+        else sendBackward()
         return
       }
 
