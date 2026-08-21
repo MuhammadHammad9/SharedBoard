@@ -5,7 +5,8 @@ import { RenameInline } from '../../features/boards/RenameInline.js'
 import { useToast } from '../ui/Toast.js'
 import { useRenameBoard } from '../../features/boards/useBoards.js'
 import { boards as boardStrings } from '../../lib/strings.js'
-import type { Role } from '@coboard/shared'
+import { ConnectionIndicator } from './ConnectionIndicator.js'
+import type { ConnectionState, Role } from '@coboard/shared'
 
 /**
  * S-10 board header — the title, and the way back out.
@@ -32,10 +33,12 @@ export function BoardHeader({
   boardId,
   name,
   role,
+  connection,
 }: {
   boardId: string
   name: string
   role: Role
+  connection: ConnectionState
 }) {
   const [params, setParams] = useSearchParams()
   const [editing, setEditing] = useState(false)
@@ -102,6 +105,8 @@ export function BoardHeader({
           </button>
         )}
       </div>
+
+      <ConnectionIndicator state={connection} />
 
       {role === 'VIEWER' ? (
         <span

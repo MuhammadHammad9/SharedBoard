@@ -63,6 +63,20 @@ export default defineConfig({
         target: process.env.API_ORIGIN ?? 'http://localhost:3000',
         changeOrigin: false,
       },
+      /*
+       * The WebSocket, and `ws: true` is the whole point of this entry.
+       *
+       * Without it Vite serves /ws itself and the upgrade never reaches the
+       * API server — the socket fails to open, the client sits in
+       * "connecting" forever, and nothing about the failure says why. In
+       * production the two are behind one origin and no proxy is involved,
+       * so this exists purely so `pnpm dev` and the e2e suite match.
+       */
+      '/ws': {
+        target: process.env.API_ORIGIN ?? 'http://localhost:3000',
+        changeOrigin: false,
+        ws: true,
+      },
     },
   },
   build: {
