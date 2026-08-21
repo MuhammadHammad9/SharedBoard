@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc --build",
+    "build": "node init && tsc --build",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

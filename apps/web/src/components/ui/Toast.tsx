@@ -39,6 +39,9 @@ export const TOAST_DEFAULT_MS = 5_000
 /** FLOWS §6.7: the trash toast specifically gets eight seconds. */
 export const TOAST_UNDO_MS = 8_000
 
+/** R-UI-055 — beyond this the oldest collapse into a "+N more" row. */
+const MAX_VISIBLE = 3
+
 export interface ToastAction {
   label: string
   onAction: () => void
@@ -105,6 +108,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo(() => ({ show, dismiss }), [show, dismiss])
 
+  // Newest three are shown; anything older is counted.
+  const visible = toasts.slice(-MAX_VISIBLE)
+  const collapsed = toasts.length - visible.length
+
   return (
     <ToastContext.Provider value={api}>
       {children}
@@ -116,7 +123,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex flex-col items-center gap-2"
           data-testid="toast-host"
         >
-          {toasts.map(toast => (
+          {/*
+            * R-UI-055: at most three at once, and the oldest collapse into a
+            * count. A join/leave storm — five people arriving as a meeting
+            * starts — would otherwise stack five notifications up the screen
+            * and cover the properties panel.
+            */}
+          {collapsed > 0 ? (
+            <div
+              data-testid="toast-collapsed"
+              className="pointer-events-none rounded-md border border-border bg-app px-3 py-1 text-xs text-muted shadow-panel"
+            >
+              +{collapsed} more
+            </div>
+          ) : null}
+          {visible.map(toast => (
             <ToastItem key={toast.id} toast={toast} onDismiss={dismiss} />
           ))}
         </div>,
