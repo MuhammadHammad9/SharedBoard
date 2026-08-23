@@ -7,6 +7,7 @@ import {
   SERVER_SOCKET_IDLE_TIMEOUT_MS,
 } from '@coboard/shared'
 import { permissionService } from '../services/PermissionService.js'
+import { presenceService } from '../services/PresenceService.js'
 import { prisma } from '../lib/prisma.js'
 import { logger } from '../lib/logger.js'
 import { redeemTicket } from '../http/routes/ws.js'
@@ -15,6 +16,7 @@ import { RoomManager, roomManager } from './RoomManager.js'
 import { Session } from './Session.js'
 import { handleJoin } from './handlers/join.js'
 import { handleOps } from './handlers/op.js'
+import { handlePresence, refreshPresence } from './handlers/presence.js'
 
 /**
  * The WebSocket gateway — TRD §5.1, §5.6.
@@ -84,6 +86,24 @@ export function attachGateway(server: Server, options: GatewayOptions = {}): Gat
       logger.info({ sessionId: session.id }, 'terminating idle socket')
       leave(rooms, session)
       session.close(CLOSE_CODES.GOING_AWAY, 'idle')
+    }
+
+    /*
+     * The Redis sweep — TRD §12.3, R-PERF-023. Separate from the socket sweep
+     * above because it removes entries this instance may never have owned: a
+     * process that died without closing its sockets leaves ghosts that only a
+     * timestamp comparison can find.
+     *
+     * A `presence_leave` goes out for each, because a ghost removed from
+     * Redis but left on everyone's screen has only moved the bug.
+     */
+    for (const boardId of rooms.boardIds()) {
+      void presenceService.sweep(boardId).then(stale => {
+        for (const sessionId of stale) {
+          if (rooms.get(boardId, sessionId)) continue // still live here
+          rooms.broadcast(boardId, { t: 'presence_leave', sessionId })
+        }
+      })
     }
   }, SERVER_SOCKET_IDLE_TIMEOUT_MS / 2)
   // Do not hold the process open for a timer whose only job is cleanup.
@@ -233,6 +253,9 @@ async function dispatch(
 
   switch (message.data.t) {
     case 'ping':
+      // The heartbeat doubles as the presence TTL refresh — see
+      // `refreshPresence` for why it is not done per cursor message.
+      if (session.joined) refreshPresence(session)
       session.send({ t: 'pong' })
       return
 
@@ -250,12 +273,12 @@ async function dispatch(
       await handleJoin(session, rooms, message.data.sinceSeq)
       return
 
-    // Presence — Phase 10. Accepted and ignored rather than rejected, so a
-    // client that ships ahead of the server does not see spurious errors.
+    // Presence — relayed, never persisted (R-SYNC-001).
     case 'cursor':
     case 'sel':
     case 'stroke':
     case 'xform':
+      handlePresence(session, rooms, message.data)
       return
 
     // Handled above, before the full parse.
@@ -272,5 +295,6 @@ function leave(rooms: RoomManager, session: Session): void {
   }
   session.joined = false
   rooms.leave(session)
+  void presenceService.forget(session.boardId, session.id)
   rooms.broadcast(session.boardId, { t: 'presence_leave', sessionId: session.id })
 }

@@ -6,6 +6,7 @@ import { useToast } from '../ui/Toast.js'
 import { useRenameBoard } from '../../features/boards/useBoards.js'
 import { boards as boardStrings } from '../../lib/strings.js'
 import { ConnectionIndicator } from './ConnectionIndicator.js'
+import { AvatarStack } from '../../features/presence/AvatarStack.js'
 import type { ConnectionState, Role } from '@coboard/shared'
 
 /**
@@ -106,6 +107,7 @@ export function BoardHeader({
         )}
       </div>
 
+      <AvatarStack />
       <ConnectionIndicator state={connection} />
 
       {role === 'VIEWER' ? (

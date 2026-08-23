@@ -28,6 +28,9 @@ import { useKeyboard } from './interaction/useKeyboard.js'
 import { getLastPointer, usePointer } from './interaction/usePointer.js'
 import { useWheel } from './interaction/useWheel.js'
 import { devFlags, loadStressFixture } from './devFixture.js'
+import { buildPresenceView } from '../presence/usePresence.js'
+import { emitSelection } from '../presence/bus.js'
+import { presenceStore } from '../presence/presenceStore.js'
 
 /**
  * The canvas surface — FLOWS §14.3.
@@ -169,6 +172,7 @@ export function Canvas() {
         getSize: () => sizeRef.current,
         getDraft: () => boardStore.getState().draft,
         getSelectionView: readSelectionView,
+        getPresenceView: buildPresenceView,
       },
       () => dprRef.current,
     )
@@ -251,7 +255,34 @@ export function Canvas() {
       ) {
         renderer.markDirty('overlay')
       }
+
+      /*
+       * Broadcast the selection as presence — FR-RT-005.
+       *
+       * Driven from the store subscription rather than from each of the six
+       * mutators that can change a selection, so there is one emit point
+       * instead of six that must each remember. The emitter throttles.
+       */
+      if (state.selection !== prev.selection) emitSelection(state.selection)
     })
+
+    /*
+     * Presence dirties layer 3 AND ONLY LAYER 3 — R-CANVAS-002.
+     *
+     * A cursor arriving at 20 Hz from each of ten people is 200 marks a
+     * second. Every one of them lands here, on the overlay, and there is no
+     * path from this subscription to `markDirty('objects')`. That is the whole
+     * bargain of the four-layer split, and `presence.spec.ts` asserts it by
+     * reading the object layer's paint counter across a cursor sweep.
+     *
+     * A fixed 30 Hz tick rather than a mark per message: the interpolation
+     * needs a frame even when no new sample has arrived (it is filling the gap
+     * BETWEEN samples), and marking per message would repaint 200 times a
+     * second to show 60 frames.
+     */
+    const presenceTick = window.setInterval(() => {
+      if (buildPresenceView()) renderer.markDirty('overlay')
+    }, 33)
 
     // R-CANVAS-013: stop when hidden, restart when visible.
     const onVisibility = () => {
@@ -277,6 +308,13 @@ export function Canvas() {
     if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
       const w = window as unknown as Record<string, unknown>
       w.__coboardMetrics = () => renderer.getMetrics()
+      /*
+       * Presence, for the e2e suite. Exposed so `presence.spec.ts` can inject
+       * a remote cursor without a second browser and assert — the point of
+       * the whole phase — that the object layer's paint counter does not move
+       * while it travels (R-CANVAS-002).
+       */
+      w.__coboardPresence = presenceStore
       w.__coboardResetMetrics = () => renderer.resetMetrics()
       w.__coboardObjects = () => [...objectsInZOrder()]
       w.__coboardSelection = () => [...boardStore.getState().selection]
@@ -311,6 +349,7 @@ export function Canvas() {
       history.clear()
       resizeObserver.disconnect()
       document.removeEventListener('visibilitychange', onVisibility)
+      window.clearInterval(presenceTick)
       rendererRef.current = null
     }
   }, [container])

@@ -6,6 +6,7 @@ import { FullScreenSpinner } from '../components/ui/Spinner.js'
 import { BackToDashboard, FullScreenState } from '../components/ui/FullScreenState.js'
 import { Button } from '../components/ui/Button.js'
 import { useBoardLoad } from '../features/boards/useBoardLoad.js'
+import { useJoinLeaveToasts } from '../features/presence/useJoinLeaveToasts.js'
 import { actions, states } from '../lib/strings.js'
 
 /**
@@ -23,6 +24,9 @@ import { actions, states } from '../lib/strings.js'
 export default function Board() {
   const { boardId } = useParams<{ boardId: string }>()
   const load = useBoardLoad(boardId)
+  // "Marcus joined" / "Marcus left" — FR-RT-008. Derived from roster diffs,
+  // so a second tab from the same person does not announce itself.
+  useJoinLeaveToasts()
 
   if (load.status === 'loading') {
     return <FullScreenSpinner label="Opening board" />

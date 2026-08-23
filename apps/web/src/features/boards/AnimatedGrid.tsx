@@ -10,6 +10,23 @@ import { Children, type ReactNode } from 'react'
  * - Exit: `opacity` + collapse, 200 ms, so a trashed card leaves rather than
  *   vanishing and letting the grid snap shut.
  *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │  NO `layout` PROP, and that is a correction rather than an omission.     │
+ * │                                                                          │
+ * │  It makes surviving cards slide to their new positions when one is       │
+ * │  removed, which looks lovely and turns the grid into a moving target for │
+ * │  300 ms after every change. A `⋮` menu clicked during that window can    │
+ * │  miss — the e2e suite caught it doing exactly that under load, and a     │
+ * │  user with a trackpad is in the same position.                           │
+ * │                                                                          │
+ * │  It is also outside the Phase 8 motion table, which lists entry, hover,  │
+ * │  delete and restore and nothing about neighbours moving. And it is the   │
+ * │  same complaint as anti-pattern A-70, which already bans hover scale     │
+ * │  because "a card that grows under the cursor shifts its neighbours and   │
+ * │  the grid twitches" — sliding neighbours are that, with a longer         │
+ * │  duration.                                                               │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
  * **The stagger caps at 12** (`R-MOTION-039`). Fifty cards at 40 ms is a
  * two-second wait before the last one appears, which is not delight, it is the
  * page being slow on purpose. Past the cap everything arrives together.
@@ -41,7 +58,6 @@ export default function AnimatedGrid({
         {Children.map(children, (child, index) => (
           <motion.div
             key={(child as { key?: string })?.key ?? index}
-            layout={!reduced}
             initial={{
               opacity: 0,
               transform: reduced ? 'translateY(0px)' : 'translateY(8px)',

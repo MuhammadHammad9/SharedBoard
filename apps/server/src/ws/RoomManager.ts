@@ -171,6 +171,11 @@ export class RoomManager {
     }
   }
 
+  /** Board ids with at least one live session — for the presence sweep. */
+  boardIds(): string[] {
+    return [...this.rooms.keys()]
+  }
+
   /** Every room, for the heartbeat sweep. */
   allSessions(): Session[] {
     const out: Session[] = []
