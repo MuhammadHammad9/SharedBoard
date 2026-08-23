@@ -2724,6 +2724,22 @@ Toast enter and exit share a direction so swipe-to-dismiss feels intuitive — `
 15. `E-20` name truncation at 20 characters with hover reveal.
 16. **Instrument layer 1 draw calls and assert they do not fire on cursor movement.**
 
+### Corrections to this phase, found while building it
+
+**1. Presence is relayed unbatched.** The room's 16 ms batcher exists to collapse op broadcasts; a cursor is already throttled to 20 Hz at the sender, and adding another frame of latency to the one thing whose whole job is to feel immediate is the wrong trade.
+
+**2. Viewers broadcast presence.** `handleOp` refuses a viewer because they may not change the document; presence changes nothing, and seeing where a reviewer is pointing is most of the value of having them in the room. The one exception is `stroke`, which previews an op they could not commit.
+
+**3. The Redis TTL is refreshed from the HEARTBEAT, not from presence messages.** At 20 Hz per user a Redis write per cursor move is 1,000 writes/second in a room of fifty, to keep alive a TTL that only needs touching every 25 seconds.
+
+**4. Layer 3 is dirtied on a fixed 30 Hz tick, not per message.** The interpolation needs a frame even when no new sample has arrived — it is filling the gap *between* samples — and marking per message would repaint 200 times a second to show 60 frames.
+
+**5. Join/leave toasts are derived from roster DIFFS, not from `presence_join` / `presence_leave` directly.** That is what makes `E-01` come out right: a second tab produces a join message but no change in the deduped roster, so no toast. The first roster is suppressed entirely — announcing three people who were already here greets the user with notifications about a room they have only just entered.
+
+**6. Defect `D-15` — the dashboard grid's `layout` animation.** Removed. See the register.
+
+**Deferred, and stated rather than quietly dropped:** the four remaining connection states and the pending-change count are Phase 11; room capacity beyond 50 currently closes with `4029` rather than admitting a viewer with a notice, because guest/viewer admission is Phase 12's sharing work; `xform` drag previews are relayed by the server and stored by the client but not yet rendered, since the drag-preview visual is bound up with Phase 11's optimistic-transform work.
+
 ### Files
 
 ```

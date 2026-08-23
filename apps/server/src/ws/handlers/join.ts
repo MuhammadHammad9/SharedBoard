@@ -1,5 +1,6 @@
 import type { ServerOp } from '@coboard/shared'
 import { opService } from '../../services/OpService.js'
+import { presenceService } from '../../services/PresenceService.js'
 import type { RoomManager } from '../RoomManager.js'
 import type { Session } from '../Session.js'
 
@@ -28,6 +29,8 @@ export async function handleJoin(
   session.joined = true
 
   rooms.join(session)
+  // Record in Redis so other instances can see this session — TRD §15.2.
+  void presenceService.touch(session.boardId, session.toPresenceUser())
 
   const currentSeq = await opService.currentSeq(session.boardId)
 

@@ -2,6 +2,7 @@ import type { BoardObject, Rect, Viewport } from '@coboard/shared'
 import { drawObjects } from './drawObjects.js'
 import { drawInteraction, type DraftStroke } from './drawInteraction.js'
 import { drawOverlay } from './drawOverlay.js'
+import { drawPresence, type PresenceView } from '../../presence/drawPresence.js'
 import type { Guide } from '../geometry/alignmentGuides.js'
 
 /**
@@ -31,6 +32,14 @@ export interface RenderSources {
   getDraft?: () => DraftStroke | null
   /** Selection overlay + marquee + eraser highlight. Phase 4. */
   getSelectionView?: () => SelectionView
+  /**
+   * Remote cursors, selections and in-flight strokes. Phase 10.
+   *
+   * A SOURCE rather than a push, for the same reason the objects are: the
+   * loop pulls once per painted frame, so twenty cursor messages arriving
+   * between two frames cost one read instead of twenty renders.
+   */
+  getPresenceView?: () => PresenceView | null
 }
 
 /** Everything layers 2 and 3 need to know about the current selection. */
@@ -211,6 +220,22 @@ export class Renderer {
         showHandles: view.showHandles,
         rotationDeg: view.rotationDeg,
       })
+      /*
+       * Presence draws into the SAME layer-3 pass, after the local selection
+       * so remote cursors sit on top of it.
+       *
+       * R-CANVAS-002: this is the only place presence reaches a canvas, and
+       * layer 3 is the only canvas it reaches. Ten people at 20 Hz is 200
+       * repaints a second, and every one of them stops here.
+       */
+      const presence = this.sources.getPresenceView?.()
+      if (presence) {
+        drawPresence(this.targets.overlay, {
+          viewport,
+          now: Date.now(),
+          view: presence,
+        })
+      }
       this.dirty.overlay = false
       this.overlayPaints++
     }
