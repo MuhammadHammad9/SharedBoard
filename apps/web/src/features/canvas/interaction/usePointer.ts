@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { emitCursor } from '../../presence/bus.js'
 import { boardStore } from '../../../stores/boardStore.js'
 import { beginPan, endPan, updatePan } from './handlers/pan.js'
 import { appendPoint, beginDraw, cancelDraw, commitDraw } from './handlers/draw.js'
@@ -180,6 +181,20 @@ export function usePointer(
       const here = toCanvas(p.x, p.y)
       lastPointer.x = here.x
       lastPointer.y = here.y
+
+      /*
+       * Presence — FR-RT-003. In CANVAS coordinates, so a cursor lands in the
+       * same place on a screen panned somewhere else entirely (R-COORD-002
+       * applies to the wire as much as to storage).
+       *
+       * Emitted on every move, unconditionally: the 20 Hz throttle and the
+       * change detection both live in the emitter, so this call is one
+       * comparison when nothing has changed and a no-op with no session at
+       * all. Throttling here instead would put the rate policy in the
+       * interaction layer, where the next handler to need it would reinvent
+       * it slightly differently.
+       */
+      emitCursor(here.x, here.y)
 
       switch (interaction.type) {
         case 'PANNING':

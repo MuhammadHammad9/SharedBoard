@@ -9,6 +9,7 @@ import {
   type ObjectId,
   type StrokeObject,
 } from '@coboard/shared'
+import { emitStrokeDone, emitStrokeProgress } from '../../../presence/bus.js'
 import { boardStore, nextZIndex } from '../../../../stores/boardStore.js'
 import { applyAndEmit, createOps } from '../../history/apply.js'
 import { LABELS } from '../../history/grouping.js'
@@ -104,8 +105,18 @@ export function appendPoint(screenX: number, screenY: number, pressure: number):
   draft.points.push(p.x, p.y, pressureOf(pressure))
   touchDraft()
 
-  // Phase 10: throttled to 20 Hz, broadcast the points added since the last
-  // send as PRESENCE (R-SYNC-005) — not an op, never persisted.
+  /*
+   * Broadcast the stroke as PRESENCE — FR-RT-006, R-SYNC-005.
+   *
+   * Not an op. It is never persisted, never sequenced, never acked and
+   * dropped entirely when offline: what everyone else sees is a preview,
+   * replaced by the real object when `commitDraw` emits the CREATE.
+   *
+   * The full array goes in; the emitter slices the delta since its last send
+   * (R-SYNC-041). Sending it whole 20 times a second would be roughly
+   * 100 KB/s per user on a long stroke.
+   */
+  emitStrokeProgress(draft.id, draft.points)
 }
 
 /**
@@ -119,6 +130,10 @@ export function commitDraw(element: Element | null): StrokeObject | null {
   releaseCapture(element, interaction.pointerId)
   setInteraction({ type: 'IDLE' })
   clearDraft()
+
+  // Clear everyone else's preview. The CREATE op below replaces it; leaving
+  // the preview up would double-draw the stroke for a frame.
+  if (draft) emitStrokeDone(draft.id)
 
   if (!draft) return null
 
@@ -168,9 +183,16 @@ export function cancelDraw(element: Element | null): void {
   if (interaction.type !== 'DRAWING') return
 
   releaseCapture(element, interaction.pointerId)
+  const draftId = boardStore.getState().draft?.id
   clearDraft()
   setInteraction({ type: 'IDLE' })
-  // Nothing is committed and nothing is broadcast.
+
+  /*
+   * Nothing is committed, but the `done` still goes out: everyone else has a
+   * half-drawn preview on their overlay, and abandoning it leaves a stroke on
+   * their screen that no object will ever replace.
+   */
+  if (draftId) emitStrokeDone(draftId)
 }
 
 /** R-CANVAS-053: every capturing state releases on exit, error paths included. */

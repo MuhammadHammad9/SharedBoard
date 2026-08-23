@@ -10,6 +10,10 @@ import {
   stopPersistence,
   type PersistenceSession,
 } from './persistence.js'
+import { createPresenceEmitter } from '../presence/send.js'
+import { presenceStore } from '../presence/presenceStore.js'
+import { handlePresenceMessage } from '../presence/usePresence.js'
+import { setPresenceEmitter } from '../presence/bus.js'
 
 /**
  * The board session — FLOWS §2.3 STEP 5, the whole of it in one place.
@@ -110,6 +114,10 @@ export class BoardSession {
     // Now the socket's buffer drains on top of the snapshot.
     this.sync.snapshotReady(state.seq)
 
+    // The canvas can start emitting cursors. Registered only after the
+    // snapshot, so nothing is sent about a board we have not loaded.
+    setPresenceEmitter(this.presence)
+
     // Only editors get an outbox: queueing a viewer's ops builds a pile of
     // work the server will always refuse.
     if (state.myRole !== 'VIEWER') {
@@ -143,8 +151,18 @@ export class BoardSession {
   private onMessage(message: ServerMessage): void {
     // Acks and nacks settle outbox batches; everything else is the engine's.
     this.binding?.settle(message)
+    /*
+     * Presence is routed FIRST and separately — R-SYNC-001. It has no seq, no
+     * ack and no ordering, so putting it through the sync engine's pipeline
+     * would be asking a machine built for exactly-once ordered delivery to
+     * handle a firehose of messages that are all of those things' opposite.
+     */
+    handlePresenceMessage(message)
     this.sync.handle(message)
   }
+
+  /** Presence sender, live once the socket is up. */
+  readonly presence = createPresenceEmitter(message => this.socket.send(message))
 
   private onFatalClose(code: number): void {
     if (code === 4004) this.callbacks.onFatal('deleted')
@@ -159,6 +177,9 @@ export class BoardSession {
 
   dispose(): void {
     this.disposed = true
+    setPresenceEmitter(null)
+    this.presence.dispose()
+    presenceStore.clear()
     this.sync.dispose()
     this.socket.close()
     stopPersistence()

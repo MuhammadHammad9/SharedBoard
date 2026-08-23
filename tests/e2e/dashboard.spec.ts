@@ -93,6 +93,21 @@ async function openDashboard(page: Page, seed: string[] = []) {
 
 const cards = (page: Page) => page.getByTestId('board-card')
 
+/**
+ * Open a card's `⋮` menu and wait for it.
+ *
+ * Clicking the trigger and then immediately clicking an item assumes the menu
+ * mounts synchronously. It usually does — and then under a fully loaded
+ * parallel run, with the grid mid-layout-animation and a background refetch
+ * in flight, it does not, and the item click times out against a menu that
+ * opened a beat later. Waiting for the menu is what makes the step mean
+ * "the menu is open" rather than "the click was dispatched".
+ */
+async function openCardMenu(page: Page, card: ReturnType<typeof cards>) {
+  await card.getByTestId('card-menu').click()
+  await expect(page.getByTestId('dropdown-menu')).toBeVisible()
+}
+
 test('an empty account sees the never-had-boards state', async ({ page }) => {
   await openDashboard(page)
   // A fresh account. Whatever earlier tests created belongs to the same
@@ -153,7 +168,7 @@ test('FR-BOARD-004: rename from the card menu persists', async ({ page }) => {
 
   const card = cards(page).filter({ hasText: 'Rename me' })
   await expect(card).toHaveCount(1)
-  await card.getByTestId('card-menu').click()
+  await openCardMenu(page, card)
   await page.getByTestId('card-rename').click()
 
   const input = page.getByTestId('rename-input')
@@ -176,7 +191,7 @@ test('FR-BOARD-005: trash removes it from the list, and Undo brings it back', as
   const target = cards(page).filter({ hasText: 'Offsite agenda' })
   await expect(target).toHaveCount(1)
 
-  await target.getByTestId('card-menu').click()
+  await openCardMenu(page, target)
   await page.getByTestId('card-trash').click()
 
   await expect(target).toHaveCount(0)
@@ -194,7 +209,7 @@ test('S-08: a trashed board appears in Trash with days remaining, and restores',
 
   const gestures = cards(page).filter({ hasText: 'Mobile gestures' })
   await expect(gestures).toHaveCount(1)
-  await gestures.getByTestId('card-menu').click()
+  await openCardMenu(page, gestures)
   await page.getByTestId('card-trash').click()
   await expect(page.getByTestId('toast')).toBeVisible()
   // Dismiss rather than undo — dismissing must NOT restore it.
@@ -215,7 +230,7 @@ test('FR-BOARD-006: permanent delete needs the exact name', async ({ page }) => 
 
   const doomed = cards(page).filter({ hasText: 'Delete me forever' })
   await expect(doomed).toHaveCount(1)
-  await doomed.getByTestId('card-menu').click()
+  await openCardMenu(page, doomed)
   await page.getByTestId('card-trash').click()
   await page.getByTestId('toast-dismiss').click()
 
@@ -251,7 +266,7 @@ test('FR-BOARD-007: duplicate makes a copy and leaves the original', async ({ pa
     has: page.getByRole('button', { name: 'Q3 Retrospective', exact: true }),
   })
   await expect(original).toHaveCount(1)
-  await original.getByTestId('card-menu').click()
+  await openCardMenu(page, original)
   await page.getByTestId('card-duplicate').click()
 
   await expect(
