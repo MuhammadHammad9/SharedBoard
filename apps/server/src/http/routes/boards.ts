@@ -14,7 +14,7 @@ import { opService } from '../../services/OpService.js'
 import { permissionService } from '../../services/PermissionService.js'
 import { snapshotService } from '../../services/SnapshotService.js'
 import { liveRooms } from '../../ws/RoomManager.js'
-import { assertAuthenticated, requireAuth } from '../middleware/auth.js'
+import { assertAuthenticated, assertIdentified, identify } from '../middleware/auth.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
 import { validateBody, validatedQuery, validateQuery } from '../middleware/validate.js'
 
@@ -56,9 +56,14 @@ function boardId(raw: string | undefined): string {
 export function createBoardsRouter(): Router {
   const router = Router()
 
-  // Every route below requires a signed-in user. Guest access to a shared
-  // board arrives with share links in Phase 12.
-  router.use(requireAuth)
+  /*
+   * A signed-in user OR a guest (FR-AUTH-006). Routes a guest may not use —
+   * the dashboard, creating, renaming, deleting, sharing — call
+   * `assertAuthenticated`, which refuses a guest exactly as it refuses an
+   * anonymous request. Only the board's own read and write paths take
+   * `assertIdentified`, and those still go through the permission service.
+   */
+  router.use(identify)
 
   /* ── Collection ───────────────────────────────────────────────────────── */
 
@@ -147,7 +152,11 @@ export function createBoardsRouter(): Router {
       const userId = assertAuthenticated(req)
       const id = boardId(req.params.id)
       await permissionService.requireOwner(id, userId)
-      res.json({ board: await boardService.trash(id, userId) })
+      const board = await boardService.trash(id, userId)
+      // Every cached role on it is now wrong — the next op from anyone must
+      // see a deleted board, not a 60-second-old grant.
+      await permissionService.invalidate(id)
+      res.json({ board })
     }),
   )
 
@@ -157,7 +166,9 @@ export function createBoardsRouter(): Router {
       const userId = assertAuthenticated(req)
       const id = boardId(req.params.id)
       await permissionService.requireOwner(id, userId)
-      res.json({ board: await boardService.restore(id, userId) })
+      const board = await boardService.restore(id, userId)
+      await permissionService.invalidate(id)
+      res.json({ board })
     }),
   )
 
@@ -210,9 +221,9 @@ export function createBoardsRouter(): Router {
   router.get(
     '/:id/snapshot',
     ah(async (req, res) => {
-      const userId = assertAuthenticated(req)
+      const identity = assertIdentified(req)
       const id = boardId(req.params.id)
-      const access = await permissionService.requireRead(id, userId)
+      const access = await permissionService.requireRead(id, identity)
       const state = await snapshotService.materialise(id)
       res.json({
         objects: state.objects,
@@ -232,9 +243,9 @@ export function createBoardsRouter(): Router {
     '/:id/operations',
     validateQuery(SinceQuerySchema),
     ah(async (req, res) => {
-      const userId = assertAuthenticated(req)
+      const identity = assertIdentified(req)
       const id = boardId(req.params.id)
-      await permissionService.requireRead(id, userId)
+      await permissionService.requireRead(id, identity)
       const { sinceSeq, limit } = validatedQuery<z.infer<typeof SinceQuerySchema>>(req)
       const ops = await opService.since(id, sinceSeq, limit)
       res.json({ ops, currentSeq: await opService.currentSeq(id) })
@@ -253,14 +264,21 @@ export function createBoardsRouter(): Router {
     '/:id/operations',
     validateBody(AppendOpsSchema),
     ah(async (req, res) => {
-      const userId = assertAuthenticated(req)
+      const identity = assertIdentified(req)
       const id = boardId(req.params.id)
       // Step 1 of §5.4: AUTHORIZE. A viewer is refused here, before a single
-      // row is written — test AT-20.
-      await permissionService.requireEdit(id, userId)
+      // row is written — test AT-20. The same cached check as the socket path.
+      await permissionService.assertCanEdit(id, identity)
 
       const { ops } = req.body as z.infer<typeof AppendOpsSchema>
-      const result = await opService.append(id, ops, { userId })
+      const result = await opService.append(
+        id,
+        ops,
+        identity.kind === 'user'
+          ? { userId: identity.userId }
+          : { guestId: identity.guestId },
+      )
+      const actorTag = identity.kind === 'user' ? identity.userId : 'guest'
 
       // Persisted, so it is safe to acknowledge — R-SYNC-012.
       res.json({ applied: result.applied, currentSeq: result.currentSeq })
@@ -284,9 +302,9 @@ export function createBoardsRouter(): Router {
           objectId: op.objectId,
           payload: op.payload,
           seq: op.seq,
-          actorSessionId: `rest:${userId}`,
+          actorSessionId: `rest:${actorTag}`,
         })) as ServerOp[]
-      liveRooms().queueOps(id, fresh, `rest:${userId}`)
+      liveRooms().queueOps(id, fresh, `rest:${actorTag}`)
 
       /*
        * Snapshot AFTER responding, and deliberately un-awaited. It is a cache

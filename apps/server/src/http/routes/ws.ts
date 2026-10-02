@@ -4,7 +4,8 @@ import { z } from 'zod'
 import { ERROR_CODES } from '@coboard/shared'
 import { permissionService } from '../../services/PermissionService.js'
 import { redis } from '../../lib/redis.js'
-import { assertAuthenticated, requireAuth } from '../middleware/auth.js'
+import { assertIdentified, identify } from '../middleware/auth.js'
+import type { Identity } from '../../lib/identity.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
 import { validateBody } from '../middleware/validate.js'
 
@@ -41,7 +42,7 @@ export const TICKET_TTL_SECONDS = 60
 const TicketRequestSchema = z.object({ boardId: z.string().uuid() })
 
 export interface TicketPayload {
-  userId: string
+  identity: Identity
   boardId: string
   role: string
 }
@@ -72,10 +73,12 @@ export function createWsRouter(): Router {
 
   router.post(
     '/ticket',
-    requireAuth,
+    identify,
     validateBody(TicketRequestSchema),
     ah(async (req, res) => {
-      const userId = assertAuthenticated(req)
+      // A user or a guest — a guest holds a role through the membership its
+      // share link created (FR-AUTH-006).
+      const identity = assertIdentified(req)
       const { boardId } = req.body as z.infer<typeof TicketRequestSchema>
 
       /*
@@ -84,10 +87,10 @@ export function createWsRouter(): Router {
        * upgrade handler can only close a socket with a numeric code, which is
        * a much worse place to discover you do not have access.
        */
-      const access = await permissionService.requireRead(boardId, userId)
+      const access = await permissionService.requireRead(boardId, identity)
 
       const ticket = randomBytes(32).toString('hex')
-      const payload: TicketPayload = { userId, boardId, role: access.role }
+      const payload: TicketPayload = { identity, boardId, role: access.role }
 
       const stored = await redis().set(
         ticketKey(ticket),

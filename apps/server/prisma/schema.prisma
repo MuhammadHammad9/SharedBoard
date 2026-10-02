@@ -114,6 +114,8 @@ model Board {
   members    BoardMember[]
   operations Operation[]
   snapshots  Snapshot[]
+  shareLinks ShareLink[]
+  invites    BoardInvite[]
 
   @@index([ownerId, deletedAt])
   @@index([lastActivityAt])
@@ -125,17 +127,67 @@ model Board {
 model BoardMember {
   id        String   @id @default(uuid())
   boardId   String
-  userId    String
+  /// Null for a guest — FR-AUTH-006.
+  userId    String?
+  /// A guest's client-generated id. A BEARER SECRET (decision D-1 in
+  /// docs/REMAINING-WORK.md): it authenticates the guest, so it is never sent
+  /// to anyone but its owner — not in presence, not in member lists.
+  guestId   String?
+  guestName String?  @db.VarChar(40)
   role      Role
-  createdAt DateTime @default(now())
+  /// The link a guest came in through. Turning that link off or resetting it
+  /// removes these members (FLOWS §10.2).
+  shareLinkId String?
+  addedById   String?
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
 
-  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  board     Board      @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shareLink ShareLink? @relation(fields: [shareLinkId], references: [id], onDelete: SetNull)
 
   /// One membership per person per board. The unique constraint is the
   /// enforcement — an invite race must not produce two rows with two roles.
   @@unique([boardId, userId])
+  @@unique([boardId, guestId])
   @@index([userId])
+  @@index([shareLinkId])
+}
+
+/// FR-SHARE-002/003. At most one live link per board; old ones keep a
+/// `revokedAt` so a stale token answers "turned off" rather than "invalid".
+model ShareLink {
+  id          String    @id @default(uuid())
+  boardId     String
+  /// 32 bytes from the CSPRNG, base64url — R-SEC-009. Never sequential.
+  token       String    @unique
+  /// EDITOR or VIEWER. Never OWNER.
+  role        Role
+  revokedAt   DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+
+  board   Board         @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  members BoardMember[]
+
+  @@index([boardId])
+}
+
+/// FR-SHARE-004: an invite to an address with no account yet. Claimed — turned
+/// into a membership — when that email signs up.
+model BoardInvite {
+  id          String    @id @default(uuid())
+  boardId     String
+  email       String    @db.VarChar(254)
+  role        Role
+  invitedById String
+  createdAt   DateTime  @default(now())
+  claimedAt   DateTime?
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, email])
+  @@index([email])
 }
 
 enum Role {

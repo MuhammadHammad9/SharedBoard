@@ -9,6 +9,7 @@ import {
   type ServerMessage,
 } from '@coboard/shared'
 import { logger } from '../lib/logger.js'
+import type { Identity } from '../lib/identity.js'
 
 /**
  * One user's connection to one board — TRD §5.1.
@@ -34,11 +35,21 @@ export class Session {
   constructor(
     readonly socket: WebSocket,
     readonly boardId: string,
-    readonly userId: string,
+    readonly identity: Identity,
     readonly displayName: string,
     role: Role,
   ) {
     this.role = role
+  }
+
+  /** The account behind this session; null for a guest. */
+  get userId(): string | null {
+    return this.identity.kind === 'user' ? this.identity.userId : null
+  }
+
+  /** A guest's id. A bearer secret (D-1): never put it in an outbound message. */
+  get guestId(): string | null {
+    return this.identity.kind === 'guest' ? this.identity.guestId : null
   }
 
   /** Any inbound frame counts, not only a ping — TRD §5.1. */
@@ -86,6 +97,8 @@ export class Session {
     return {
       sessionId: this.id,
       userId: this.userId,
+      // NEVER the real guest id — defect P-3. It authenticates the guest, so
+      // broadcasting it would hand their credential to the whole room.
       guestId: null,
       name: this.displayName,
       colour: this.colour,

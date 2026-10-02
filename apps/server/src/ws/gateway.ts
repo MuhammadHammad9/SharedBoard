@@ -154,25 +154,34 @@ async function handleUpgrade(
      * in that window must take effect — a stale role in a signed-ish blob is
      * the classic way an authorization change fails to apply (R-SEC-002).
      */
-    const access = await permissionService.resolve(payload.boardId, payload.userId)
+    const { identity } = payload
+    const access = await permissionService.resolve(payload.boardId, identity)
     if (!access || access.deletedAt) return reject(404, 'Not Found')
     if (access.role === 'none') return reject(403, 'Forbidden')
     const role = access.role
 
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { displayName: true },
-    })
-    if (!user) return reject(401, 'Unauthorized')
+    // The name others will see beside this cursor: the account's, or the one
+    // the guest typed on S-11.
+    const displayName =
+      identity.kind === 'user'
+        ? (
+            await prisma.user.findUnique({
+              where: { id: identity.userId },
+              select: { displayName: true },
+            })
+          )?.displayName
+        : (
+            await prisma.boardMember.findUnique({
+              where: {
+                boardId_guestId: { boardId: payload.boardId, guestId: identity.guestId },
+              },
+              select: { guestName: true },
+            })
+          )?.guestName
+    if (!displayName) return reject(401, 'Unauthorized')
 
     wss.handleUpgrade(request, socket, head, ws => {
-      const session = new Session(
-        ws,
-        payload.boardId,
-        payload.userId,
-        user.displayName,
-        role,
-      )
+      const session = new Session(ws, payload.boardId, identity, displayName, role)
 
       if (rooms.isFull(payload.boardId)) {
         // 4029, not 4003: the client should retry in 30 s, not give up.

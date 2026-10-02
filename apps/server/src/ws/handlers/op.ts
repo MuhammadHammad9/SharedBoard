@@ -1,12 +1,7 @@
-import {
-  canEdit,
-  ClientOpSchema,
-  NACK_CODES,
-  type ClientOp,
-  type ServerOp,
-} from '@coboard/shared'
+import { ClientOpSchema, NACK_CODES, type ClientOp, type ServerOp } from '@coboard/shared'
 import { AuthError } from '../../services/AuthService.js'
 import { opService } from '../../services/OpService.js'
+import { permissionService } from '../../services/PermissionService.js'
 import { snapshotService } from '../../services/SnapshotService.js'
 import { consume } from '../../lib/tokenBucket.js'
 import { logger } from '../../lib/logger.js'
@@ -55,10 +50,20 @@ export async function handleOps(
   incoming: unknown[],
 ): Promise<void> {
   // STEP 1 — AUTHORIZE. Every message. No exceptions.
-  if (!canEdit(session.role)) {
-    for (const raw of incoming) {
-      nack(session, opId(raw), NACK_CODES.FORBIDDEN, 'View-only access')
-    }
+  //
+  // Against the CURRENT role — defect P-1 — not the one this socket opened
+  // with. `session.role` is a snapshot taken at upgrade; a member demoted or
+  // removed since must stop writing now, not on their next reconnect. The
+  // lookup is Redis-cached for 60 s and invalidated on every role change, so
+  // this costs one GET per batch.
+  try {
+    await permissionService.assertCanEdit(session.boardId, session.identity)
+  } catch (error) {
+    const code =
+      error instanceof AuthError && error.status === 404
+        ? NACK_CODES.BOARD_GONE
+        : NACK_CODES.FORBIDDEN
+    for (const raw of incoming) nack(session, opId(raw), code, 'View-only access')
     return
   }
 
@@ -87,7 +92,10 @@ export async function handleOps(
   // STEPS 4 AND 5 — idempotency and transactional persistence.
   let result: Awaited<ReturnType<typeof opService.append>>
   try {
-    result = await opService.append(session.boardId, valid, { userId: session.userId })
+    result = await opService.append(session.boardId, valid, {
+      ...(session.userId ? { userId: session.userId } : {}),
+      ...(session.guestId ? { guestId: session.guestId } : {}),
+    })
   } catch (error) {
     if (error instanceof AuthError) {
       const code = error.status === 404 ? NACK_CODES.BOARD_GONE : NACK_CODES.INVALID_OP

@@ -25,6 +25,7 @@ import { Fanout } from '../ws/fanout.js'
 import { RoomManager } from '../ws/RoomManager.js'
 import { prisma } from '../lib/prisma.js'
 import { opService } from '../services/OpService.js'
+import { permissionService } from '../services/PermissionService.js'
 import { closeRedis, redis, waitForRedis } from '../lib/redis.js'
 
 /**
@@ -145,6 +146,18 @@ class Client {
 }
 
 const clients: Client[] = []
+/** A guest's socket: the ticket is issued on the guest header — FR-AUTH-006. */
+async function connectGuest(guestId: string, boardId: string): Promise<Client> {
+  const response = await request(app)
+    .post('/api/ws/ticket')
+    .set({ 'x-coboard-guest': guestId })
+    .send({ boardId })
+  expect(response.status).toBe(200)
+  const client = await Client.connect(response.body.ticket as string)
+  clients.push(client)
+  return client
+}
+
 async function connect(actor: Actor, boardId: string): Promise<Client> {
   const client = await Client.connect(await getTicket(actor, boardId))
   clients.push(client)
@@ -195,7 +208,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await prisma.user.deleteMany({})
-  const keys = await redis().keys('rl:*')
+  const keys = [...(await redis().keys('rl:*')), ...(await redis().keys('perm:*'))]
   if (keys.length > 0) await redis().del(...keys)
 })
 
@@ -491,6 +504,83 @@ describe('ops over the socket', () => {
 
     const batch = await watcher.waitFor('op_batch')
     expect(batch.ops[0]).toMatchObject({ id: op.id, seq: 1 })
+  })
+
+  it('refuses the NEXT op from an editor demoted mid-session — defect P-1', async () => {
+    const priya = await signUp()
+    const marcus = await signUp('Marcus Feld')
+    const boardId = await createBoard(priya)
+    await prisma.boardMember.create({
+      data: { boardId, userId: marcus.userId, role: 'EDITOR' },
+    })
+    const m = await connect(marcus, boardId)
+    await m.join(boardId)
+
+    const first = createOp(sticky())
+    m.send({ t: 'op', op: first })
+    expect(await m.waitFor('ack')).toMatchObject({ ids: [first.id] })
+
+    // Demoted while connected. The socket was opened as EDITOR; that snapshot
+    // of the role must not keep the door open.
+    await prisma.boardMember.updateMany({
+      where: { boardId, userId: marcus.userId },
+      data: { role: 'VIEWER' },
+    })
+    await permissionService.invalidate(boardId, marcus.userId)
+
+    const second = createOp(sticky())
+    m.send({ t: 'op', op: second })
+    expect(await m.waitFor('nack')).toMatchObject({
+      id: second.id,
+      code: NACK_CODES.FORBIDDEN,
+    })
+    expect(await prisma.operation.count({ where: { boardId } })).toBe(1)
+  })
+
+  it('refuses ops from a member removed mid-session', async () => {
+    const priya = await signUp()
+    const marcus = await signUp('Marcus Feld')
+    const boardId = await createBoard(priya)
+    await prisma.boardMember.create({
+      data: { boardId, userId: marcus.userId, role: 'EDITOR' },
+    })
+    const m = await connect(marcus, boardId)
+    await m.join(boardId)
+
+    await prisma.boardMember.deleteMany({ where: { boardId, userId: marcus.userId } })
+    await permissionService.invalidate(boardId, marcus.userId)
+
+    const op = createOp(sticky())
+    m.send({ t: 'op', op })
+    expect(await m.waitFor('nack')).toMatchObject({
+      id: op.id,
+      code: NACK_CODES.FORBIDDEN,
+    })
+    expect(await prisma.operation.count({ where: { boardId } })).toBe(0)
+  })
+
+  it('lets a guest editor draw over the socket, and never broadcasts its guest id — P-3', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const guestId = randomUUID()
+    await prisma.boardMember.create({
+      data: { boardId, guestId, guestName: 'Marcus', role: 'EDITOR' },
+    })
+    const owner = await connect(priya, boardId)
+    await owner.join(boardId)
+    const guest = await connectGuest(guestId, boardId)
+    await guest.join(boardId)
+
+    const op = createOp(sticky())
+    guest.send({ t: 'op', op })
+    expect(await guest.waitFor('ack')).toMatchObject({ ids: [op.id] })
+    expect(await owner.waitFor('op_batch')).toMatchObject({ ops: [{ id: op.id }] })
+
+    // The guest's name reaches the room; its credential never does.
+    const joined = await owner.waitFor('presence_join')
+    expect(joined.user.name).toBe('Marcus')
+    expect(JSON.stringify(owner.all('presence_join'))).not.toContain(guestId)
+    expect(JSON.stringify(guest.all('join_ack'))).not.toContain(guestId)
   })
 
   it('does NOT echo an op back to its author', async () => {
