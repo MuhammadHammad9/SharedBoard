@@ -29,19 +29,39 @@ export interface ResetEmail {
   expiresInMinutes: number
 }
 
+/** FR-SHARE-004: an invite to an address with no account yet. */
+export interface InviteEmail {
+  to: string
+  inviterName: string
+  boardName: string
+  role: 'EDITOR' | 'VIEWER'
+  /** Signup, then straight to the board — the invite is claimed at signup. */
+  url: string
+}
+
 export interface Mailer {
   sendPasswordReset(email: ResetEmail): Promise<void>
+  sendBoardInvite(email: InviteEmail): Promise<void>
 }
 
 export class LoggingMailer implements Mailer {
   /** Captured in-process so integration tests can assert on what was sent. */
   readonly sent: ResetEmail[] = []
+  readonly invites: InviteEmail[] = []
 
   async sendPasswordReset(email: ResetEmail): Promise<void> {
     this.sent.push(email)
     logger.info(
       { to: email.to, resetUrl: email.resetUrl },
       'password reset email (not delivered — no SMTP transport configured)',
+    )
+  }
+
+  async sendBoardInvite(email: InviteEmail): Promise<void> {
+    this.invites.push(email)
+    logger.info(
+      { to: email.to, board: email.boardName, url: email.url },
+      'board invite email (not delivered — no SMTP transport configured)',
     )
   }
 }

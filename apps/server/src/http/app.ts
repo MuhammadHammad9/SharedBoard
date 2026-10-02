@@ -7,6 +7,7 @@ import { createAuthRouter } from './routes/auth.js'
 import { createBoardsRouter } from './routes/boards.js'
 import { createWsRouter } from './routes/ws.js'
 import { createShareRouter } from './routes/share.js'
+import { createMembersRouter } from './routes/members.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 
 /**
@@ -63,6 +64,8 @@ export function createApp(): Express {
   })
 
   app.use('/api/auth', createAuthRouter())
+  // Before the boards router, which would otherwise answer /:id/members.
+  app.use('/api/boards/:id/members', createMembersRouter())
   app.use('/api/boards', createBoardsRouter())
   app.use('/api/ws', createWsRouter())
   app.use('/api/share', createShareRouter())

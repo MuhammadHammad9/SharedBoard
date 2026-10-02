@@ -25,6 +25,7 @@ import {
   clientIp,
   limitByIp,
 } from '../middleware/rateLimit.js'
+import { memberService } from '../../services/MemberService.js'
 
 /**
  * Auth endpoints — TRD §4.1, FLOWS §3, §4, §5.
@@ -108,6 +109,9 @@ export function createAuthRouter(): Router {
         ...(req.body as { email: string; password: string; displayName: string }),
         userAgent: req.headers['user-agent'],
       })
+      // FR-SHARE-004: boards this address was invited to before it had an
+      // account appear on the new dashboard straight away.
+      await memberService.claimInvites(session.user.id, session.user.email.toLowerCase())
       respondWithSession(res, session, 201, {
         user: session.user,
         accessToken: session.accessToken,
@@ -293,6 +297,9 @@ export function createAuthRouter(): Router {
       try {
         const profile = await getExchanger()(code, redirectUri())
         const user = await authService.upsertGoogleUser(profile)
+        // Claimed for a brand-new Google account and for an existing one
+        // alike: an invite sent to this address is theirs either way.
+        await memberService.claimInvites(user.id, user.emailLower)
         const session = await authService.issueSession(user, req.headers['user-agent'])
 
         res

@@ -95,6 +95,7 @@ async function getTicket(actor: Actor, boardId: string): Promise<string> {
  */
 class Client {
   readonly received: ServerMessage[] = []
+  closeCode: number | null = null
   private constructor(readonly socket: WebSocket) {}
 
   static async connect(ticket: string): Promise<Client> {
@@ -102,6 +103,9 @@ class Client {
     const client = new Client(socket)
     socket.on('message', data => {
       client.received.push(JSON.parse(String(data)) as ServerMessage)
+    })
+    socket.on('close', code => {
+      client.closeCode = code
     })
     await new Promise<void>((resolve, reject) => {
       socket.once('open', resolve)
@@ -138,6 +142,15 @@ class Client {
   async join(boardId: string, sinceSeq = 0) {
     this.send({ t: 'join', boardId, sinceSeq })
     return this.waitFor('join_ack')
+  }
+
+  async waitForClose(timeoutMs = 4_000): Promise<number> {
+    const deadline = Date.now() + timeoutMs
+    while (this.closeCode === null) {
+      if (Date.now() > deadline) throw new Error('timed out waiting for close')
+      await new Promise(r => setTimeout(r, 10))
+    }
+    return this.closeCode
   }
 
   close(): void {
@@ -901,5 +914,123 @@ describe('leaving', () => {
     b.close()
     const left = await a.waitFor('presence_leave')
     expect(left.sessionId).toBe(bAck.sessionId)
+  })
+})
+
+describe('live access changes — FLOWS §9.5, Phase 12c', () => {
+  async function boardWithEditor() {
+    const priya = await signUp()
+    const marcus = await signUp('Marcus Feld')
+    const boardId = await createBoard(priya)
+    const invite = await request(app)
+      .post(`/api/boards/${boardId}/members`)
+      .set({ Authorization: `Bearer ${priya.token}` })
+    expect(invite.status).toBe(422) // no body: refused, not a crash
+    await prisma.boardMember.create({
+      data: { boardId, userId: marcus.userId, role: 'EDITOR' },
+    })
+    const member = await prisma.boardMember.findFirstOrThrow({
+      where: { boardId, userId: marcus.userId },
+    })
+    return { priya, marcus, boardId, memberId: member.id }
+  }
+
+  it('role:changed to viewer reaches the member without ejecting them', async () => {
+    const { priya, marcus, boardId, memberId } = await boardWithEditor()
+    const m = await connect(marcus, boardId)
+    await m.join(boardId)
+
+    const res = await request(app)
+      .patch(`/api/boards/${boardId}/members/${memberId}`)
+      .set({ Authorization: `Bearer ${priya.token}` })
+      .send({ role: 'VIEWER' })
+    expect(res.status).toBe(200)
+
+    expect(await m.waitFor('role_changed')).toEqual({ t: 'role_changed', role: 'VIEWER' })
+    await new Promise(r => setTimeout(r, 100))
+    expect(m.closeCode).toBeNull()
+
+    // And the server holds them to it.
+    const op = createOp(sticky())
+    m.send({ t: 'op', op })
+    expect(await m.waitFor('nack')).toMatchObject({
+      id: op.id,
+      code: NACK_CODES.FORBIDDEN,
+    })
+  })
+
+  it('removing a member sends access_revoked and closes their socket with 4003', async () => {
+    const { priya, marcus, boardId, memberId } = await boardWithEditor()
+    const m = await connect(marcus, boardId)
+    await m.join(boardId)
+
+    const res = await request(app)
+      .delete(`/api/boards/${boardId}/members/${memberId}`)
+      .set({ Authorization: `Bearer ${priya.token}` })
+    expect(res.status).toBe(204)
+    expect(await m.waitFor('access_revoked')).toEqual({ t: 'access_revoked' })
+    expect(await m.waitForClose()).toBe(CLOSE_CODES.FORBIDDEN)
+  })
+
+  it('turning the link off ejects the guests who came through it — AT-22 server side', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const auth = { Authorization: `Bearer ${priya.token}` }
+    const link = await request(app)
+      .put(`/api/boards/${boardId}/share-link`)
+      .set(auth)
+      .send({ role: 'EDITOR' })
+    const guestId = randomUUID()
+    await request(app)
+      .post(`/api/share/${link.body.link.token}/join`)
+      .send({ guestId, name: 'Marcus' })
+
+    const guest = await connectGuest(guestId, boardId)
+    await guest.join(boardId)
+    const owner = await connect(priya, boardId)
+    await owner.join(boardId)
+
+    await request(app).delete(`/api/boards/${boardId}/share-link`).set(auth)
+    expect(await guest.waitFor('access_revoked')).toEqual({ t: 'access_revoked' })
+    expect(await guest.waitForClose()).toBe(CLOSE_CODES.FORBIDDEN)
+    // The owner is untouched.
+    expect(owner.closeCode).toBeNull()
+  })
+
+  it('deleting the board shows everyone connected S-19 — AT-23 server side', async () => {
+    const priya = await signUp()
+    const marcus = await signUp('Marcus Feld')
+    const dana = await signUp('Dana Ruiz')
+    const boardId = await createBoard(priya)
+    for (const u of [marcus, dana]) {
+      await prisma.boardMember.create({
+        data: { boardId, userId: u.userId, role: 'EDITOR' },
+      })
+    }
+    const sockets = await Promise.all([priya, marcus, dana].map(u => connect(u, boardId)))
+    for (const s of sockets) await s.join(boardId)
+
+    await request(app)
+      .delete(`/api/boards/${boardId}`)
+      .set({ Authorization: `Bearer ${priya.token}` })
+
+    for (const s of sockets) {
+      expect(await s.waitFor('board_deleted')).toEqual({ t: 'board_deleted' })
+      expect(await s.waitForClose()).toBe(CLOSE_CODES.NOT_FOUND)
+    }
+  })
+
+  it('a rename reaches everyone live', async () => {
+    const { priya, marcus, boardId } = await boardWithEditor()
+    const m = await connect(marcus, boardId)
+    await m.join(boardId)
+    await request(app)
+      .patch(`/api/boards/${boardId}`)
+      .set({ Authorization: `Bearer ${priya.token}` })
+      .send({ name: 'Q4 Planning' })
+    expect(await m.waitFor('board_renamed')).toEqual({
+      t: 'board_renamed',
+      name: 'Q4 Planning',
+    })
   })
 })
