@@ -28,7 +28,7 @@ import { useRoster } from './usePresence.js'
 /** Beyond this, the rest collapse into "+N". */
 const MAX_VISIBLE = 5
 
-export function AvatarStack() {
+export function AvatarStack({ stale = false }: { stale?: boolean } = {}) {
   const { users } = useRoster()
   const unique = dedupeByUser(users)
 
@@ -41,6 +41,8 @@ export function AvatarStack() {
     <div
       className="pointer-events-auto flex items-center"
       data-testid="avatar-stack"
+      // Desaturated while the connection is down — see index.css.
+      data-presence-stale={stale ? 'true' : 'false'}
       // A list, so a screen reader announces "3 items" rather than reading
       // three initials as a run-on word.
       role="list"
@@ -74,7 +76,12 @@ export function AvatarStack() {
 
       {overflow > 0 ? (
         <div role="listitem" className="-ml-2">
-          <Tooltip label={unique.slice(MAX_VISIBLE).map(u => u.name).join(', ')}>
+          <Tooltip
+            label={unique
+              .slice(MAX_VISIBLE)
+              .map(u => u.name)
+              .join(', ')}
+          >
             <button
               type="button"
               data-testid="avatar-overflow"

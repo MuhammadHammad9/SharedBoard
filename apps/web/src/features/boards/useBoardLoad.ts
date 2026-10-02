@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ConnectionState, Role } from '@coboard/shared'
 import { ApiError } from '../../lib/api.js'
 import { useToast } from '../../components/ui/Toast.js'
-import { errors } from '../../lib/strings.js'
+import { errors, presence } from '../../lib/strings.js'
 import { BoardSession } from '../sync/session.js'
 
 /**
@@ -43,6 +43,12 @@ export interface BoardLoad {
   name: string
   /** Live socket state, for the header indicator — FR-RT-009. */
   connection: ConnectionState
+  /** Reconnect attempt in flight. */
+  attempt: number
+  /** Changes the server has not acknowledged yet. */
+  pending: number
+  /** "Retry now" — restarts the backoff. */
+  retryConnection: () => void
   /** Server sequence the loaded document is current as of. */
   seq: number
   objectCount: number
@@ -57,6 +63,8 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
   const [objectCount, setObjectCount] = useState(0)
   const [attempt, setAttempt] = useState(0)
   const [connection, setConnection] = useState<ConnectionState>('connecting')
+  const [attemptN, setAttemptN] = useState(0)
+  const [pending, setPending] = useState(0)
   const sessionRef = useRef<BoardSession | null>(null)
   const toast = useToast()
 
@@ -82,6 +90,13 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
       onNack: () => toast.show({ message: errors.opRejected, variant: 'danger' }),
       onFatal: kind => setStatus(kind === 'deleted' ? 'not-found' : 'forbidden'),
       onBoardRenamed: next => setName(next),
+      onAttempt: n => setAttemptN(n),
+      onPending: n => setPending(n),
+      // "Back online — 12 changes synced". Silent when nothing was waiting:
+      // a blip the user never noticed needs no announcement.
+      onBackOnline: synced => {
+        if (synced > 0) toast.show({ message: presence.backOnline(synced) })
+      },
     })
     sessionRef.current = session
 
@@ -131,6 +146,9 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
     seq,
     objectCount,
     connection,
+    attempt: attemptN,
+    pending,
+    retryConnection: () => sessionRef.current?.resume(),
     retry: () => setAttempt(n => n + 1),
   }
 }

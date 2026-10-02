@@ -35,11 +35,20 @@ export function BoardHeader({
   name,
   role,
   connection,
+  attempt = 0,
+  pending = 0,
+  onRetry,
 }: {
   boardId: string
   name: string
   role: Role
   connection: ConnectionState
+  /** Reconnect attempt in flight — FR-RT-009. */
+  attempt?: number
+  /** Unsent changes — FR-RT-009. */
+  pending?: number
+  /** "Retry now". */
+  onRetry?: () => void
 }) {
   const [params, setParams] = useSearchParams()
   const [editing, setEditing] = useState(false)
@@ -107,8 +116,15 @@ export function BoardHeader({
         )}
       </div>
 
-      <AvatarStack />
-      <ConnectionIndicator state={connection} />
+      {/* FLOWS §9.4: while we cannot hear anyone, the faces we last saw go
+          grey — they are a memory, not a live roster. */}
+      <AvatarStack stale={connection === 'reconnecting' || connection === 'offline'} />
+      <ConnectionIndicator
+        state={connection}
+        attempt={attempt}
+        pending={pending}
+        {...(onRetry ? { onRetry } : {})}
+      />
 
       {role === 'VIEWER' ? (
         <span

@@ -2,6 +2,7 @@ import { useParams } from 'react-router'
 import { Canvas } from '../features/canvas/Canvas.js'
 import { BoardHeader } from '../components/board/BoardHeader.js'
 import { SessionExpiredBanner } from '../components/board/SessionExpiredBanner.js'
+import { OfflineBanner } from '../components/board/OfflineBanner.js'
 import { FullScreenSpinner } from '../components/ui/Spinner.js'
 import { BackToDashboard, FullScreenState } from '../components/ui/FullScreenState.js'
 import { Button } from '../components/ui/Button.js'
@@ -82,7 +83,11 @@ export default function Board() {
         name={load.name}
         role={load.role ?? 'OWNER'}
         connection={load.connection}
+        attempt={load.attempt}
+        pending={load.pending}
+        onRetry={load.retryConnection}
       />
+      <OfflineBanner state={load.connection} pending={load.pending} />
       <SessionExpiredBanner />
     </main>
   )

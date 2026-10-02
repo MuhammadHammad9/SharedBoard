@@ -301,4 +301,44 @@
   .animate-pulse-dot {
     animation: coboard-pulse-dot 1.2s ease-in-out infinite;
   }
+
+  /*
+   * The offline banner — components/board/OfflineBanner.tsx, FLOWS §9.4.
+   *
+   * Slides down from under the header, which is where it comes from.
+   * Occasional (once per long outage), so a standard 200 ms ease-out entry.
+   * Reduced motion keeps the fade and drops the movement (R-MOTION-060).
+   */
+  [data-offline-banner] {
+    opacity: 1;
+    translate: 0 0;
+    transition:
+      opacity var(--duration-base) var(--ease-out),
+      translate var(--duration-base) var(--ease-out);
+  }
+
+  @starting-style {
+    [data-offline-banner] {
+      opacity: 0;
+      translate: 0 -100%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-offline-banner] {
+      transition: opacity var(--duration-base) var(--ease-out);
+    }
+  }
+
+  /*
+   * Stale presence — the avatar stack while the connection is down. Colour
+   * only, so it is kept under reduced motion: it explains something.
+   */
+  [data-presence-stale] {
+    transition: filter 300ms var(--ease-out);
+  }
+
+  [data-presence-stale='true'] {
+    filter: saturate(0.25);
+  }
 }
