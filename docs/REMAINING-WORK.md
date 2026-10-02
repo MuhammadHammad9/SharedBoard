@@ -102,18 +102,51 @@ All six slices landed. The convergence harness found five more defects after the
 - The convergence and chaos specs register an account each. Running them many times in one 15-minute window hits the per-IP signup limit (429). That limit belongs to the environment, not the code.
 - Known flake to fix separately: the S-08 dashboard dropdown under load.
 
-### Phase 12 — Sharing, guest flow, permission enforcement (M5)
+### Phase 12 — Sharing, guest flow, permission enforcement (M5) · Product owner
 
-| PR  | Scope                                                                                                                                                             | Plan tasks |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 12a | `ShareLink` (+ `Star`) models and migration; `PermissionService.getRole` 60 s Redis cache + invalidation; `assertCanEdit` on every op, mutation endpoint, presign | T1–T3      |
-| 12b | Share link create/get/revoke (CSPRNG); public `GET /share/:token`; `POST /share/:token/join`; `GET /boards/:id/access` full branch table                          | T4–T7      |
-| 12c | `requireBoardAccess` six branches; S-11 `GuestEntry` with six failure branches, 40-char counter, `replace: true`; returning-guest "Not you?" chip                 | T8–T11     |
-| 12d | Guest bar (7-day dismissal); guest → account conversion via new tab + `postMessage`                                                                               | T12, T13   |
-| 12e | S-12 share modal: chips, member list, role/access dropdowns, copy with fallback, reset link; invite by email                                                      | T14, T15   |
-| 12f | Role change/removal events, ejection handling (five events), S-17/S-18 (no board name on S-17 — `R-SEC-018`), viewer mode, room capacity, analytics               | T16–T21    |
+**Detailed plan, written after reading the code (supersedes the first-pass table).**
 
-Exit gate: guest joins in < 10 s; `AT-20`–`AT-24` pass. Rewrite the `realtime.spec.ts:392` workaround to use a real share link.
+#### What exists, and what is missing
+
+- `BoardMember` has `userId` only: no guests, no `ShareLink` model, no invites.
+- `PermissionService.resolve` knows owner and members, with no cache.
+- `GET /boards/:id/access` exists, but only for signed-in users, and it never reports `joinable`.
+- Every authenticated route uses `requireAuth`, so a guest cannot call any API.
+- The `Mailer` abstraction exists (`LoggingMailer`).
+
+#### Defects found in the survey
+
+| #   | Defect                                                                                                                                                                                                                                                                                           | Rule                     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| P-1 | **The socket checks a role frozen when the ticket was issued.** `handleOps` reads `session.role`, which is set at upgrade time. A member demoted to viewer, or removed, keeps editing until they reconnect. The check must re-resolve the role (cached, invalidated on change) on every op batch | `R-SEC-001`, TRD §11.2   |
+| P-2 | **Viewer mode is a badge, not a mode.** The toolbar and every pointer and keyboard edit path still work for a viewer. The server refuses the ops, so each edit flashes in and is rolled back                                                                                                     | `FR-SHARE-006`           |
+| P-3 | **Presence carries `guestId`.** `PresenceUser.guestId` is broadcast to the room. If the guest id is the guest's credential, broadcasting it hands that credential to everyone in the room. The server must never send it                                                                         | `R-SEC-001`, `R-SEC-005` |
+
+#### Decisions taken (flagged per the ambiguity rule; reversible)
+
+| #   | Decision                                                                                                                                                                                                                                                                                                                             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D-1 | **Guest credential.** The guest id is a client-generated `crypto.randomUUID()` (122 random bits), stored in `localStorage.coboard.guest` as FR-AUTH-006 specifies, and sent as an `x-coboard-guest` header. It is a bearer secret, so the server never echoes it to anyone else (P-3), and member lists show guests by name only     |
+| D-2 | **`Q-1` interim:** guests persist as `BoardMember` rows (FLOWS §10.3). The 24-hour idle sweep is deferred to Phase 15 ops work                                                                                                                                                                                                       |
+| D-3 | **One live share link per board.** `ShareLink.revokedAt` marks old ones. Guest members record `shareLinkId`. Turning the link off or resetting it removes and ejects the guests who came through it (FLOWS §10.2 "ejects link-based guests"). Signed-in users who open a link become ordinary members with the link's role, and stay |
+| D-4 | **Invites by email** go through the existing `Mailer` (it logs in development; there is no mail provider in the repo). Unregistered addresses get a `BoardInvite` row, claimed automatically when that email signs up                                                                                                                |
+| D-5 | **Analytics.** There is no analytics module. Add a minimal `track(event, props)` seam (a dev-console sink) and wire this phase's four events. The real sink is Phase 14 task 18                                                                                                                                                      |
+| D-6 | **Live ejection is pushed to sockets on the instance that made the change.** Enforcement itself is instance-independent, because every op re-checks the Redis-cached role (P-1). Cross-instance push is a Phase 15 scaling item                                                                                                      |
+
+#### Slices
+
+| PR  | Scope                                                                                                                                                                                                                                                                                                                                                                                                                | Tasks / defects        | Proves                                                                                         |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------- |
+| 12a | Migration: guest fields + `shareLinkId` on `BoardMember`, `ShareLink`, `BoardInvite`. An `Identity` (user or guest) resolved by an `identify` middleware. `PermissionService.getRole(boardId, identity)` with a 60 s Redis cache and `invalidate`. `assertCanEdit` on every op batch instead of `session.role`. Board rename/delete stay owner-only                                                                  | T1–T3, P-1             | Integration: AT-20 (forged viewer op nacked, nothing written), AT-24, demoted-mid-session      |
+| 12b | Share link get/create/update/off/reset (32 CSPRNG bytes, base64url). Public `GET /share/:token`, `POST /share/:token/join` (name 1–40, room-full 403). `/access` implements the full STEP 4 table for user, guest and share token. Guests can get a ws ticket and read and write the board their role allows. Presence never carries `guestId`                                                                       | T4–T7, T20, P-3        | Integration: every `/access` branch; revoked link fails at once; guest ticket                  |
+| 12c | Members list/add/update/remove/leave; invites (claimed at signup); live `role_changed` / `access_revoked` / `board_deleted` pushes, with in-memory session roles updated and revoked sockets closed; link off/reset ejects that link's guests                                                                                                                                                                        | T15, T16, T17 (server) | Integration: each endpoint, including authorization failures; live ejection over a real socket |
+| 12d | Client: `guestIdentity.ts` (with the E-18 fallback), the guest header in `api.ts`, `RequireBoardAccess` (shell first, then the six branches), S-11 `/join/:token` (failure branches, 40-character counter from 30, `replace: true`), returning-guest skip + "Joined as … — Not you?" chip, viewer mode (toolbar → Phosphor `Eye` badge; every edit path blocked; live `role_changed` toast), S-17/S-18/S-19 ejection | T8–T11, T17–T19, P-2   | Component tests; e2e AT-21                                                                     |
+| 12e | S-12 share modal: email chips (invalid chips block Send), members with optimistic role change and revert, Remove, general access (Restricted / Anyone, can edit / can view), Copy → "Copied!" with the read-only-input fallback, Reset link with confirmation                                                                                                                                                        | T14, T15 (UI)          | Component tests                                                                                |
+| 12f | Guest bar (7-day dismissal) + conversion through a new tab and `postMessage` (canvas kept, guest upgraded to Editor); `track()` with `board_opened`, `board_joined_as_guest`, `share_link_created`, `share_link_copied`; e2e AT-22, AT-23, guest join in < 10 s, returning guest, role change without ejection, conversion; replace the `realtime.spec.ts` workaround                                                | T12, T13, T21          | **Exit gate**                                                                                  |
+
+**Ownership heads-up (`R-ARCH-006`):** 12d touches `features/canvas/interaction` (interaction owner) to block edit paths for viewers.
+
+Exit gate: guest joins in < 10 s; `AT-20`–`AT-24` pass; a viewer cannot mutate the board even with a forged socket message; revocation and deletion eject connected users with the correct screens.
 
 ### Phase 13 — Export, images, thumbnails, trash, duplicate (M5)
 
