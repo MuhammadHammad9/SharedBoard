@@ -90,8 +90,7 @@ export async function handleOps(
     result = await opService.append(session.boardId, valid, { userId: session.userId })
   } catch (error) {
     if (error instanceof AuthError) {
-      const code =
-        error.status === 404 ? NACK_CODES.BOARD_GONE : NACK_CODES.INVALID_OP
+      const code = error.status === 404 ? NACK_CODES.BOARD_GONE : NACK_CODES.INVALID_OP
       for (const op of valid) nack(session, op.id, code, error.message)
       return
     }
@@ -102,9 +101,14 @@ export async function handleOps(
      * zero-loss guarantee rests on never telling (R-SYNC-012).
      */
     logger.error({ err: error, boardId: session.boardId }, 'op persist failed')
-    for (const op of valid) {
-      nack(session, op.id, NACK_CODES.INVALID_OP, 'Could not save that change')
-    }
+    /*
+     * And NOT nacked either. A nack is a decision the client never retries
+     * (R-SYNC-011), so nacking a transient database failure would make the
+     * client throw the user's work away — the opposite of what the comment
+     * above promises. Silence lets the client's ack timeout fire, which keeps
+     * the ops queued and retries them with backoff; the op ids make that
+     * retry safe if this attempt did in fact commit (R-SYNC-014).
+     */
     return
   }
 

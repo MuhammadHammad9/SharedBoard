@@ -29,9 +29,8 @@ import {
  */
 
 /*
- * Restored ops flush the moment persistence starts — before any socket is
- * bound — so they go over REST. That is the real order (session.ts), so the
- * REST call is what those tests answer.
+ * REST is the outbox's fallback route while no socket is bound. Left
+ * unanswered here so that nothing in these tests is settled by it by accident.
  */
 const appendOps = vi.hoisted(() => vi.fn())
 vi.mock('../../boards/api.js', () => ({ appendOps, getOpsSince: vi.fn() }))
@@ -106,7 +105,6 @@ beforeEach(() => {
   storage = new Map()
   wire = []
   appendOps.mockReset()
-  // Unanswered by default: only the restored-op tests reach REST at all.
   appendOps.mockImplementation(() => new Promise(() => {}))
   onNack.mockReset()
   vi.stubGlobal('localStorage', {
@@ -241,18 +239,15 @@ describe('ops restored after a reload are shown — F-7', () => {
     expect(current()?.color).toBe('#BBF7D0')
   })
 
-  const storedAt = (op: ClientOp, seq: number, duplicate: boolean) =>
-    appendOps.mockResolvedValueOnce({ applied: [{ id: op.id, seq, duplicate }] })
-
   it('reverts a restored op the snapshot already contained, so later edits win', async () => {
     // The snapshot (seq 20) shows a teammate's colour, written after mine.
     boardStore.getState().loadObjects([sticky({ color: '#FECACA' })])
     const mine = updateOp(OBJ, { color: '#BBF7D0' })
     persist([mine])
-    // The server already had mine, at seq 12.
-    storedAt(mine, 12, true)
     start(20)
     await tick()
+    // The server already had mine, at seq 12.
+    await ack([mine], [12])
     expect(current()?.color).toBe('#FECACA')
   })
 
@@ -260,9 +255,9 @@ describe('ops restored after a reload are shown — F-7', () => {
     boardStore.getState().loadObjects([sticky({ color: '#FEF08A' })])
     const mine = updateOp(OBJ, { color: '#BBF7D0' })
     persist([mine])
-    storedAt(mine, 21, false)
     start(20)
     await tick()
+    await ack([mine], [21])
     expect(current()?.color).toBe('#BBF7D0')
   })
 

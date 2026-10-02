@@ -1,4 +1,8 @@
-import type { ClientOp } from '@coboard/shared'
+import {
+  OUTBOX_FLUSH_BATCH_SIZE,
+  RATE_LIMIT_OPS_PER_SEC,
+  type ClientOp,
+} from '@coboard/shared'
 import { backoffFor } from './backoff.js'
 
 /**
@@ -70,8 +74,21 @@ export interface OutboxOptions {
   clearTimer?: (handle: unknown) => void
 }
 
-/** Batch size per request. Matches the server's `ops` array cap. */
-const BATCH = 100
+/** Batch size per send — TRD §10.1. Under the server's 100-op array cap. */
+const BATCH = OUTBOX_FLUSH_BATCH_SIZE
+
+/**
+ * The client's own op budget — F-4 in docs/REMAINING-WORK.md.
+ *
+ * The server allows 100 ops/s per socket (R-SEC-013) and NACKS the excess,
+ * and a nack is never retried (R-SYNC-011). An outbox that replays ten
+ * minutes of offline work as fast as acks come back would therefore have
+ * most of it refused and thrown away — silent data loss on exactly the path
+ * that exists to prevent it. So the outbox spends from a bucket of its own,
+ * kept at 80% of the server's so that clock drift and arrival jitter never
+ * tip a batch over the line. Live drawing never comes near it.
+ */
+export const PACE_OPS_PER_SEC = Math.floor(RATE_LIMIT_OPS_PER_SEC * 0.8)
 
 export class Outbox {
   private queue: ClientOp[] = []
@@ -80,6 +97,8 @@ export class Outbox {
   private timer: unknown = null
   private status: OutboxStatus = 'idle'
   private closed = false
+  private tokens = PACE_OPS_PER_SEC
+  private refilledAt: number
 
   private readonly key: string
   private readonly now: () => number
@@ -91,6 +110,7 @@ export class Outbox {
     this.now = options.now ?? Date.now
     this.setTimer = options.setTimer ?? ((fn, ms) => globalThis.setTimeout(fn, ms))
     this.clearTimer = options.clearTimer ?? (h => globalThis.clearTimeout(h as number))
+    this.refilledAt = this.now()
     this.queue = this.restore()
   }
 
@@ -150,6 +170,8 @@ export class Outbox {
     try {
       while (this.queue.length > 0 && !this.closed) {
         const batch = this.queue.slice(0, BATCH)
+        await this.pace(batch.length)
+        if (this.closed) break
         const { acked, nacked, seqs } = await this.options.send(batch)
 
         const settled = new Set([...acked, ...nacked])
@@ -183,6 +205,25 @@ export class Outbox {
     } finally {
       this.inFlight = false
     }
+  }
+
+  /** Wait until `n` ops fit the budget, then spend them. */
+  private async pace(n: number): Promise<void> {
+    const refill = () => {
+      const now = this.now()
+      this.tokens = Math.min(
+        PACE_OPS_PER_SEC,
+        this.tokens + ((now - this.refilledAt) * PACE_OPS_PER_SEC) / 1_000,
+      )
+      this.refilledAt = now
+    }
+    refill()
+    if (this.tokens < n) {
+      const waitMs = Math.ceil(((n - this.tokens) * 1_000) / PACE_OPS_PER_SEC)
+      await new Promise<void>(resolve => this.setTimer(resolve, waitMs))
+      refill()
+    }
+    this.tokens -= n
   }
 
   private scheduleRetry(): void {

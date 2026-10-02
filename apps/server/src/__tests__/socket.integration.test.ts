@@ -1,6 +1,15 @@
 import { createServer, type Server } from 'node:http'
 import { randomUUID } from 'node:crypto'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest'
 import request from 'supertest'
 import WebSocket from 'ws'
 import {
@@ -15,6 +24,7 @@ import { attachGateway, type Gateway } from '../ws/gateway.js'
 import { Fanout } from '../ws/fanout.js'
 import { RoomManager } from '../ws/RoomManager.js'
 import { prisma } from '../lib/prisma.js'
+import { opService } from '../services/OpService.js'
 import { closeRedis, redis, waitForRedis } from '../lib/redis.js'
 
 /**
@@ -440,6 +450,32 @@ describe('ops over the socket', () => {
     expect(batch.ops[0]!.actorSessionId).toEqual(expect.any(String))
   })
 
+  it('does NOT nack a transient persist failure — the client must retry, not drop (R-SYNC-012)', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const a = await connect(priya, boardId)
+    await a.join(boardId)
+
+    const spy = vi
+      .spyOn(opService, 'append')
+      .mockRejectedValueOnce(new Error('connection terminated'))
+    try {
+      const op = createOp(sticky())
+      a.send({ t: 'op', op })
+      await new Promise(r => setTimeout(r, 200))
+      // A nack is never retried; this was a hiccup, not a decision.
+      expect(a.all('nack')).toHaveLength(0)
+      expect(a.all('ack')).toHaveLength(0)
+
+      // The client's retry, same id, succeeds and is stored once.
+      a.send({ t: 'op', op })
+      expect(await a.waitFor('ack')).toMatchObject({ ids: [op.id] })
+      expect(await prisma.operation.count({ where: { boardId } })).toBe(1)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('does NOT echo an op back to its author', async () => {
     const priya = await signUp()
     const boardId = await createBoard(priya)
@@ -474,9 +510,9 @@ describe('ops over the socket', () => {
     // Authorization runs first, so the forged op costs one comparison and
     // leaves no trace at all.
     expect(await prisma.operation.count({ where: { boardId } })).toBe(0)
-    expect(await prisma.board.findUniqueOrThrow({ where: { id: boardId } })).toMatchObject(
-      { currentSeq: 0 },
-    )
+    expect(
+      await prisma.board.findUniqueOrThrow({ where: { id: boardId } }),
+    ).toMatchObject({ currentSeq: 0 })
   })
 
   it('STEP 2: nacks a malformed op and stays up', async () => {
@@ -645,9 +681,9 @@ describe('sequence assignment under concurrency, over the socket', () => {
     expect(rows).toHaveLength(100)
     // Gap-free and duplicate-free: seq n sits at index n-1, with no exceptions.
     expect(rows.map(r => r.seq)).toEqual(Array.from({ length: 100 }, (_, i) => i + 1))
-    expect(await prisma.board.findUniqueOrThrow({ where: { id: boardId } })).toMatchObject(
-      { currentSeq: 100, objectCount: 100 },
-    )
+    expect(
+      await prisma.board.findUniqueOrThrow({ where: { id: boardId } }),
+    ).toMatchObject({ currentSeq: 100, objectCount: 100 })
   })
 })
 
