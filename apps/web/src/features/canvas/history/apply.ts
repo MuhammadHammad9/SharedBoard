@@ -87,8 +87,12 @@ export function applyAndEmit(
    * change must land on their screen at pointer speed; whether it has reached
    * Postgres yet is the outbox's problem, not theirs. Phase 9 swaps the
    * transport underneath this line for the socket.
+   *
+   * The inverse rides along: it holds each field's value before this change,
+   * which is what the sync layer restores if the server refuses it (R-SYNC-011)
+   * and what it holds remote writes against meanwhile (R-CONV-001).
    */
-  emitOps(ops)
+  emitOps(ops, inverse)
 
   // An un-invertible batch is applied but not recorded. Dropping the entry is
   // deliberate: a partial inverse would restore the board to a state the user

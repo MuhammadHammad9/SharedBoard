@@ -1,7 +1,10 @@
 import { ApiError, NETWORK_ERROR_CODE } from '../../lib/api.js'
 import { appendOps } from '../boards/api.js'
 import { clearOutbox, Outbox, type OutboxStatus } from './Outbox.js'
-import type { ClientOp, ServerMessage } from '@coboard/shared'
+import { PendingWrites } from './pendingWrites.js'
+import { invertOp } from '../canvas/history/inverseOps.js'
+import { boardStore } from '../../stores/boardStore.js'
+import type { ClientOp, ObjectId, ServerMessage, ServerOp } from '@coboard/shared'
 
 /**
  * The bridge between the local write path and the server — Phase 8's half of
@@ -22,21 +25,36 @@ import type { ClientOp, ServerMessage } from '@coboard/shared'
 let session: PersistenceSession | null = null
 
 export interface SessionCallbacks {
-  /** Ops the server refused. The board rolls them back and toasts — E-16. */
+  /**
+   * Ops the server refused, AFTER the board has been put back — E-16. The
+   * caller tells the user; it does not need to undo anything.
+   */
   onNack?: (ops: readonly ClientOp[]) => void
+  /** Drop the undo entries holding refused ops — CLAUDE.md §3.2 6b. */
+  discardHistory?: (opIds: ReadonlySet<string>) => void
   onStatus?: (status: OutboxStatus, pending: number) => void
+  /**
+   * The seq of the snapshot this page loaded. Ops restored from storage that
+   * the server turns out to have stored at or below it are already in the
+   * document — see `settle`.
+   */
+  loadSeq?: number
 }
 
 export class PersistenceSession {
   readonly outbox: Outbox
+  /** Unacked local writes — R-CONV-001. See pendingWrites.ts. */
+  readonly pending = new PendingWrites()
+  private readonly loadSeq: number
 
   /** Set by the board once the socket is live. Null means REST-only. */
   private socket: SocketTransportBinding | null = null
 
   constructor(
     readonly boardId: string,
-    callbacks: SessionCallbacks = {},
+    private readonly callbacks: SessionCallbacks = {},
   ) {
+    this.loadSeq = callbacks.loadSeq ?? 0
     this.outbox = new Outbox({
       boardId,
       /*
@@ -49,9 +67,105 @@ export class PersistenceSession {
        */
       send: ops =>
         this.socket?.ready() ? this.socket.send(ops) : restTransport(this.boardId)(ops),
-      ...(callbacks.onNack ? { onNack: callbacks.onNack } : {}),
+      onAck: (ids, seqs) => {
+        ids.forEach((id, i) => this.settle(id, seqs?.[i]))
+      },
+      onNack: ops => this.onNacked(ops),
+      // Never sent, so never ordered: the document goes back to what the
+      // server has, and the fields they held are released.
+      onDrop: ops => applyLocal(ops.flatMap(op => this.pending.revert(op.id))),
       ...(callbacks.onStatus ? { onStatus: callbacks.onStatus } : {}),
     })
+    this.adoptRestored()
+  }
+
+  /**
+   * Ops left in storage by a previous page — the "close the tab offline,
+   * come back" path (FR-RT-012).
+   *
+   * They are replayed to the server, and the server leaves the sender out of
+   * the broadcast, so unless they are applied HERE the user's own offline
+   * work stays invisible until some later reload. Applied through the plain
+   * store path: no history (this page did not make them, R-UNDO-006) and no
+   * emit (they are already queued).
+   *
+   * A CREATE whose object the snapshot already has, or a DELETE whose object
+   * it lacks, was evidently stored before the disconnect. Re-applying the
+   * CREATE would overwrite later edits with the original payload, so both are
+   * left to the outbox's harmless re-send and not touched locally.
+   */
+  private adoptRestored(): void {
+    const restored = this.outbox.snapshot()
+    if (restored.length === 0) return
+    const store = boardStore.getState()
+    const read = (id: ObjectId) => boardStore.getState().objects.get(id)
+
+    for (const op of restored) {
+      const exists = store.objects.has(op.objectId as ObjectId)
+      if (op.type === 'CREATE' && exists) continue
+      if (op.type !== 'CREATE' && !exists) continue
+      const inverse = invertOp(op, read)
+      boardStore.getState().applyOps([op])
+      this.pending.track([op], inverse ? [inverse] : null, true)
+    }
+  }
+
+  /**
+   * The server has my op at `seq` — from its ack, or because it came back to
+   * me in a catch-up replay.
+   */
+  private settle(opId: string, seq: number | undefined): void {
+    const op = this.pending.typeOf(opId)
+    if (!op) return
+
+    /*
+     * Restored after a reload, and stored before the snapshot this page
+     * loaded. The snapshot already reflects it AND everything ordered after
+     * it, so our re-application was stale: put the document back to what
+     * the server says.
+     */
+    if (this.pending.isRestored(opId) && seq !== undefined && seq <= this.loadSeq) {
+      applyLocal(this.pending.revert(opId))
+      return
+    }
+
+    if (op.type === 'DELETE' && seq !== undefined) {
+      boardStore.getState().confirmDelete(op.objectId as ObjectId, seq)
+    }
+    this.pending.ack(opId)
+  }
+
+  /**
+   * The server refused these — R-SYNC-011. Never retried. The board goes back
+   * to the confirmed state and the undo entries go with it.
+   */
+  private onNacked(ops: readonly ClientOp[]): void {
+    applyLocal(ops.flatMap(op => this.pending.revert(op.id)))
+    this.callbacks.discardHistory?.(new Set(ops.map(op => op.id)))
+    this.callbacks.onNack?.(ops)
+  }
+
+  /**
+   * Remote ops on their way into the document — R-CONV-001.
+   *
+   * Two things happen here, in seq order, op by op:
+   *   • An op that is one of MINE came back in a catch-up replay: it was
+   *     stored before an ack could reach us. That is an ack — and it is not
+   *     applied again, because it already is.
+   *   • Anything else has the fields I am still waiting on held back.
+   */
+  reconcileRemote(ops: readonly ServerOp[]): ServerOp[] {
+    if (this.pending.size === 0) return ops as ServerOp[]
+    const out: ServerOp[] = []
+    for (const op of ops) {
+      if (this.pending.has(op.id)) {
+        this.settle(op.id, op.seq)
+        continue
+      }
+      const kept = this.pending.filterRemote(op as unknown as ClientOp)
+      if (kept) out.push(kept as unknown as ServerOp)
+    }
+    return out
   }
 
   /** Hand the session a live socket. Called after `join_ack`. */
@@ -60,7 +174,8 @@ export class PersistenceSession {
     if (binding) this.outbox.resume()
   }
 
-  emit(ops: readonly ClientOp[]): void {
+  emit(ops: readonly ClientOp[], inverse: readonly ClientOp[] | null = null): void {
+    this.pending.track(ops, inverse)
     this.outbox.enqueue(ops)
   }
 
@@ -71,7 +186,13 @@ export class PersistenceSession {
 
   close(): void {
     this.outbox.close()
+    this.pending.clear()
   }
+}
+
+/** The local path with no history and no emit — rollback and adoption only. */
+function applyLocal(ops: readonly ClientOp[]): void {
+  if (ops.length > 0) boardStore.getState().applyOps(ops)
 }
 
 /**
@@ -92,7 +213,8 @@ function restTransport(boardId: string) {
       const { applied } = await appendOps(boardId, ops)
       const acked = new Set(applied.map(a => a.id))
       return {
-        acked: [...acked],
+        acked: applied.map(a => a.id),
+        seqs: applied.map(a => a.seq),
         /*
          * An op the server answered 200 to but did not list is a case that
          * should not happen. Treating it as nacked rather than silently
@@ -106,7 +228,11 @@ function restTransport(boardId: string) {
       if (!(error instanceof ApiError)) throw error
 
       // Retryable: no network, or the server had a bad moment.
-      if (error.code === NETWORK_ERROR_CODE || error.status >= 500 || error.status === 0) {
+      if (
+        error.code === NETWORK_ERROR_CODE ||
+        error.status >= 500 ||
+        error.status === 0
+      ) {
         throw error
       }
       // 429 is retryable too — the server is asking us to wait, not refusing.
@@ -171,10 +297,12 @@ export const activeSession = (): PersistenceSession | null => session
  * work — that is what makes offline drawing instant and what lets the Phase
  * 2-6 suites run without a database.
  */
-export function emitOps(ops: readonly ClientOp[]): void {
-  session?.emit(ops)
+export function emitOps(
+  ops: readonly ClientOp[],
+  inverse: readonly ClientOp[] | null = null,
+): void {
+  session?.emit(ops, inverse)
 }
-
 
 /* ── The socket transport ──────────────────────────────────────────────────── */
 
@@ -196,7 +324,9 @@ export const SOCKET_ACK_TIMEOUT_MS = 10_000
 
 export interface SocketTransportBinding {
   ready: () => boolean
-  send: (ops: readonly ClientOp[]) => Promise<{ acked: string[]; nacked: string[] }>
+  send: (
+    ops: readonly ClientOp[],
+  ) => Promise<{ acked: string[]; nacked: string[]; seqs: Array<number | undefined> }>
   /** Route an incoming ack/nack into the pending batches. */
   settle: (message: ServerMessage) => void
 }
@@ -209,8 +339,13 @@ export function createSocketTransport(
   interface Waiting {
     remaining: Set<string>
     acked: string[]
+    seqs: Array<number | undefined>
     nacked: string[]
-    resolve: (value: { acked: string[]; nacked: string[] }) => void
+    resolve: (value: {
+      acked: string[]
+      nacked: string[]
+      seqs: Array<number | undefined>
+    }) => void
     reject: (error: Error) => void
     timer: ReturnType<typeof setTimeout>
   }
@@ -221,14 +356,15 @@ export function createSocketTransport(
     clearTimeout(batch.timer)
     const index = waiting.indexOf(batch)
     if (index >= 0) waiting.splice(index, 1)
-    batch.resolve({ acked: batch.acked, nacked: batch.nacked })
+    batch.resolve({ acked: batch.acked, nacked: batch.nacked, seqs: batch.seqs })
   }
 
-  const record = (id: string, kind: 'acked' | 'nacked') => {
+  const record = (id: string, kind: 'acked' | 'nacked', seq?: number) => {
     const batch = waiting.find(w => w.remaining.has(id))
     if (!batch) return
     batch.remaining.delete(id)
     batch[kind].push(id)
+    if (kind === 'acked') batch.seqs.push(seq)
     if (batch.remaining.size === 0) finish(batch)
   }
 
@@ -244,6 +380,7 @@ export function createSocketTransport(
         const batch: Waiting = {
           remaining: new Set(ops.map(op => op.id)),
           acked: [],
+          seqs: [],
           nacked: [],
           resolve,
           reject,
@@ -263,8 +400,9 @@ export function createSocketTransport(
       }),
 
     settle: message => {
-      if (message.t === 'ack') for (const id of message.ids) record(id, 'acked')
-      else if (message.t === 'nack') record(message.id, 'nacked')
+      if (message.t === 'ack') {
+        message.ids.forEach((id, i) => record(id, 'acked', message.seqs[i]))
+      } else if (message.t === 'nack') record(message.id, 'nacked')
     },
   }
 }

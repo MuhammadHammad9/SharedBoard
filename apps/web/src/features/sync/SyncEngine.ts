@@ -9,6 +9,7 @@ import {
 import { getOpsSince } from '../boards/api.js'
 import { applyRemoteOp } from '../canvas/history/applyRemote.js'
 import { boardStore } from '../../stores/boardStore.js'
+import { activeSession } from './persistence.js'
 
 /**
  * Ordering, gaps and the document — TRD §6.3, FLOWS §2.3 STEP 5.
@@ -138,7 +139,11 @@ export class SyncEngine {
         return
 
       case 'nack':
-        this.callbacks.onNack([message.id], message.code)
+        /*
+         * The outbox owns nacks, through the socket transport's `settle`: it
+         * rolls the change back, drops the undo entry and reports once per
+         * batch. Reporting here as well toasted every refusal twice.
+         */
         return
 
       case 'board_deleted':
@@ -225,10 +230,18 @@ export class SyncEngine {
       this.noteUnknownObject()
     }
 
+    /*
+     * Fields this client is still waiting on are held back, and our own ops
+     * echoed by a catch-up count as acks — see pendingWrites.ts. Without this
+     * a remote write ordered BEFORE an unacked local one overwrites it here
+     * and nowhere else: a permanent divergence (R-CONV-001).
+     */
+    const reconciled = activeSession()?.reconcileRemote(ops) ?? ops
+
     // The REMOTE path. It cannot reach the history stack — that separation is
     // what keeps undo per-user (R-UNDO-001), and it is enforced by a test that
     // reads applyRemote.ts's source.
-    applyRemoteOp(ops as unknown as ClientOp[])
+    applyRemoteOp(reconciled as unknown as ClientOp[])
   }
 
   private noteUnknownObject(): void {

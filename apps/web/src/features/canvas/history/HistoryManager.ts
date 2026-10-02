@@ -163,6 +163,36 @@ export class HistoryManager {
   /** R-UNDO-006 has no reset requirement; this exists for tests and for the
    *  board unmount, where a stack referring to a different board is worse than
    *  no stack at all. */
+  /**
+   * Drop every entry that contains one of these op ids — CLAUDE.md §3.2 6b.
+   *
+   * The server refused the change, and the board has already been put back.
+   * An entry left behind would let Ctrl+Z "undo" something that never
+   * happened, emitting an inverse against the server's real state. Entries
+   * are matched on both sides: a refused op may be a forward op (the user's
+   * action) or, after an undo, an inverse.
+   *
+   * Best-effort by design. Undo and redo re-emit with fresh ids, and
+   * coalescing merges ops, so some refused ids match nothing. Those entries
+   * are caught later by the stale-entry skip (R-UNDO-005): the object they
+   * name is gone, so they are not applicable.
+   */
+  discard(opIds: ReadonlySet<string>): void {
+    if (opIds.size === 0) return
+    const keep = (entry: HistoryEntry) =>
+      !entry.forward.some(op => opIds.has(op.id)) &&
+      !entry.inverse.some(op => opIds.has(op.id))
+    const undo = this.undoStack.filter(keep)
+    const redo = this.redoStack.filter(keep)
+    if (undo.length === this.undoStack.length && redo.length === this.redoStack.length) {
+      return
+    }
+    this.undoStack = undo
+    this.redoStack = redo
+    this.lastPushAt = 0
+    this.emit()
+  }
+
   clear(): void {
     this.undoStack = []
     this.redoStack = []

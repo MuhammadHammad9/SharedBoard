@@ -2,6 +2,7 @@ import type { ClientOp, ObjectId } from '@coboard/shared'
 import { boardStore } from '../../../stores/boardStore.js'
 import { emitOps } from '../../sync/persistence.js'
 import { HistoryManager } from './HistoryManager.js'
+import { buildInverse } from './inverseOps.js'
 
 /**
  * The application's single history stack, wired to the board store.
@@ -27,8 +28,11 @@ export const history = new HistoryManager(
      * server like any other local change or the undone work reappears on the
      * next reload.
      */
-    boardStore.getState().applyOps(ops)
-    emitOps(withFreshIds(ops))
+    const fresh = withFreshIds(ops)
+    // Read BEFORE applying: the sync layer needs each field's prior value.
+    const inverse = buildInverse(fresh, id => boardStore.getState().objects.get(id))
+    boardStore.getState().applyOps(fresh)
+    emitOps(fresh, inverse)
   },
   objectId => boardStore.getState().objects.has(objectId as ObjectId),
 )

@@ -131,11 +131,22 @@ export class BoardSession {
     // work the server will always refuse.
     if (state.myRole !== 'VIEWER') {
       this.persistence = startPersistence(this.boardId, {
-        onNack: ops =>
+        loadSeq: state.seq,
+        discardHistory: ids => history.discard(ids),
+        onNack: ops => {
+          /*
+           * FLOWS §9.4: an op refused while SYNCING — typically one that names
+           * an object someone deleted while we were away — is dropped
+           * silently. The board is already put back; a toast for each of a
+           * dozen replayed changes would be noise about nothing the user did
+           * just now. Refusals of live work are reported.
+           */
+          if (this.socket.connectionState === 'syncing') return
           this.callbacks.onNack(
             ops.map(op => op.id),
             'NACK',
-          ),
+          )
+        },
       })
       /*
        * Kept on the instance, because acks arrive as ordinary messages rather

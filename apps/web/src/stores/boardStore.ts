@@ -253,6 +253,13 @@ interface BoardState {
   reorder: () => void
   /** Forget every tombstone. Board load only — a new document, a new session. */
   clearTombstones: () => void
+  /**
+   * The server ordered my delete at `seq`. Until now its tombstone sat at
+   * MAX_SAFE_INTEGER — "later than anything" — which would also swallow a
+   * teammate's LATER re-create (an undo) forever. Now the real seq is known,
+   * so the tombstone drops to it and only ops it truly beat are refused.
+   */
+  confirmDelete: (id: ObjectId, seq: number) => void
   toggleSelection: (id: ObjectId) => void
   clearSelection: () => void
   selectAll: () => void
@@ -269,8 +276,7 @@ interface BoardState {
  * meaningful: it marks the op as the user's own current intent, which always
  * wins over anything already on their screen.
  */
-const seqOf = (op: ClientOp): number | undefined =>
-  (op as { seq?: number }).seq
+const seqOf = (op: ClientOp): number | undefined => (op as { seq?: number }).seq
 
 /**
  * True when this op lost to a delete and must be dropped.
@@ -440,7 +446,12 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     const sortedIds = [...map.values()]
       .sort((a, b) => (a.zIndex < b.zIndex ? -1 : a.zIndex > b.zIndex ? 1 : 0))
       .map(o => o.id)
-    set(s => ({ objects: map, sortedIds, tombstones, objectsVersion: s.objectsVersion + 1 }))
+    set(s => ({
+      objects: map,
+      sortedIds,
+      tombstones,
+      objectsVersion: s.objectsVersion + 1,
+    }))
   },
 
   /**
@@ -678,6 +689,13 @@ export const useBoardStore = create<BoardState>((set, get) => ({
    */
   clearTombstones: () =>
     set(s => (s.tombstones.size === 0 ? {} : { tombstones: new Map() })),
+
+  confirmDelete: (id, seq) => {
+    // Mutated in place, like `applyOps` does: tombstones are not rendered,
+    // and nothing subscribes to them, so no new Map and no React update.
+    const { tombstones } = get()
+    if (tombstones.get(id) === Number.MAX_SAFE_INTEGER) tombstones.set(id, seq)
+  },
 
   reorder: () =>
     set(s => ({

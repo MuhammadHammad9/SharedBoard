@@ -43,12 +43,21 @@ export interface OutboxTransport {
    * the rest, and a decision is not a network error: those ops are dropped
    * from the queue and reported through `onNack` (R-SYNC-011).
    */
-  (ops: readonly ClientOp[]): Promise<{ acked: string[]; nacked: string[] }>
+  (ops: readonly ClientOp[]): Promise<{
+    acked: string[]
+    nacked: string[]
+    /** The seq the server gave each acked op, aligned with `acked`, when known. */
+    seqs?: ReadonlyArray<number | undefined>
+  }>
 }
 
 export interface OutboxOptions {
   boardId: string
   send: OutboxTransport
+  /** Ops the server stored, with their seqs where the transport knows them. */
+  onAck?: (ids: readonly string[], seqs?: ReadonlyArray<number | undefined>) => void
+  /** Ops trimmed off the front of an over-long queue. They will never be sent. */
+  onDrop?: (ops: readonly ClientOp[]) => void
   /** Ops the server refused. The caller rolls them back locally. */
   onNack?: (ops: readonly ClientOp[]) => void
   onStatus?: (status: OutboxStatus, pending: number) => void
@@ -122,7 +131,9 @@ export class Outbox {
      * offline path exists to protect.
      */
     if (this.queue.length > OUTBOX_MAX) {
+      const dropped = this.queue.slice(0, this.queue.length - OUTBOX_MAX)
       this.queue = this.queue.slice(this.queue.length - OUTBOX_MAX)
+      this.options.onDrop?.(dropped)
     }
 
     this.persist()
@@ -148,7 +159,7 @@ export class Outbox {
     try {
       while (this.queue.length > 0 && !this.closed) {
         const batch = this.queue.slice(0, BATCH)
-        const { acked, nacked } = await this.options.send(batch)
+        const { acked, nacked, seqs } = await this.options.send(batch)
 
         const settled = new Set([...acked, ...nacked])
         const refused = batch.filter(op => nacked.includes(op.id))
@@ -160,6 +171,8 @@ export class Outbox {
          */
         this.queue = this.queue.filter(op => !settled.has(op.id))
         this.persist()
+
+        if (acked.length > 0) this.options.onAck?.(acked, seqs)
 
         // A nack is a DECISION, not a network error, so it is never retried —
         // R-SYNC-011. The caller undoes it locally and tells the user.

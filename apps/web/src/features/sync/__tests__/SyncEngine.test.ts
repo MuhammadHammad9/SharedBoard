@@ -34,7 +34,10 @@ function sticky(id?: string): BoardObject {
   } as BoardObject
 }
 
-const op = (seq: number, partial: Partial<ServerOp> & Pick<ServerOp, 'type' | 'objectId'>): ServerOp =>
+const op = (
+  seq: number,
+  partial: Partial<ServerOp> & Pick<ServerOp, 'type' | 'objectId'>,
+): ServerOp =>
   ({
     id: `op-${seq}`,
     payload: {},
@@ -348,7 +351,7 @@ describe('gap fill', () => {
 /* ── Server messages ──────────────────────────────────────────────────────── */
 
 describe('server messages', () => {
-  it('reports a nack so the board can roll back', () => {
+  it('leaves nacks to the outbox, so a refusal is reported once, not twice', () => {
     const onNack = vi.fn()
     const sync = new SyncEngine(
       'board-1',
@@ -356,7 +359,9 @@ describe('server messages', () => {
       { send: () => true, markSynced: noop },
     )
     sync.handle({ t: 'nack', id: 'op-9', code: 'FORBIDDEN', message: 'View-only' })
-    expect(onNack).toHaveBeenCalledWith(['op-9'], 'FORBIDDEN')
+    // The outbox's socket transport settles the nack, rolls the change back
+    // and reports it. The engine reporting too toasted every refusal twice.
+    expect(onNack).not.toHaveBeenCalled()
   })
 
   it('surfaces a deleted board and a revoked role as fatal', () => {
