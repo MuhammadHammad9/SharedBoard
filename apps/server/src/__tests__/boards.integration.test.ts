@@ -109,7 +109,10 @@ const deleteOp = (objectId: string): ClientOp => ({
 })
 
 async function appendOps(actor: Actor, boardId: string, ops: ClientOp[]) {
-  return request(app).post(`/api/boards/${boardId}/operations`).set(auth(actor)).send({ ops })
+  return request(app)
+    .post(`/api/boards/${boardId}/operations`)
+    .set(auth(actor))
+    .send({ ops })
 }
 
 beforeAll(async () => {
@@ -202,7 +205,10 @@ describe('GET /api/boards', () => {
 
     const all = await request(app).get('/api/boards').set(auth(priya))
     expect(all.body.boards).toHaveLength(1)
-    expect(all.body.boards[0]).toMatchObject({ myRole: 'EDITOR', ownerName: 'Marcus Feld' })
+    expect(all.body.boards[0]).toMatchObject({
+      myRole: 'EDITOR',
+      ownerName: 'Marcus Feld',
+    })
 
     const owned = await request(app).get('/api/boards?filter=owned').set(auth(priya))
     expect(owned.body.boards).toHaveLength(0)
@@ -318,14 +324,16 @@ describe('a board the caller has no access to', () => {
     expect(JSON.stringify(response.body)).not.toContain('Acquisition')
   })
 
-  it('reports role none from /access without revealing anything else', async () => {
+  it('answers /access with 403 no_access and reveals nothing else — FLOWS §2.3 STEP 4', async () => {
     const priya = await signUp()
     const marcus = await signUp('Marcus Feld')
     const id = await createBoard(marcus, 'Acquisition target shortlist')
 
     const response = await request(app).get(`/api/boards/${id}/access`).set(auth(priya))
-    expect(response.status).toBe(200)
-    expect(response.body).toEqual({ role: 'none', joinable: false })
+    expect(response.status).toBe(403)
+    expect(response.body.error.details).toEqual({ reason: 'no_access' })
+    // R-SEC-018: the name must not travel on the refusal path.
+    expect(JSON.stringify(response.body)).not.toContain('Acquisition')
   })
 
   it('answers 404 for a malformed id rather than a 500 from the driver', async () => {
@@ -604,7 +612,9 @@ describe('GET /api/boards/:id/snapshot', () => {
     })
     await appendOps(priya, id, [createOp(sticky())])
 
-    const response = await request(app).get(`/api/boards/${id}/snapshot`).set(auth(marcus))
+    const response = await request(app)
+      .get(`/api/boards/${id}/snapshot`)
+      .set(auth(marcus))
     expect(response.status).toBe(200)
     expect(response.body.myRole).toBe('VIEWER')
     expect(response.body.objects).toHaveLength(1)
@@ -798,7 +808,9 @@ describe('POST /api/boards/:id/duplicate', () => {
     // automatically would leak it to people the user may have meant to drop.
     expect(await prisma.boardMember.count({ where: { boardId: copyId } })).toBe(1)
 
-    const state = await request(app).get(`/api/boards/${copyId}/snapshot`).set(auth(priya))
+    const state = await request(app)
+      .get(`/api/boards/${copyId}/snapshot`)
+      .set(auth(priya))
     expect(state.body.objects).toHaveLength(1)
     expect(state.body.objects[0].text).toBe('Blocked on the migration')
     // Fresh ids: two documents must never share an object id.
@@ -824,7 +836,9 @@ describe('POST /api/boards/:id/duplicate', () => {
     // Four source ops, one surviving object, so ONE op in the copy. Replaying
     // the log would have reproduced the deleted object's whole life.
     expect(await prisma.operation.count({ where: { boardId: copyId } })).toBe(1)
-    const state = await request(app).get(`/api/boards/${copyId}/snapshot`).set(auth(priya))
+    const state = await request(app)
+      .get(`/api/boards/${copyId}/snapshot`)
+      .set(auth(priya))
     expect(state.body.objects).toHaveLength(1)
     expect(state.body.objects[0]).toMatchObject({ x: 50 })
   })

@@ -6,6 +6,7 @@ import { env } from '../lib/env.js'
 import { createAuthRouter } from './routes/auth.js'
 import { createBoardsRouter } from './routes/boards.js'
 import { createWsRouter } from './routes/ws.js'
+import { createShareRouter } from './routes/share.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 
 /**
@@ -64,6 +65,7 @@ export function createApp(): Express {
   app.use('/api/auth', createAuthRouter())
   app.use('/api/boards', createBoardsRouter())
   app.use('/api/ws', createWsRouter())
+  app.use('/api/share', createShareRouter())
 
   // Order matters: 404 for unmatched routes, then the error handler last, so
   // everything thrown anywhere above lands in one envelope (TRD §4).

@@ -14,7 +14,21 @@ import { opService } from '../../services/OpService.js'
 import { permissionService } from '../../services/PermissionService.js'
 import { snapshotService } from '../../services/SnapshotService.js'
 import { liveRooms } from '../../ws/RoomManager.js'
-import { assertAuthenticated, assertIdentified, identify } from '../middleware/auth.js'
+import {
+  assertAuthenticated,
+  assertIdentified,
+  identify,
+  identifyOptional,
+  identityOf,
+} from '../middleware/auth.js'
+import { SHARE_TOKEN, shareService } from '../../services/ShareService.js'
+import {
+  boardDeletedLive,
+  boardRenamedLive,
+  pushRoleChanged,
+  revokeLive,
+} from '../../ws/live.js'
+import type { AccessChange } from '../../services/ShareService.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
 import { validateBody, validatedQuery, validateQuery } from '../middleware/validate.js'
 
@@ -37,6 +51,29 @@ const SinceQuerySchema = z.object({
 })
 
 const BoardIdSchema = z.string().uuid()
+
+const AccessQuerySchema = z.object({
+  share: z.string().regex(SHARE_TOKEN).optional(),
+})
+
+const LinkRoleSchema = z.object({ role: z.enum(['EDITOR', 'VIEWER']) })
+
+/** Push the effects of a sharing change to the sockets it affected. */
+function pushAccessChange(
+  boardId: string,
+  change: AccessChange,
+  role?: 'EDITOR' | 'VIEWER',
+) {
+  for (const guestId of change.revokedGuests)
+    revokeLive(boardId, { kind: 'guest', guestId })
+  if (role) {
+    for (const guestId of change.changedGuests) {
+      pushRoleChanged(boardId, { kind: 'guest', guestId }, role)
+    }
+  }
+}
+
+const linkUrl = (token: string) => `/join/${token}`
 
 /**
  * Reject a malformed id before it reaches Prisma.
@@ -63,6 +100,64 @@ export function createBoardsRouter(): Router {
    * anonymous request. Only the board's own read and write paths take
    * `assertIdentified`, and those still go through the permission service.
    */
+  /**
+   * The guard's own endpoint — FLOWS §2.3 STEP 4. Registered BEFORE
+   * `identify`, because an anonymous visitor holding a share link must be
+   * able to ask too.
+   *
+   * It never returns the board's name — R-SEC-018 forbids showing it on the
+   * refusal screens, and the surest way not to leak it is not to send it.
+   *
+   *   200 { role }                                      member → STEP 5
+   *   200 { role: 'none', joinable, requiresName }     live link, no account
+   *   403 { reason: 'no_access' | 'link_revoked' }     S-17
+   *   404                                              S-18
+   *   410 { reason: 'deleted' }                        S-18, "deleted" copy
+   */
+  router.get(
+    '/:id/access',
+    identifyOptional,
+    validateQuery(AccessQuerySchema),
+    ah(async (req, res) => {
+      const id = boardId(req.params.id)
+      const identity = identityOf(req)
+      const access = await permissionService.resolve(id, identity ?? undefined)
+      if (!access) throw new HttpError(ERROR_CODES.NOT_FOUND, 'Board not found', 404)
+      if (access.deletedAt) {
+        throw new HttpError(ERROR_CODES.NOT_FOUND, 'Board deleted', 410, {
+          reason: 'deleted',
+        })
+      }
+      if (access.role !== 'none') {
+        res.json({ role: access.role })
+        return
+      }
+
+      // Not a member. The share token, if the visitor came through /join,
+      // decides the rest.
+      const { share } = validatedQuery<z.infer<typeof AccessQuerySchema>>(req)
+      const lookup = share ? await shareService.lookup(share) : null
+      if (lookup?.status === 'ok' && lookup.boardId === id) {
+        if (identity?.kind === 'user') {
+          // A signed-in person with a live link just becomes a member.
+          const role = await shareService.joinAsUser(lookup.link, id, identity.userId)
+          res.json({ role })
+          return
+        }
+        res.json({ role: 'none', joinable: true, requiresName: true })
+        return
+      }
+      if (lookup?.status === 'revoked') {
+        throw new HttpError(ERROR_CODES.FORBIDDEN, 'Link revoked', 403, {
+          reason: 'link_revoked',
+        })
+      }
+      throw new HttpError(ERROR_CODES.FORBIDDEN, 'No access', 403, {
+        reason: 'no_access',
+      })
+    }),
+  )
+
   router.use(identify)
 
   /* ── Collection ───────────────────────────────────────────────────────── */
@@ -108,28 +203,6 @@ export function createBoardsRouter(): Router {
     }),
   )
 
-  /**
-   * The guard's own endpoint — FLOWS §2.3 STEP 4.
-   *
-   * Separate from `GET /:id` on purpose. The guard needs to know whether the
-   * user may enter BEFORE the board route mounts, and it must be able to ask
-   * without receiving the board's name — R-SEC-018 forbids showing that on the
-   * 403 screen, and the surest way not to leak it is not to send it.
-   */
-  router.get(
-    '/:id/access',
-    ah(async (req, res) => {
-      const userId = assertAuthenticated(req)
-      const id = boardId(req.params.id)
-      const access = await permissionService.resolve(id, userId)
-      if (!access || access.deletedAt) {
-        res.json({ role: 'none', joinable: false })
-        return
-      }
-      res.json({ role: access.role, joinable: false })
-    }),
-  )
-
   router.patch(
     '/:id',
     validateBody(UpdateBoardSchema),
@@ -141,7 +214,10 @@ export function createBoardsRouter(): Router {
       if (name === undefined) {
         throw new HttpError(ERROR_CODES.VALIDATION_FAILED, 'Nothing to update', 422)
       }
-      res.json({ board: await boardService.rename(id, userId, name) })
+      const board = await boardService.rename(id, userId, name)
+      // FLOWS §9.5: the header updates live for everyone, no toast.
+      boardRenamedLive(id, board.name)
+      res.json({ board })
     }),
   )
 
@@ -156,7 +232,67 @@ export function createBoardsRouter(): Router {
       // Every cached role on it is now wrong — the next op from anyone must
       // see a deleted board, not a 60-second-old grant.
       await permissionService.invalidate(id)
+      // AT-23: everyone connected sees S-19, and the sockets close. The
+      // outbox is not synced — the target is gone (FLOWS §9.5).
+      boardDeletedLive(id)
       res.json({ board })
+    }),
+  )
+
+  /* ── The share link — FR-SHARE-002/003, owner only ──────────────────────── */
+
+  router.get(
+    '/:id/share-link',
+    ah(async (req, res) => {
+      const userId = assertAuthenticated(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireOwner(id, userId)
+      const link = await shareService.live(id)
+      res.json({
+        link: link
+          ? { token: link.token, role: link.role, url: linkUrl(link.token) }
+          : null,
+      })
+    }),
+  )
+
+  /** Turn the link on, or change what it grants. */
+  router.put(
+    '/:id/share-link',
+    validateBody(LinkRoleSchema),
+    ah(async (req, res) => {
+      const userId = assertAuthenticated(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireOwner(id, userId)
+      const { role } = req.body as z.infer<typeof LinkRoleSchema>
+      const { link, change } = await shareService.enable(id, role, userId)
+      pushAccessChange(id, change, role)
+      res.json({ link: { token: link.token, role: link.role, url: linkUrl(link.token) } })
+    }),
+  )
+
+  /** "Restricted": the link stops working; its guests are ejected. */
+  router.delete(
+    '/:id/share-link',
+    ah(async (req, res) => {
+      const userId = assertAuthenticated(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireOwner(id, userId)
+      pushAccessChange(id, await shareService.disable(id))
+      res.json({ link: null })
+    }),
+  )
+
+  /** A new token; anyone on the old link loses access. */
+  router.post(
+    '/:id/share-link/reset',
+    ah(async (req, res) => {
+      const userId = assertAuthenticated(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireOwner(id, userId)
+      const { link, change } = await shareService.reset(id, userId)
+      pushAccessChange(id, change)
+      res.json({ link: { token: link.token, role: link.role, url: linkUrl(link.token) } })
     }),
   )
 
