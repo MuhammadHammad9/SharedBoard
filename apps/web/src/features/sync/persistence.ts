@@ -33,6 +33,7 @@ export interface SessionCallbacks {
   /** Drop the undo entries holding refused ops — CLAUDE.md §3.2 6b. */
   discardHistory?: (opIds: ReadonlySet<string>) => void
   onStatus?: (status: OutboxStatus, pending: number) => void
+  onPending?: (pending: number) => void
   /**
    * The seq of the snapshot this page loaded. Ops restored from storage that
    * the server turns out to have stored at or below it are already in the
@@ -75,6 +76,7 @@ export class PersistenceSession {
       // server has, and the fields they held are released.
       onDrop: ops => applyLocal(ops.flatMap(op => this.pending.revert(op.id))),
       ...(callbacks.onStatus ? { onStatus: callbacks.onStatus } : {}),
+      ...(callbacks.onPending ? { onPending: callbacks.onPending } : {}),
     })
     this.adoptRestored()
   }
@@ -329,6 +331,13 @@ export interface SocketTransportBinding {
   ) => Promise<{ acked: string[]; nacked: string[]; seqs: Array<number | undefined> }>
   /** Route an incoming ack/nack into the pending batches. */
   settle: (message: ServerMessage) => void
+  /**
+   * The socket is gone. Every batch still waiting on it fails NOW rather than
+   * at its ack timeout, so the outbox keeps those ops — at the front of its
+   * queue, where they already are — and replays them on the next connection
+   * instead of sitting out ten seconds first.
+   */
+  abort: () => void
 }
 
 export function createSocketTransport(
@@ -398,6 +407,13 @@ export function createSocketTransport(
         }
         waiting.push(batch)
       }),
+
+    abort: () => {
+      for (const batch of waiting.splice(0)) {
+        clearTimeout(batch.timer)
+        batch.reject(new Error('socket closed'))
+      }
+    },
 
     settle: message => {
       if (message.t === 'ack') {

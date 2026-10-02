@@ -46,6 +46,12 @@ export interface BoardSessionCallbacks {
   onNack: (opIds: string[], code: string) => void
   onFatal: (kind: 'deleted' | 'forbidden') => void
   onBoardRenamed?: (name: string) => void
+  /** Reconnect attempt N is starting — "Reconnecting… (attempt {N})". */
+  onAttempt?: (attempt: number) => void
+  /** Unsent changes — "Syncing {N} changes…", and the offline banner. */
+  onPending?: (pending: number) => void
+  /** Reconnected and drained after a drop — "Back online — {N} changes synced". */
+  onBackOnline?: (synced: number) => void
 }
 
 export interface BoardSessionResult {
@@ -61,6 +67,11 @@ export class BoardSession {
   private persistence: PersistenceSession | null = null
   private binding: ReturnType<typeof createSocketTransport> | null = null
   private disposed = false
+  /** Set when the connection drops; read when it is whole again. */
+  private droppedSince = false
+  /** Unsent changes when SYNCING began, for the "back online" toast. */
+  private syncingCount = 0
+  private readonly detachWindow: () => void
 
   constructor(
     readonly boardId: string,
@@ -71,8 +82,9 @@ export class BoardSession {
       // only the gap rather than reloading the board.
       onOpen: () => this.sync.join(),
       onMessage: message => this.onMessage(message),
-      onState: state => this.callbacks.onState(state),
+      onState: state => this.onSocketState(state),
       onFatal: code => this.onFatalClose(code),
+      onAttempt: attempt => this.callbacks.onAttempt?.(attempt),
     })
 
     this.sync = new SyncEngine(
@@ -86,9 +98,75 @@ export class BoardSession {
       },
       {
         send: message => this.socket.send(message),
-        markSynced: () => this.socket.markSynced(),
+        markSynced: () => this.onJoined(),
       },
     )
+
+    this.detachWindow = this.attachWindow()
+  }
+
+  /**
+   * The three triggers that skip the backoff timer — FLOWS §9.4, E-02.
+   *
+   * Owned here rather than in a React hook because they are sync policy: the
+   * board route should not need to know that a tab coming back to the front
+   * means "ping the socket", and a second consumer would register them twice.
+   */
+  private attachWindow(): () => void {
+    if (typeof window === 'undefined') return () => {}
+    const onOnline = () => this.resume()
+    const onOffline = () => this.socket.goOffline()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') this.socket.checkNow()
+    }
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }
+
+  private onSocketState(state: ConnectionState): void {
+    switch (state) {
+      case 'reconnecting':
+      case 'offline':
+      case 'disconnected':
+        this.droppedSince = true
+        // Batches waiting on the dead socket fail now and stay queued, rather
+        // than holding the outbox for the full ack timeout.
+        this.binding?.abort()
+        break
+      case 'syncing':
+        this.syncingCount = this.persistence?.outbox.pending ?? 0
+        break
+      case 'connected':
+        if (this.droppedSince) {
+          this.droppedSince = false
+          this.callbacks.onBackOnline?.(this.syncingCount)
+        }
+        break
+    }
+    this.callbacks.onState(state)
+  }
+
+  /**
+   * The rejoin was acknowledged. Replay whatever waited out the drop — FIFO,
+   * with the original op ids, so the server deduplicates anything it already
+   * had (R-SYNC-014) — and only then call the connection whole.
+   */
+  private onJoined(): void {
+    this.persistence?.resume()
+    this.checkSynced()
+  }
+
+  /** SYNCING ends when the outbox is empty — FLOWS §15.2. */
+  private checkSynced(): void {
+    if (this.socket.connectionState !== 'syncing') return
+    if ((this.persistence?.outbox.pending ?? 0) > 0) return
+    this.socket.markSynced()
   }
 
   /**
@@ -133,6 +211,10 @@ export class BoardSession {
       this.persistence = startPersistence(this.boardId, {
         loadSeq: state.seq,
         discardHistory: ids => history.discard(ids),
+        onPending: pending => {
+          this.callbacks.onPending?.(pending)
+          this.checkSynced()
+        },
         onNack: ops => {
           /*
            * FLOWS §9.4: an op refused while SYNCING — typically one that names
@@ -189,7 +271,7 @@ export class BoardSession {
     else if (code === 4003) this.callbacks.onFatal('forbidden')
   }
 
-  /** The browser came back online. */
+  /** "Retry now", or the browser came back online. Restarts the backoff. */
   resume(): void {
     this.socket.resume()
     this.persistence?.resume()
@@ -197,6 +279,7 @@ export class BoardSession {
 
   dispose(): void {
     this.disposed = true
+    this.detachWindow()
     setSyncProbe(null)
     setPresenceEmitter(null)
     this.presence.dispose()

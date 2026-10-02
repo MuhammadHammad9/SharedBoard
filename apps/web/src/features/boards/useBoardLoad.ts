@@ -107,18 +107,18 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
          * 404 to a board the caller cannot see, on purpose (R-SEC-018).
          */
         setStatus(
-          error.status === 404 ? 'not-found' : error.status === 403 ? 'forbidden' : 'error',
+          error.status === 404
+            ? 'not-found'
+            : error.status === 403
+              ? 'forbidden'
+              : 'error',
         )
       }
     })()
 
-    // Flush and reconnect the moment the browser says it is back, rather than
-    // waiting out whatever backoff was in flight.
-    const onOnline = () => session.resume()
-    window.addEventListener('online', onOnline)
-
+    // The `online`, `offline` and `visibilitychange` triggers belong to the
+    // session itself (features/sync/session.ts) — they are sync policy.
     return () => {
-      window.removeEventListener('online', onOnline)
       sessionRef.current = null
       session.dispose()
     }

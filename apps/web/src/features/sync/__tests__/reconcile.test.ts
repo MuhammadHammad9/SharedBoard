@@ -273,3 +273,23 @@ describe('ops restored after a reload are shown — F-7', () => {
     expect(current()?.text).toBe('edited since')
   })
 })
+
+describe('a dropped socket does not strand in-flight ops — F-6', () => {
+  it('fails waiting batches at once and replays them, same ids, on resume', async () => {
+    start()
+    applyAndEmit(createOps([sticky()]), 'Draw')
+    await tick()
+    const first = wire[0]!.map(op => op.id)
+
+    binding.abort()
+    await tick()
+    expect(session.outbox.pending).toBe(1)
+
+    session.resume()
+    await tick()
+    // Re-sent with the ORIGINAL id, so the server deduplicates — R-SYNC-014.
+    expect(wire.at(-1)!.map(op => op.id)).toEqual(first)
+    await ack(wire.at(-1)!, [3])
+    expect(session.outbox.pending).toBe(0)
+  })
+})

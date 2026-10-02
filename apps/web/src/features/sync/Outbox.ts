@@ -1,4 +1,5 @@
 import type { ClientOp } from '@coboard/shared'
+import { backoffFor } from './backoff.js'
 
 /**
  * The outbox — TRD §5.5, FR-SYNC-004/005, R-SYNC-010.
@@ -61,6 +62,8 @@ export interface OutboxOptions {
   /** Ops the server refused. The caller rolls them back locally. */
   onNack?: (ops: readonly ClientOp[]) => void
   onStatus?: (status: OutboxStatus, pending: number) => void
+  /** The queue length changed — "Syncing {N} changes…", and the drain check. */
+  onPending?: (pending: number) => void
   /** Injected in tests so backoff does not make the suite wait. */
   now?: () => number
   setTimer?: (fn: () => void, ms: number) => unknown
@@ -69,18 +72,6 @@ export interface OutboxOptions {
 
 /** Batch size per request. Matches the server's `ops` array cap. */
 const BATCH = 100
-
-/**
- * Full-jitter backoff — R-SYNC-030.
- *
- * `random() * ceiling`, not `ceiling`. A server that restarts with 200 clients
- * attached gets 200 retries spread across the window instead of 200 arriving
- * in the same millisecond, killing it again. Without the jitter the reconnect
- * storm is self-sustaining.
- */
-const BACKOFF_CEILING_MS = 30_000
-const backoffFor = (attempt: number): number =>
-  Math.random() * Math.min(BACKOFF_CEILING_MS, 500 * 2 ** Math.min(attempt, 6))
 
 export class Outbox {
   private queue: ClientOp[] = []
@@ -239,6 +230,7 @@ export class Outbox {
   /* ── Persistence ────────────────────────────────────────────────────────── */
 
   private persist(): void {
+    this.options.onPending?.(this.queue.length)
     try {
       if (this.queue.length === 0) {
         globalThis.localStorage?.removeItem(this.key)
