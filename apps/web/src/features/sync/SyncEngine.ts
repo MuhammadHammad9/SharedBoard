@@ -6,10 +6,11 @@ import {
   type ServerMessage,
   type ServerOp,
 } from '@coboard/shared'
-import { getOpsSince } from '../boards/api.js'
+import { getBoardState, getOpsSince } from '../boards/api.js'
 import { applyRemoteOp } from '../canvas/history/applyRemote.js'
 import { boardStore } from '../../stores/boardStore.js'
 import { activeSession } from './persistence.js'
+import { syncEvent } from './probe.js'
 
 /**
  * Ordering, gaps and the document — TRD §6.3, FLOWS §2.3 STEP 5.
@@ -42,6 +43,7 @@ export interface SyncDeps {
   send: (message: { t: 'join'; boardId: string; sinceSeq: number }) => boolean
   markSynced: () => void
   fetchOpsSince?: typeof getOpsSince
+  fetchSnapshot?: typeof getBoardState
   setTimer?: (fn: () => void, ms: number) => unknown
   clearTimer?: (handle: unknown) => void
 }
@@ -70,10 +72,13 @@ export class SyncEngine {
   private gapFilling = false
   private unknownObjectTimes: number[] = []
   private reloadRequested = false
+  /** An E-13 snapshot reload is in flight: incoming ops wait, unapplied. */
+  private reloading = false
 
   private readonly setTimer: (fn: () => void, ms: number) => unknown
   private readonly clearTimer: (handle: unknown) => void
   private readonly fetchOpsSince: typeof getOpsSince
+  private readonly fetchSnapshot: typeof getBoardState
 
   constructor(
     private readonly boardId: string,
@@ -83,6 +88,7 @@ export class SyncEngine {
     this.setTimer = deps.setTimer ?? ((fn, ms) => globalThis.setTimeout(fn, ms))
     this.clearTimer = deps.clearTimer ?? (h => globalThis.clearTimeout(h as number))
     this.fetchOpsSince = deps.fetchOpsSince ?? getOpsSince
+    this.fetchSnapshot = deps.fetchSnapshot ?? getBoardState
   }
 
   get appliedSeq(): number {
@@ -202,6 +208,9 @@ export class SyncEngine {
       this.pending.set(op.seq, op)
     }
 
+    // Mid-reload, the document is about to be replaced: hold everything and
+    // drain on top of the fresh snapshot instead.
+    if (this.reloading) return
     this.drain()
   }
 
@@ -220,6 +229,10 @@ export class SyncEngine {
    * └──────────────────────────────────────────────────────────────────────┘
    */
   markOwn(seq: number, opId: string): void {
+    if (this.reloading) {
+      this.own.set(seq, opId)
+      return
+    }
     if (!this.snapshotLoaded || seq <= this.lastAppliedSeq) {
       // Already passed — it was applied in order as part of a replay.
       activeSession()?.release(opId)
@@ -281,10 +294,17 @@ export class SyncEngine {
      * diverged, and the honest repair is a fresh snapshot rather than limping
      * on with a document that is quietly wrong.
      */
-    const objects = boardStore.getState().objects
+    const { objects, tombstones } = boardStore.getState()
     for (const op of ops) {
       if (op.type === 'CREATE') continue
       if (objects.has(op.objectId as never)) continue
+      /*
+       * A DELETED object is not unknown. An update to something a teammate
+       * deleted a moment ago is the ordinary losing side of delete-wins
+       * (R-CONV-003), and counting it reloaded busy boards every few seconds.
+       */
+      if (tombstones.has(op.objectId as never)) continue
+      syncEvent(`unknown-object #${op.seq} ${op.type} ${op.objectId.slice(0, 8)}`)
       this.noteUnknownObject()
     }
 
@@ -350,20 +370,48 @@ export class SyncEngine {
     }
   }
 
-  /** A full reload — the E-13 escape hatch. */
+  /**
+   * A fresh snapshot — the E-13 escape hatch (FLOWS §12.5).
+   *
+   * ┌──────────────────────────────────────────────────────────────────────┐
+   * │  Three things the first version got wrong, each a divergence:       │
+   * │                                                                      │
+   * │  • It replayed the op log from 0 — one page of it — rather than     │
+   * │    loading a snapshot, so a long board came back truncated.         │
+   * │  • It wiped the document, losing this user's own unacknowledged     │
+   * │    edits: still queued for the server, gone from their screen.      │
+   * │  • It cleared the gap buffer, dropping ops that arrived during the  │
+   * │    fetch; with nothing written afterwards the hole was never seen.  │
+   * │                                                                      │
+   * │  Now incoming ops and own acks are held while the fetch is in       │
+   * │  flight, the snapshot replaces the document, everything it already  │
+   * │  covers is discarded, my unacked edits go back on top, and the held │
+   * │  ops drain after it.                                                │
+   * └──────────────────────────────────────────────────────────────────────┘
+   */
   private async reloadFromServer(): Promise<void> {
+    this.reloading = true
+    syncEvent(`snapshot-reload from seq ${this.lastAppliedSeq}`)
     try {
-      const { ops } = await this.fetchOpsSince(this.boardId, 0)
-      this.pending.clear()
-      this.releaseAllOwn()
-      this.lastAppliedSeq = 0
-      boardStore.getState().loadObjects([])
-      this.receiveOps(ops as unknown as ServerOp[])
+      const state = await this.fetchSnapshot(this.boardId)
+      boardStore.getState().loadObjects(state.objects)
+      this.lastAppliedSeq = state.seq
+      for (const seq of [...this.pending.keys()])
+        if (seq <= state.seq) this.pending.delete(seq)
+      const session = activeSession()
+      for (const [seq, id] of [...this.own]) {
+        if (seq > state.seq) continue
+        this.own.delete(seq)
+        session?.release(id)
+      }
+      session?.reapplyUnacked(state.seq)
     } catch {
-      // Nothing better to try. The next reconnect re-joins from seq 0.
+      // Nothing better to try. The next reconnect re-joins with our seq.
     } finally {
+      this.reloading = false
       this.reloadRequested = false
     }
+    this.drain()
   }
 
   private releaseAllOwn(): void {

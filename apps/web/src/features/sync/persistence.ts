@@ -2,6 +2,7 @@ import { ApiError, NETWORK_ERROR_CODE } from '../../lib/api.js'
 import { appendOps } from '../boards/api.js'
 import { clearOutbox, Outbox, type OutboxStatus } from './Outbox.js'
 import { PendingWrites } from './pendingWrites.js'
+import { syncEvent } from './probe.js'
 import { invertOp } from '../canvas/history/inverseOps.js'
 import { boardStore } from '../../stores/boardStore.js'
 import type { ClientOp, ObjectId, ServerMessage, ServerOp } from '@coboard/shared'
@@ -52,7 +53,12 @@ export class PersistenceSession {
   readonly outbox: Outbox
   /** Unacked local writes — R-CONV-001. See pendingWrites.ts. */
   readonly pending = new PendingWrites()
-  private readonly loadSeq: number
+  /**
+   * The seq of the document this page last LOADED wholesale — the first
+   * snapshot, or an E-13 reload. A tracked op acked at or below it was
+   * already in that document.
+   */
+  private loadSeq: number
 
   /** Set by the board once the socket is live. Null means REST-only. */
   private socket: SocketTransportBinding | null = null
@@ -80,7 +86,10 @@ export class PersistenceSession {
       onNack: ops => this.onNacked(ops),
       // Never sent, so never ordered: the document goes back to what the
       // server has, and the fields they held are released.
-      onDrop: ops => applyLocal(ops.flatMap(op => this.pending.revert(op.id))),
+      onDrop: ops => {
+        syncEvent(`drop ${ops.length}`)
+        applyLocal(ops.flatMap(op => this.pending.revert(op.id)))
+      },
       ...(callbacks.onStatus ? { onStatus: callbacks.onStatus } : {}),
       ...(callbacks.onPending ? { onPending: callbacks.onPending } : {}),
     })
@@ -133,6 +142,7 @@ export class PersistenceSession {
      * the server says.
      */
     if (this.pending.isRestored(opId) && seq !== undefined && seq <= this.loadSeq) {
+      syncEvent(`restored-stale ${opId.slice(0, 8)} seq ${seq}`)
       applyLocal(this.pending.revert(opId))
       return
     }
@@ -147,6 +157,32 @@ export class PersistenceSession {
     this.pending.ack(opId)
   }
 
+  /**
+   * The document was just replaced by a snapshot (E-13). Put my unacked
+   * edits back on top — they are still on their way to the server, and the
+   * snapshot does not have them yet.
+   */
+  reapplyUnacked(snapshotSeq: number): void {
+    syncEvent(`reapply-unacked at ${snapshotSeq}, ${this.pending.size} tracked`)
+    const store = boardStore.getState()
+    this.pending.rebase(
+      id => store.objects.get(id as ObjectId) as Record<string, unknown> | undefined,
+    )
+    /*
+     * EVERY op still tracked, not only those still queued: an op acked while
+     * the snapshot was in flight has left the outbox but may be newer than
+     * the snapshot, and dropping it here erased the user's own edit for good.
+     *
+     * Some of these may be OLDER than the snapshot — stored, ack in flight.
+     * They are marked like ops restored after a reload, so that an ack at or
+     * below `snapshotSeq` puts the snapshot's value back (see `settle`).
+     */
+    this.loadSeq = snapshotSeq
+    const ops = this.pending.tracked()
+    this.pending.markRestored(ops.map(op => op.id))
+    applyLocal(ops)
+  }
+
   /** The document has reached this op's seq. Its fields stop being held. */
   release(opId: string): void {
     this.pending.ack(opId)
@@ -157,6 +193,7 @@ export class PersistenceSession {
    * to the confirmed state and the undo entries go with it.
    */
   private onNacked(ops: readonly ClientOp[]): void {
+    syncEvent(`nack ${ops.map(o => `${o.type} ${o.id.slice(0, 8)}`).join(', ')}`)
     applyLocal(ops.flatMap(op => this.pending.revert(op.id)))
     this.callbacks.discardHistory?.(new Set(ops.map(op => op.id)))
     this.callbacks.onNack?.(ops)

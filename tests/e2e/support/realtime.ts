@@ -92,11 +92,18 @@ export interface Pair {
 }
 
 /** Two contexts, one account, one fresh board, both connected. */
-export async function twoWindows(browser: Browser, email: string): Promise<Pair> {
+export async function twoWindows(
+  browser: Browser,
+  email: string,
+  /** Runs on each page before it opens the board — for wire listeners. */
+  onPage?: (name: 'a' | 'b', page: Page) => void,
+): Promise<Pair> {
   const contextA = await browser.newContext()
   const contextB = await browser.newContext()
   const a = await contextA.newPage()
   const b = await contextB.newPage()
+  onPage?.('a', a)
+  onPage?.('b', b)
   await signIn(a, email)
   await signIn(b, email)
   const boardId = await createBoard(a)
@@ -234,13 +241,21 @@ export async function diagnose(a: Page, b: Page, boardId: string): Promise<strin
     }>
   }, boardId)
 
+  // Key order differs between a snapshot load and a merged update; compare
+  // with sorted keys so only real differences are reported.
+  const canon = (o: unknown): string =>
+    JSON.stringify(o, (_k, v: unknown) =>
+      v && typeof v === 'object' && !Array.isArray(v)
+        ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort())
+        : v,
+    )
   const ma = new Map(oa.map(o => [o.id, o]))
   const mb = new Map(ob.map(o => [o.id, o]))
   const ids = new Set([...ma.keys(), ...mb.keys()])
   const lines: string[] = [`log length ${log.length}, last seq ${log.at(-1)?.seq}`]
   for (const id of ids) {
-    const x = JSON.stringify(ma.get(id) ?? null)
-    const y = JSON.stringify(mb.get(id) ?? null)
+    const x = canon(ma.get(id) ?? null)
+    const y = canon(mb.get(id) ?? null)
     if (x === y) continue
     lines.push(`\n=== ${id}\n A: ${x}\n B: ${y}`)
     for (const op of log.filter(o => o.objectId === id)) {

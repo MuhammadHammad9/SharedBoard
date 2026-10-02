@@ -288,3 +288,92 @@ describe('a dropped socket does not strand in-flight ops — F-6', () => {
     expect(session.outbox.pending).toBe(0)
   })
 })
+
+describe('an undo that re-creates a deleted object — found by the e2e harness', () => {
+  it("is not overwritten by a teammate's edit ordered between my delete and my re-create", async () => {
+    // B (me) recoloured the sticky, deleted it, then undid the delete. A
+    // recoloured it before seeing the delete. Server order: my DELETE #338,
+    // A's recolour #339 (lands on nothing), my re-create #341.
+    boardStore.getState().loadObjects([sticky({ color: '#FECACA' })])
+    start()
+    applyAndEmit(deleteOps([OBJ]), 'Delete')
+    await tick()
+    await ack(wire.at(-1)!, [338])
+
+    history.undo() // re-creates it locally, pending
+    await tick()
+    expect(current()?.color).toBe('#FECACA')
+    const recreate = wire.at(-1)!
+
+    receive([remote(updateOp(OBJ, { color: '#E9D5FF' }), 339)])
+    expect(current()?.color).toBe('#FECACA')
+
+    await ack(recreate, [341])
+    expect(current()?.color).toBe('#FECACA')
+  })
+
+  it('is not wiped by a remote delete ordered before the re-create', async () => {
+    boardStore.getState().loadObjects([sticky()])
+    start()
+    applyAndEmit(deleteOps([OBJ]), 'Delete')
+    await tick()
+    await ack(wire.at(-1)!, [10])
+    history.undo()
+    await tick()
+
+    receive([remote({ id: 'their-del', type: 'DELETE', objectId: OBJ, payload: {} }, 11)])
+    expect(current()).toBeDefined()
+  })
+})
+
+describe("a teammate's undo re-creates an object I am editing", () => {
+  it('keeps my pending edit on top of the re-create, which was ordered before it', async () => {
+    // Server order: their DELETE #338, their re-create #339, my recolour #340.
+    boardStore.getState().loadObjects([sticky({ color: '#FECACA' })])
+    start()
+    applyAndEmit([updateOp(OBJ, { color: '#E9D5FF' })], 'Colour')
+    await tick()
+    const mine = wire.at(-1)!
+
+    receive([
+      remote(
+        { id: 'their-del', type: 'DELETE', objectId: OBJ, payload: {} } as ClientOp,
+        338,
+      ),
+      remote(
+        {
+          id: 'their-undo',
+          type: 'CREATE',
+          objectId: OBJ,
+          payload: sticky({ color: '#FECACA' }),
+        } as ClientOp,
+        339,
+      ),
+    ])
+    expect(current()?.color).toBe('#E9D5FF')
+
+    await ack(mine, [340])
+    expect(current()?.color).toBe('#E9D5FF')
+  })
+
+  it('and if my edit is refused, falls back to the re-created value, not the old one', async () => {
+    boardStore.getState().loadObjects([sticky({ color: '#FEF08A' })])
+    start()
+    applyAndEmit([updateOp(OBJ, { color: '#E9D5FF' })], 'Colour')
+    await tick()
+    const mine = wire.at(-1)!
+    receive([
+      remote(
+        {
+          id: 'their-undo',
+          type: 'CREATE',
+          objectId: OBJ,
+          payload: sticky({ color: '#FECACA' }),
+        } as ClientOp,
+        5,
+      ),
+    ])
+    await nack(mine[0]!)
+    expect(current()?.color).toBe('#FECACA')
+  })
+})

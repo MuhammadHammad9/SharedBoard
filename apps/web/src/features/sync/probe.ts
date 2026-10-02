@@ -54,3 +54,22 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   ;(window as unknown as { __coboardSync?: () => SyncReading | null }).__coboardSync =
     readSync
 }
+
+/*
+ * A short, development-only trail of the sync layer's corrective actions —
+ * nacks, reverts, drops, snapshot reloads. When the convergence harness finds
+ * two documents disagreeing, the question is always "which repair fired, and
+ * on which side"; this answers it without a debugger.
+ */
+const trail: string[] = []
+
+export function syncEvent(event: string): void {
+  if (!import.meta.env.DEV) return
+  trail.push(`${Date.now() % 100_000} ${event}`)
+  if (trail.length > 200) trail.shift()
+}
+
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  ;(window as unknown as { __coboardSyncTrail?: () => string[] }).__coboardSyncTrail =
+    () => [...trail]
+}

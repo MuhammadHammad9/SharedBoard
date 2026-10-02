@@ -47,7 +47,24 @@ describe('PendingWrites', () => {
     expect(p.filterRemote(update('a', { fill: 'blue' }))).toBeNull()
   })
 
-  it('never holds back a delete — delete wins', () => {
+  it('holds EVERY remote op on an object with a pending local create', () => {
+    const p = new PendingWrites()
+    const recreate = {
+      id: 'c',
+      type: 'CREATE',
+      objectId: 'a',
+      payload: { id: 'a' },
+    } as unknown as ClientOp
+    p.track([recreate], null)
+    expect(p.filterRemote(update('a', { fill: 'blue' }))).toBeNull()
+    expect(
+      p.filterRemote({ id: 'd', type: 'DELETE', objectId: 'a', payload: {} }),
+    ).toBeNull()
+    p.ack('c')
+    expect(p.filterRemote(update('a', { fill: 'blue' }))).not.toBeNull()
+  })
+
+  it('passes a delete when no create is pending — delete wins', () => {
     const p = new PendingWrites()
     const mine = update('a', { fill: 'red' })
     p.track([mine], inverseOf(mine, { fill: 'white' }))
