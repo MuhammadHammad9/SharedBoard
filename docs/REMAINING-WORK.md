@@ -13,7 +13,7 @@
 | M1 — It draws      | 1–6    | ✅ Done                                                      |
 | M2 — It persists   | 7–8    | ✅ Done                                                      |
 | M3 — It syncs      | 9–10   | ✅ Done (`AT-01`–`AT-08`)                                    |
-| M4 — It survives   | 11     | 🟡 Partly started — groundwork exists, phase not delivered   |
+| M4 — It survives   | 11     | ✅ Done — see the Phase 11 outcome below                     |
 | M5 — It's finished | 12–15  | ⬜ Not started (a few seams stubbed with "Phase N" comments) |
 
 ## 2. Already in the tree that Phase 11 builds on
@@ -81,6 +81,26 @@ The survey turned up more than the original table assumed. Backoff, outbox persi
 **Ownership heads-up (`R-ARCH-006`):** 11b touches `features/canvas/history` (interaction owner) to remove nacked undo entries.
 
 Exit gate: `AT-12`, `AT-30`–`AT-35` pass; the convergence harness passes on repeated runs; the debug panel shows matching hashes on two clients.
+
+#### Phase 11 outcome
+
+All six slices landed. The convergence harness found five more defects after the plan was written, and all are fixed with regression tests:
+
+| #    | Defect                                                                                                                                                                                                                                                              | Found by                 |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| F-7  | Ops restored from storage after a reload were flushed but never applied locally, so the user's own offline work was invisible until the next reload                                                                                                                 | Survey                   |
+| F-8  | Ops appended over REST (the outbox fallback) were persisted and acked but never broadcast                                                                                                                                                                           | e2e harness              |
+| F-9  | Held fields were released at the ack. Broadcasts are batched for 16 ms and acks are not, so an ack overtook an older remote write, which then landed on top. Fields are now released when the document reaches the op's seq; own acks are ordering markers          | e2e harness              |
+| F-10 | E-13 counted updates to deleted objects as "unknown", so it reloaded constantly; and its reload replayed one page of the log, wiped unacked edits and dropped ops that arrived mid-fetch. Now tombstones are known and the reload is a held, snapshot-based replace | e2e harness + wire trace |
+| F-11 | Concurrent undo of a delete: remote ops were applied over a pending local re-create, and a remote re-create overwrote pending local fields                                                                                                                          | e2e harness + wire trace |
+
+**Evidence.** The convergence spec passed 10/10. The whole Phase 11 spec (2 convergence seeds, `AT-30`–`AT-35`, offline merge, `AT-12`) passed 30/30 over three repeats. The full e2e suite: 135 passed and 1 failed (`dashboard.spec.ts` S-08, a dropdown that did not open under parallel load; it passed 27/27 when run alone and is unrelated to sync); 3 did not run.
+
+**Caveats.**
+
+- `AT-12` is approximated: every socket is cut at once mid-session. A real server restart cannot be driven from inside the suite, because Playwright owns the server process. Server durability across a restart rests on persist-before-ack, which the socket integration suite covers.
+- The convergence and chaos specs register an account each. Running them many times in one 15-minute window hits the per-IP signup limit (429). That limit belongs to the environment, not the code.
+- Known flake to fix separately: the S-08 dashboard dropdown under load.
 
 ### Phase 12 — Sharing, guest flow, permission enforcement (M5)
 
