@@ -177,6 +177,7 @@ describe('the public join card — GET /share/:token', () => {
     const response = await request(app).get(`/api/share/${token}`)
     expect(response.status).toBe(200)
     expect(response.body).toMatchObject({
+      boardId,
       boardName: 'Q3 Retrospective',
       ownerName: 'Priya Raman',
       role: 'VIEWER',

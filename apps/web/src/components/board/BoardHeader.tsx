@@ -126,14 +126,6 @@ export function BoardHeader({
         {...(onRetry ? { onRetry } : {})}
       />
 
-      {role === 'VIEWER' ? (
-        <span
-          data-testid="viewer-badge"
-          className="pointer-events-auto rounded-md bg-app/90 px-2 py-1 text-xs font-medium text-muted shadow-panel"
-        >
-          View only
-        </span>
-      ) : null}
     </header>
   )
 }

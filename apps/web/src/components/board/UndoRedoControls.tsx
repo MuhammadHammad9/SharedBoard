@@ -1,3 +1,4 @@
+import { useBoardStore } from '../../stores/boardStore.js'
 import { useSyncExternalStore } from 'react'
 import { ArrowArcLeft, ArrowArcRight } from '@phosphor-icons/react'
 import { history } from '../../features/canvas/history/history.js'
@@ -35,6 +36,7 @@ const BUTTON =
   'aria-disabled:hover:bg-transparent aria-disabled:active:scale-100'
 
 export function UndoRedoControls() {
+  const readOnly = useBoardStore(s => s.readOnly)
   /*
    * The history stack is plain TypeScript with its own listener set, not a
    * Zustand store, because undo has no business re-rendering anything the
@@ -52,6 +54,9 @@ export function UndoRedoControls() {
     history.canRedo,
     history.canRedo,
   )
+
+  // Nothing of a viewer's own to undo.
+  if (readOnly) return null
 
   return (
     <div

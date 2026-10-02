@@ -220,6 +220,15 @@ interface BoardState {
    */
   tombstones: Map<ObjectId, number>
 
+  /**
+   * Viewer mode — FR-SHARE-006, defect P-2. While true, every edit path in
+   * the canvas is inert: a primary drag pans, shortcuts that change the
+   * document are ignored, and `applyAndEmit` refuses as a backstop. The
+   * server refuses viewers' ops regardless; this is so a viewer is never shown
+   * an edit that then snaps back.
+   */
+  readOnly: boolean
+
   // ─── Actions ───
   setViewport: (v: Viewport) => void
   panBy: (dxScreen: number, dyScreen: number) => void
@@ -253,6 +262,7 @@ interface BoardState {
   reorder: () => void
   /** Forget every tombstone. Board load only — a new document, a new session. */
   clearTombstones: () => void
+  setReadOnly: (readOnly: boolean) => void
   /**
    * The server ordered my delete at `seq`. Until now its tombstone sat at
    * MAX_SAFE_INTEGER — "later than anything" — which would also swallow a
@@ -333,6 +343,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   draft: null,
   draftVersion: 0,
   tombstones: new Map(),
+  readOnly: false,
 
   setViewport: v => set({ viewport: { ...v, zoom: clampZoom(v.zoom) } }),
 
@@ -689,6 +700,22 @@ export const useBoardStore = create<BoardState>((set, get) => ({
    */
   clearTombstones: () =>
     set(s => (s.tombstones.size === 0 ? {} : { tombstones: new Map() })),
+
+  setReadOnly: readOnly =>
+    set(s => {
+      if (s.readOnly === readOnly) return {}
+      // Becoming a viewer mid-gesture (a live role:changed) cancels the
+      // gesture — FLOWS §9.5 "cancel any in-progress interaction".
+      return readOnly
+        ? {
+            readOnly,
+            interaction: { type: 'IDLE' } as InteractionState,
+            draft: null,
+            editingTextId: null,
+            selection: [],
+          }
+        : { readOnly }
+    }),
 
   confirmDelete: (id, seq) => {
     // Mutated in place, like `applyOps` does: tombstones are not rendered,

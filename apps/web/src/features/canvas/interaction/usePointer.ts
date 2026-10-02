@@ -132,7 +132,15 @@ export function usePointer(
 
       // Pan outranks everything. Middle-mouse and Space are explicit "move the
       // paper" gestures and must work regardless of which tool is selected.
-      const wantsPan = e.button === MIDDLE_BUTTON || activeTool === 'hand' || spaceHeld()
+      //
+      // A viewer's every drag is a pan (FR-SHARE-006): the canvas is theirs to
+      // look around, never to change.
+      const { readOnly } = boardStore.getState()
+      const wantsPan =
+        e.button === MIDDLE_BUTTON ||
+        activeTool === 'hand' ||
+        spaceHeld() ||
+        (readOnly && e.button === 0)
       if (wantsPan) {
         const p = localPoint(e)
         if (!beginPan(e.pointerId, p.x, p.y)) return
@@ -354,6 +362,7 @@ export function usePointer(
      * Otherwise every attempt to drag a note would drop the user into typing.
      */
     const onDoubleClick = (e: MouseEvent) => {
+      if (boardStore.getState().readOnly) return
       if (boardStore.getState().activeTool !== 'select') return
       const rect = element.getBoundingClientRect()
       const c = toCanvas(e.clientX - rect.left, e.clientY - rect.top)

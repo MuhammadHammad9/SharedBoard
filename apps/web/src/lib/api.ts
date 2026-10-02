@@ -34,7 +34,7 @@ export class ApiError extends Error {
 export const NETWORK_ERROR_CODE = 'NETWORK'
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   /** Internal: suppresses the refresh-and-replay, so refresh cannot recurse. */
   skipAuthRetry?: boolean
@@ -103,6 +103,19 @@ async function toApiError(response: Response): Promise<ApiError> {
   )
 }
 
+/**
+ * The guest credential — FR-AUTH-006, decision D-1.
+ *
+ * Set by the board guard when the visitor is acting as a guest, and cleared
+ * when they are not. A user's bearer token always takes precedence: a
+ * signed-in person with an old guest identity in storage acts as themselves.
+ */
+let guestCredential: string | null = null
+
+export function setGuestCredential(guestId: string | null): void {
+  guestCredential = guestId
+}
+
 export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {},
@@ -117,7 +130,11 @@ export async function apiRequest<T>(
       credentials: 'include',
       headers: {
         ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(token
+          ? { authorization: `Bearer ${token}` }
+          : guestCredential
+            ? { 'x-coboard-guest': guestCredential }
+            : {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       ...(signal ? { signal } : {}),
@@ -174,6 +191,8 @@ export const api = {
     apiRequest<T>(path, { ...options, method: 'POST', body }),
   patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     apiRequest<T>(path, { ...options, method: 'PATCH', body }),
+  put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    apiRequest<T>(path, { ...options, method: 'PUT', body }),
   del: <T>(path: string, options?: RequestOptions) =>
     apiRequest<T>(path, { ...options, method: 'DELETE' }),
 }

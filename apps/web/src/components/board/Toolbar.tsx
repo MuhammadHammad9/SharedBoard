@@ -12,6 +12,7 @@ import {
   TextT,
   type Icon,
 } from '@phosphor-icons/react'
+import { ViewOnlyBadge } from './ViewOnlyBadge.js'
 import { ACTIVE_TOOLS, useBoardStore, type Tool } from '../../stores/boardStore.js'
 import { Tooltip } from '../ui/Tooltip.js'
 
@@ -66,10 +67,14 @@ export function Toolbar() {
   const activeTool = useBoardStore(s => s.activeTool)
   const setActiveTool = useBoardStore(s => s.setActiveTool)
   const interactionType = useBoardStore(s => s.interaction.type)
+  const readOnly = useBoardStore(s => s.readOnly)
 
   // R-CANVAS-055 / FLOWS E-08: a tool change mid-interaction is ignored, not
   // queued into a half-finished stroke.
   const locked = interactionType !== 'IDLE'
+
+  // FR-SHARE-006: a viewer's toolbar is the badge, nothing else.
+  if (readOnly) return <ViewOnlyBadge />
 
   return (
     <div

@@ -58,6 +58,10 @@ export function createShareRouter(): Router {
       }
 
       res.json({
+        // Not a secret from someone holding a live token — the token alone
+        // lets them join. A signed-in visitor goes straight to the board with
+        // it, and `/access` makes them a member (decision D-3).
+        boardId: lookup.boardId,
         boardName: lookup.boardName,
         ownerName: lookup.ownerName,
         role: lookup.link.role,

@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToastProvider } from './components/ui/Toast.js'
 import { RedirectIfAuthed, RequireAuth } from './routes/guards.js'
+import { RequireBoardAccess } from './routes/RequireBoardAccess.js'
 import { FullScreenSpinner } from './components/ui/Spinner.js'
 import Login from './routes/Login.js'
 import Signup from './routes/Signup.js'
@@ -30,6 +31,7 @@ import Settings from './routes/Settings.js'
  */
 
 const Board = lazy(() => import('./routes/Board.js'))
+const GuestEntry = lazy(() => import('./routes/GuestEntry.js'))
 
 /*
  * The dashboard and Trash are lazy for the same reason the board is (TRD
@@ -125,23 +127,19 @@ export default function App() {
             />
 
             {/*
-             * BOARD — FLOWS §2.1, §2.3.
-             *
-             * `RequireAuth` gets the session; the board-level half of
-             * `requireBoardAccess` is enforced by the server and rendered by the
-             * route itself, which shows S-19/S-20 rather than redirecting. That
-             * split is deliberate: a guard cannot decide access without asking the
-             * server anyway, and doing it inside the route means one request
-             * answers both "may I?" and "what is on it?".
+             * BOARD — FLOWS §2.3 `requireBoardAccess`. Users AND guests: the
+             * guard resolves identity, asks /access, and renders S-17/S-18
+             * itself rather than redirecting, because the URL is valid either way.
              */}
+            <Route path="/board/:boardId" element={<BoardRoute />} />
+
+            {/* S-11 — a guest arriving through a share link. No session needed. */}
             <Route
-              path="/board/:boardId"
+              path="/join/:token"
               element={
-                <RequireAuth>
-                  <Suspense fallback={<FullScreenSpinner label="Opening board" />}>
-                    <Board />
-                  </Suspense>
-                </RequireAuth>
+                <Suspense fallback={<FullScreenSpinner label="Opening invite" />}>
+                  <GuestEntry />
+                </Suspense>
               }
             />
 
@@ -161,5 +159,16 @@ export default function App() {
         </BrowserRouter>
       </ToastProvider>
     </QueryClientProvider>
+  )
+}
+
+function BoardRoute() {
+  const { boardId = '' } = useParams<{ boardId: string }>()
+  return (
+    <RequireBoardAccess boardId={boardId}>
+      <Suspense fallback={<FullScreenSpinner label="Opening board" />}>
+        <Board />
+      </Suspense>
+    </RequireBoardAccess>
   )
 }

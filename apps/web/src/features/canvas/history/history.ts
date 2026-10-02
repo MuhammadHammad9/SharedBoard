@@ -20,6 +20,10 @@ import { buildInverse } from './inverseOps.js'
 
 export const history = new HistoryManager(
   ops => {
+    // Viewer mode: undo and redo would write too. HistoryManager has already
+    // moved the entry between stacks; with nothing applied that is harmless,
+    // because a viewer's stacks hold nothing of their own to begin with.
+    if (boardStore.getState().readOnly) return
     /*
      * R-UNDO-003: an undo is applied and emitted as an ORDINARY op. There is
      * no "undo" message type, and remote clients see a normal change.

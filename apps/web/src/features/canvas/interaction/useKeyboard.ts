@@ -127,6 +127,19 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
         return
       }
 
+      /*
+       * Viewer mode — FR-SHARE-006. Only keys that change nothing survive:
+       * Space to pan, and Cmd/Ctrl with 0, 1, +, − (zoom), C (copy) or A
+       * (select all, which copy needs). Everything else is ignored here, so
+       * no shortcut can start an edit the server would refuse.
+       */
+      if (store.readOnly) {
+        const viewSafe =
+          e.code === 'Space' ||
+          (mod && ['0', '1', '=', '+', '-', '_', 'c', 'a'].includes(e.key.toLowerCase()))
+        if (!viewSafe) return
+      }
+
       // Delete the selection — FR-CANVAS-014, one entry for the whole
       // selection however large it is (R-UNDO-004).
       if (e.key === 'Delete' || e.key === 'Backspace') {

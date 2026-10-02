@@ -341,4 +341,54 @@
   [data-presence-stale='true'] {
     filter: saturate(0.25);
   }
+
+  /*
+   * S-11 join card — routes/GuestEntry.tsx, Phase 12 motion table.
+   *
+   * The ONE first-impression flourish in the product: once per person per
+   * board, the "rare" band where emil-design-eng permits delight. 400 ms is
+   * deliberately at the top of the modal range. Never from scale(0).
+   */
+  [data-join-card] {
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
+    transition:
+      opacity 400ms var(--ease-out),
+      scale 400ms var(--ease-out),
+      translate 400ms var(--ease-out);
+  }
+
+  @starting-style {
+    [data-join-card] {
+      opacity: 0;
+      scale: 0.96;
+      translate: 0 8px;
+    }
+  }
+
+  /* Who is already there, in after the card: 200 ms each, 60 ms apart. */
+  [data-join-avatar] {
+    opacity: 1;
+    translate: 0 0;
+    transition:
+      opacity 200ms var(--ease-out),
+      translate 200ms var(--ease-out);
+    transition-delay: calc(var(--i, 0) * 60ms + 120ms);
+  }
+
+  @starting-style {
+    [data-join-avatar] {
+      opacity: 0;
+      translate: 0 4px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-join-card],
+    [data-join-avatar] {
+      transition: opacity 200ms var(--ease-out);
+      transition-delay: 0ms;
+    }
+  }
 }

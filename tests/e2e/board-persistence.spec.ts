@@ -124,7 +124,9 @@ async function surface(page: Page) {
 
 const objectCount = (page: Page): Promise<number> =>
   page.evaluate(
-    () => (window as unknown as { __coboardObjects: () => unknown[] }).__coboardObjects().length,
+    () =>
+      (window as unknown as { __coboardObjects: () => unknown[] }).__coboardObjects()
+        .length,
   )
 
 async function drawStroke(page: Page, x: number, y: number) {
@@ -255,7 +257,7 @@ test.describe('board persistence', () => {
     await waitForServerObjects(page, boardId, 3)
   })
 
-  test('a board the user cannot see shows S-20 and never its name', async ({
+  test('AT-21: a non-member sees S-17 access denied, and never the board name', async ({
     page,
   }) => {
     const ownerBoard = await openNewBoard(page, 'Acquisition target shortlist')
@@ -268,7 +270,9 @@ test.describe('board persistence', () => {
     await signIn(intruder, other)
 
     await intruder.goto(`/board/${ownerBoard}`)
-    await expect(intruder.getByTestId('board-not-found')).toBeVisible()
+    // Phase 12: FLOWS §2.3 STEP 4 — 403 no_access renders S-17 in place of the
+    // canvas (Phase 8 showed S-20 here, before access had its own branch).
+    await expect(intruder.getByTestId('board-forbidden')).toBeVisible()
     // R-SEC-018: the name must not appear anywhere on the page.
     expect(await intruder.content()).not.toContain('Acquisition')
     await context.close()

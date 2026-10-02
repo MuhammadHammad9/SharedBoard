@@ -4,6 +4,7 @@ import { ApiError } from '../../lib/api.js'
 import { useToast } from '../../components/ui/Toast.js'
 import { errors, presence } from '../../lib/strings.js'
 import { BoardSession } from '../sync/session.js'
+import { abandonPersistence } from '../sync/persistence.js'
 
 /**
  * A board id the server could never own — anything that is not a uuid.
@@ -35,7 +36,13 @@ const isScratchBoard = (id: string): boolean => import.meta.env.DEV && !UUID.tes
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 
-export type BoardLoadStatus = 'loading' | 'ready' | 'not-found' | 'forbidden' | 'error'
+/**
+ * `deleted` and `revoked` are the LIVE ejections of FLOWS §9.5 — the board
+ * went away, or the person's access did, while it was open. `not-found` and
+ * `forbidden` are what loading it answered.
+ */
+export type BoardLoadStatus =
+  'loading' | 'ready' | 'not-found' | 'forbidden' | 'deleted' | 'revoked' | 'error'
 
 export interface BoardLoad {
   status: BoardLoadStatus
@@ -86,9 +93,25 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
      */
     const session = new BoardSession(boardId, {
       onState: next => setConnection(next),
-      onRole: next => setRole(next),
+      onRole: next =>
+        setRole(previous => {
+          // FLOWS §9.5: demoted to viewer live — do not eject; say so once.
+          if (previous && previous !== 'VIEWER' && next === 'VIEWER') {
+            toast.show({ message: presence.nowViewer })
+          }
+          return next
+        }),
       onNack: () => toast.show({ message: errors.opRejected, variant: 'danger' }),
-      onFatal: kind => setStatus(kind === 'deleted' ? 'not-found' : 'forbidden'),
+      onFatal: kind => {
+        /*
+         * FLOWS §9.5: freeze, close the socket, full-screen state — and do NOT
+         * try to sync the outbox, because the target is gone. Its queue is
+         * discarded so a later visit does not replay into a board that no
+         * longer exists or no longer lets this person write.
+         */
+        abandonPersistence(boardId)
+        setStatus(kind === 'deleted' ? 'deleted' : 'revoked')
+      },
       onBoardRenamed: next => setName(next),
       onAttempt: n => setAttemptN(n),
       onPending: n => setPending(n),

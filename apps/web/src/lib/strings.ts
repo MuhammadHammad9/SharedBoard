@@ -119,6 +119,13 @@ export const guest = {
   joinedAs: (name: string) => `You're in as ${name}`,
   joinedChip: (name: string) => `Joined as ${name}`,
   conversionBar: "You're a guest. Sign up to save your boards.",
+  // FLOWS §7.1 step 4 gives "3 people are here now". The singular and the
+  // "Shared by" line are not in PRD §8 — copy gaps, kept minimal.
+  hereNow: (count: number) =>
+    count === 1 ? '1 person is here now' : `${count} people are here now`,
+  sharedBy: (name: string) => `Shared by ${name}`,
+  nameCounter: (used: number) => `${used}/40`,
+  viewOnly: 'View only',
 } as const
 
 /** FLOWS §12 — full-screen states. */
@@ -136,6 +143,25 @@ export const states = {
   boardDeleted: {
     headline: errors.boardDeletedWhileOpen,
     body: 'Your changes were saved before it was deleted.',
+  },
+  // FLOWS §9.5 `access:revoked` — S-17 with the "access removed" copy.
+  accessRemoved: {
+    headline: errors.accessRevokedWhileOpen,
+    body: 'Ask the person who shared it to invite you.',
+  },
+  // FLOWS §7.3 and §2.3 — a link that no longer works.
+  linkInvalid: {
+    headline: guest.linkInvalid,
+    // Bodies for these three are copy gaps — PRD §8 gives only the headline.
+    body: 'Double-check the link, or ask for a new one.',
+  },
+  linkTurnedOff: {
+    headline: guest.linkTurnedOff,
+    body: 'Ask the person who shared it for a new one.',
+  },
+  boardGone: {
+    headline: guest.boardGone,
+    body: 'It may have been deleted by its owner.',
   },
   errorBoundary: {
     headline: 'Something went wrong.',

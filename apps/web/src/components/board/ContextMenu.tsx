@@ -70,6 +70,8 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
 
     const onContextMenu = (e: MouseEvent) => {
       e.preventDefault()
+      // Every item in this menu edits the board; a viewer gets no menu.
+      if (boardStore.getState().readOnly) return
       const rect = container.getBoundingClientRect()
       const localX = e.clientX - rect.left
       const localY = e.clientY - rect.top

@@ -52,7 +52,7 @@ export function resetSessionBootstrap(): void {
   bootstrapStarted = false
 }
 
-function useSessionBootstrap(): void {
+export function useSessionBootstrap(): void {
   const setStatus = useAuthStore(s => s.setStatus)
   const setSession = useAuthStore(s => s.setSession)
   const clear = useAuthStore(s => s.clear)

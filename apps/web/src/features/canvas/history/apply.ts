@@ -69,6 +69,10 @@ export function applyAndEmit(
   options: ApplyOptions = {},
 ): boolean {
   if (ops.length === 0) return false
+  // The backstop for viewer mode (FR-SHARE-006): whatever path got here —
+  // a panel button, a menu, a shortcut that slipped the gate — a viewer's
+  // change is never applied locally to be refused and rolled back.
+  if (boardStore.getState().readOnly) return false
 
   /*
    * R-UNDO-007 (Blocking), and the one line in this file that must not move.
