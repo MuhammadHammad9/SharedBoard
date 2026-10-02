@@ -167,11 +167,27 @@ interface Client {
   pending: PendingWrites
   /** Sent to the server, awaiting their turn. */
   wire: ClientOp[]
+  /** Broadcasts the server has not flushed yet — its 16 ms batch. */
+  batched: Array<{ op: ClientOp; seq: number }>
   /** Server → client messages, delivered in order. */
-  inbox: Array<{ kind: 'ack'; id: string } | { kind: 'op'; op: ClientOp }>
+  inbox: Array<
+    { kind: 'ack'; id: string; seq: number } | { kind: 'op'; op: ClientOp; seq: number }
+  >
+  /** The SyncEngine's ordering state. */
+  lastApplied: number
+  remote: Map<number, ClientOp>
+  own: Map<number, string>
 }
 
-function simulate(seed: number): { a: Doc; b: Doc; server: Doc } {
+/**
+ * The real protocol, in miniature: the server orders, acks the author AT
+ * ONCE and batches broadcasts (TRD §5.4 steps 6–7), and each client applies
+ * in seq order with its own ops as markers — SyncEngine.drain.
+ *
+ * `releaseAtAck` models the first, wrong version of the hold: fields released
+ * the moment the ack arrived rather than when the document reached its seq.
+ */
+function simulate(seed: number, releaseAtAck = false): { a: Doc; b: Doc; server: Doc } {
   const random = rng(seed)
   const seedDoc = (): Doc =>
     new Map([
@@ -179,17 +195,45 @@ function simulate(seed: number): { a: Doc; b: Doc; server: Doc } {
       ['o2', { fill: 'w', x: 0 }],
     ])
   const server = seedDoc()
+  let seq = 0
   const clients: Client[] = [0, 1].map(() => ({
     doc: seedDoc(),
     pending: new PendingWrites(),
     wire: [],
+    batched: [],
     inbox: [],
+    lastApplied: 0,
+    remote: new Map(),
+    own: new Map(),
   }))
+
+  const drain = (c: Client) => {
+    for (;;) {
+      const next = c.lastApplied + 1
+      const op = c.remote.get(next)
+      if (op) {
+        c.remote.delete(next)
+        const kept = c.pending.filterRemote(op)
+        if (kept) applyTo(c.doc, kept)
+        c.lastApplied = next
+        continue
+      }
+      const mine = c.own.get(next)
+      if (mine !== undefined) {
+        c.own.delete(next)
+        if (!releaseAtAck) c.pending.ack(mine)
+        c.lastApplied = next
+        continue
+      }
+      return
+    }
+  }
 
   const step = (allowEdits: boolean) => {
     const c = clients[Math.floor(random() * 2)]!
-    const roll = allowEdits ? random() : 0.4 + random() * 0.6
-    if (roll < 0.4) {
+    const other = clients.find(x => x !== c)!
+    const roll = allowEdits ? random() : 0.35 + random() * 0.65
+    if (roll < 0.35) {
       // A local edit, applied optimistically.
       const objectId = random() < 0.5 ? 'o1' : 'o2'
       const field = random() < 0.5 ? 'fill' : 'x'
@@ -198,20 +242,26 @@ function simulate(seed: number): { a: Doc; b: Doc; server: Doc } {
       c.pending.track([op], inverseOf(op, before))
       applyTo(c.doc, op)
       c.wire.push(op)
-    } else if (roll < 0.7 && c.wire.length > 0) {
-      // The server orders the next op from this client: ack first, then the
-      // broadcast to everyone else (TRD §5.4 steps 6 and 7).
+    } else if (roll < 0.6 && c.wire.length > 0) {
+      // The server orders the next op from this client. Ack now; broadcast
+      // whenever the batch timer fires.
       const op = c.wire.shift()!
+      seq += 1
       applyTo(server, op)
-      c.inbox.push({ kind: 'ack', id: op.id })
-      for (const other of clients) if (other !== c) other.inbox.push({ kind: 'op', op })
+      c.inbox.push({ kind: 'ack', id: op.id, seq })
+      other.batched.push({ op, seq })
+    } else if (roll < 0.75 && c.batched.length > 0) {
+      // The 16 ms batch fires.
+      for (const b of c.batched.splice(0)) c.inbox.push({ kind: 'op', ...b })
     } else if (c.inbox.length > 0) {
       const message = c.inbox.shift()!
-      if (message.kind === 'ack') c.pending.ack(message.id)
-      else {
-        const kept = c.pending.filterRemote(message.op)
-        if (kept) applyTo(c.doc, kept)
+      if (message.kind === 'ack') {
+        if (releaseAtAck) c.pending.ack(message.id)
+        c.own.set(message.seq, message.id)
+      } else {
+        c.remote.set(message.seq, message.op)
       }
+      drain(c)
     }
   }
 
@@ -219,11 +269,20 @@ function simulate(seed: number): { a: Doc; b: Doc; server: Doc } {
   // Drain with no new edits: everything sent is ordered, everything ordered
   // is delivered.
   for (let guard = 0; guard < 10_000; guard++) {
-    if (clients.every(c => c.wire.length === 0 && c.inbox.length === 0)) break
+    if (
+      clients.every(
+        c => c.wire.length === 0 && c.inbox.length === 0 && c.batched.length === 0,
+      )
+    )
+      break
     step(false)
   }
   return { a: clients[0]!.doc, b: clients[1]!.doc, server }
 }
+
+const converged = ({ a, b, server }: { a: Doc; b: Doc; server: Doc }) =>
+  JSON.stringify([...a]) === JSON.stringify([...server]) &&
+  JSON.stringify([...b]) === JSON.stringify([...server])
 
 describe('two clients and a server converge under random interleavings', () => {
   for (let seed = 1; seed <= 200; seed++) {
@@ -233,4 +292,16 @@ describe('two clients and a server converge under random interleavings', () => {
       expect(Object.fromEntries(b)).toEqual(Object.fromEntries(server))
     })
   }
+
+  it('would NOT converge if held fields were released at the ack', () => {
+    /*
+     * Kept as a test so the reason for releasing in seq order cannot quietly
+     * regress: with acks immediate and broadcasts batched, an ack routinely
+     * overtakes an earlier remote write to the same field.
+     */
+    let diverged = 0
+    for (let seed = 1; seed <= 200; seed++)
+      if (!converged(simulate(seed, true))) diverged++
+    expect(diverged).toBeGreaterThan(10)
+  })
 })

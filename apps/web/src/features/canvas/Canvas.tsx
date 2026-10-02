@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MAX_DPR, type ObjectId } from '@coboard/shared'
+import { MAX_DPR, type ClientOp, type ObjectId } from '@coboard/shared'
 import { boardStore, objectsInZOrder, useBoardStore } from '../../stores/boardStore.js'
 import { Toolbar } from '../../components/board/Toolbar.js'
 import { PropertiesPanel } from '../../components/board/PropertiesPanel.js'
 import { ZoomControls } from '../../components/board/ZoomControls.js'
 import { UndoRedoControls } from '../../components/board/UndoRedoControls.js'
 import { history } from './history/history.js'
+import { applyAndEmit } from './history/apply.js'
 import {
   CanvasDebugOverlay,
   type DebugSnapshot,
@@ -336,6 +337,16 @@ export function Canvas() {
         undo: history.undoDepth(),
         redo: history.redoDepth(),
       })
+      /*
+       * The local write path, driven directly — the Phase 11 convergence
+       * harness. It goes through exactly what a pointer gesture commits
+       * through (applyAndEmit → history → pending writes → outbox → socket),
+       * minus the pixels, so two hundred seeded operations take seconds
+       * rather than minutes and replay identically from the same seed.
+       */
+      w.__coboardApplyLocal = (ops: ClientOp[], label: string) => applyAndEmit(ops, label)
+      w.__coboardUndo = () => history.undo() !== null
+      w.__coboardRedo = () => history.redo() !== null
     }
 
     return () => {

@@ -55,6 +55,13 @@ export class SyncEngine {
   private lastAppliedSeq = 0
   /** Ops that arrived ahead of their turn, keyed by seq. */
   private readonly pending = new Map<number, ServerOp>()
+  /**
+   * MY ops the server has ordered, keyed by their seq → op id. The server
+   * never broadcasts an op back to its author, so without these the author's
+   * own seqs would be permanent holes: `lastAppliedSeq` would stall at every
+   * one of them and only a REST gap fill could move it on.
+   */
+  private readonly own = new Map<number, string>()
   /** Ops that arrived before the snapshot did — the load-ordering rule. */
   private buffered: ServerOp[] = []
   private snapshotLoaded = false
@@ -195,22 +202,73 @@ export class SyncEngine {
       this.pending.set(op.seq, op)
     }
 
-    const ready: ServerOp[] = []
-    while (this.pending.has(this.lastAppliedSeq + 1)) {
-      const next = this.pending.get(this.lastAppliedSeq + 1)!
-      this.pending.delete(next.seq)
-      ready.push(next)
-      this.lastAppliedSeq = next.seq
-    }
+    this.drain()
+  }
 
-    if (ready.length > 0) this.apply(ready)
+  /**
+   * One of MY ops was ordered at `seq` — its ack, or its echo in a catch-up.
+   *
+   * ┌──────────────────────────────────────────────────────────────────────┐
+   * │  The fields it wrote are released when the DOCUMENT reaches `seq`,   │
+   * │  not when the ack arrives.                                           │
+   * │                                                                      │
+   * │  The server acks at once and batches broadcasts for 16 ms, so my ack │
+   * │  for seq 10 routinely lands before a teammate's seq 9. Released at   │
+   * │  the ack, their older write would then be applied over my newer one │
+   * │  — here and nowhere else. Released in order, seq 9 arrives while the │
+   * │  field is still held, and the document is right.                     │
+   * └──────────────────────────────────────────────────────────────────────┘
+   */
+  markOwn(seq: number, opId: string): void {
+    if (!this.snapshotLoaded || seq <= this.lastAppliedSeq) {
+      // Already passed — it was applied in order as part of a replay.
+      activeSession()?.release(opId)
+      return
+    }
+    this.own.set(seq, opId)
+    this.drain()
+  }
+
+  private drain(): void {
+    /*
+     * In seq order, each remote op is applied and each of my own releases its
+     * fields AT ITS POSITION. Remote ops between two of mine are applied as
+     * one batch, so a long catch-up is still one store commit per run.
+     */
+    let batch: ServerOp[] = []
+    const flush = () => {
+      if (batch.length > 0) this.apply(batch)
+      batch = []
+    }
+    for (;;) {
+      const next = this.lastAppliedSeq + 1
+      const remote = this.pending.get(next)
+      if (remote) {
+        this.pending.delete(next)
+        // My own op, echoed by a replay. The reconcile step releases it.
+        this.own.delete(next)
+        batch.push(remote)
+        this.lastAppliedSeq = next
+        continue
+      }
+      const mine = this.own.get(next)
+      if (mine !== undefined) {
+        this.own.delete(next)
+        flush()
+        this.lastAppliedSeq = next
+        activeSession()?.release(mine)
+        continue
+      }
+      break
+    }
+    flush()
 
     /*
      * Anything still pending means a hole. Debounced, because out-of-order
      * delivery inside one batch is common and self-healing — asking the server
      * to re-send on every reordered pair would be a request per frame.
      */
-    if (this.pending.size > 0) this.scheduleGapFill()
+    if (this.pending.size > 0 || this.own.size > 0) this.scheduleGapFill()
     else this.cancelGapFill()
   }
 
@@ -297,6 +355,7 @@ export class SyncEngine {
     try {
       const { ops } = await this.fetchOpsSince(this.boardId, 0)
       this.pending.clear()
+      this.releaseAllOwn()
       this.lastAppliedSeq = 0
       boardStore.getState().loadObjects([])
       this.receiveOps(ops as unknown as ServerOp[])
@@ -307,9 +366,16 @@ export class SyncEngine {
     }
   }
 
+  private releaseAllOwn(): void {
+    const session = activeSession()
+    for (const id of this.own.values()) session?.release(id)
+    this.own.clear()
+  }
+
   dispose(): void {
     this.cancelGapFill()
     this.pending.clear()
+    this.own.clear()
     this.buffered = []
   }
 }

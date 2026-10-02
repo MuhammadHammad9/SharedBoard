@@ -12,7 +12,7 @@ import { prisma } from '../lib/prisma.js'
 import { logger } from '../lib/logger.js'
 import { redeemTicket } from '../http/routes/ws.js'
 import { Fanout } from './fanout.js'
-import { RoomManager, roomManager } from './RoomManager.js'
+import { RoomManager, roomManager, setActiveRooms } from './RoomManager.js'
 import { Session } from './Session.js'
 import { handleJoin } from './handlers/join.js'
 import { handleOps } from './handlers/op.js'
@@ -62,6 +62,7 @@ export interface GatewayOptions {
 
 export function attachGateway(server: Server, options: GatewayOptions = {}): Gateway {
   const rooms = options.rooms ?? roomManager
+  setActiveRooms(rooms)
   const fanout = options.fanout ? new Fanout(rooms) : null
   if (fanout) void fanout.start()
 

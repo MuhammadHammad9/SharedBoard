@@ -35,6 +35,12 @@ export interface SessionCallbacks {
   onStatus?: (status: OutboxStatus, pending: number) => void
   onPending?: (pending: number) => void
   /**
+   * My op was ordered at `seq`. The sync engine releases its held fields when
+   * the document reaches that seq (`SyncEngine.markOwn`). Absent — no live
+   * engine — they are released at once.
+   */
+  onOrdered?: (opId: string, seq: number) => void
+  /**
    * The seq of the snapshot this page loaded. Ops restored from storage that
    * the server turns out to have stored at or below it are already in the
    * document — see `settle`.
@@ -134,6 +140,15 @@ export class PersistenceSession {
     if (op.type === 'DELETE' && seq !== undefined) {
       boardStore.getState().confirmDelete(op.objectId as ObjectId, seq)
     }
+    if (seq !== undefined && this.callbacks.onOrdered) {
+      this.callbacks.onOrdered(opId, seq)
+      return
+    }
+    this.pending.ack(opId)
+  }
+
+  /** The document has reached this op's seq. Its fields stop being held. */
+  release(opId: string): void {
     this.pending.ack(opId)
   }
 

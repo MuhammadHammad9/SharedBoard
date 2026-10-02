@@ -7,11 +7,13 @@ import {
   ListBoardsQuerySchema,
   PermanentDeleteSchema,
   UpdateBoardSchema,
+  type ServerOp,
 } from '@coboard/shared'
 import { boardService } from '../../services/BoardService.js'
 import { opService } from '../../services/OpService.js'
 import { permissionService } from '../../services/PermissionService.js'
 import { snapshotService } from '../../services/SnapshotService.js'
+import { liveRooms } from '../../ws/RoomManager.js'
 import { assertAuthenticated, requireAuth } from '../middleware/auth.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
 import { validateBody, validatedQuery, validateQuery } from '../middleware/validate.js'
@@ -262,6 +264,29 @@ export function createBoardsRouter(): Router {
 
       // Persisted, so it is safe to acknowledge — R-SYNC-012.
       res.json({ applied: result.applied, currentSeq: result.currentSeq })
+
+      /*
+       * BROADCAST, exactly as the socket path does (§5.4 step 7). The outbox
+       * falls back to this route while its socket is down, and an op that is
+       * stored but never broadcast is invisible to everyone else in the room
+       * until they reload — and, if nothing is written after it, never
+       * detected as a gap at all (F-8 in docs/REMAINING-WORK.md).
+       *
+       * There is no socket session here, so the author is not excluded: their
+       * own socket receives the op too, in seq order, which the client treats
+       * as the in-order echo of its own write.
+       */
+      const fresh = result.applied
+        .filter(op => !op.duplicate)
+        .map(op => ({
+          id: op.id,
+          type: op.type,
+          objectId: op.objectId,
+          payload: op.payload,
+          seq: op.seq,
+          actorSessionId: `rest:${userId}`,
+        })) as ServerOp[]
+      liveRooms().queueOps(id, fresh, `rest:${userId}`)
 
       /*
        * Snapshot AFTER responding, and deliberately un-awaited. It is a cache

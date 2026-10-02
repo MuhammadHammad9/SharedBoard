@@ -103,6 +103,15 @@ export class BoardSession {
     )
 
     this.detachWindow = this.attachWindow()
+
+    // Fault injection for the chaos e2e suite — never in production.
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+      ;(window as unknown as Record<string, unknown>).__coboardNet = {
+        drop: () => this.socket.simulateDrop(),
+        send: (raw: string) => this.socket.sendRaw(raw),
+        retry: () => this.resume(),
+      }
+    }
   }
 
   /**
@@ -211,6 +220,7 @@ export class BoardSession {
       this.persistence = startPersistence(this.boardId, {
         loadSeq: state.seq,
         discardHistory: ids => history.discard(ids),
+        onOrdered: (opId, seq) => this.sync.markOwn(seq, opId),
         onPending: pending => {
           this.callbacks.onPending?.(pending)
           this.checkSynced()
@@ -280,6 +290,9 @@ export class BoardSession {
   dispose(): void {
     this.disposed = true
     this.detachWindow()
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+      delete (window as unknown as Record<string, unknown>).__coboardNet
+    }
     setSyncProbe(null)
     setPresenceEmitter(null)
     this.presence.dispose()

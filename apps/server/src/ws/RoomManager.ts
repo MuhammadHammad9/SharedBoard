@@ -195,3 +195,18 @@ export class RoomManager {
 }
 
 export const roomManager = new RoomManager()
+
+/**
+ * The room manager the live gateway serves — set by `attachGateway`.
+ *
+ * The REST op route broadcasts through this rather than importing
+ * `roomManager` directly, so it always reaches the rooms the sockets are
+ * actually in (tests attach a gateway with a fresh manager).
+ */
+let activeRooms: RoomManager = roomManager
+
+export function setActiveRooms(rooms: RoomManager): void {
+  activeRooms = rooms
+}
+
+export const liveRooms = (): RoomManager => activeRooms

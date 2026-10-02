@@ -360,6 +360,37 @@ export class SocketClient {
     this.resume()
   }
 
+  /*
+   * ── Fault injection, development builds only ─────────────────────────────
+   *
+   * The chaos e2e suite (AT-30 … AT-35) needs to cut a live connection the
+   * way a network does — no close frame, no warning — and Playwright's
+   * `setOffline` does not reliably sever a WebSocket that is already open.
+   * These do exactly that and nothing else; the session only exposes them on
+   * `window` when `import.meta.env.DEV`.
+   */
+
+  /** Sever the connection as a dead network would: 1006, then reconnect. */
+  simulateDrop(): void {
+    const socket = this.socket
+    if (!socket || this.closedByUs) return
+    socket.onclose = null
+    socket.onmessage = null
+    try {
+      socket.close(3000)
+    } catch {
+      // Already gone.
+    }
+    this.onClose(CLOSE_CODES.ABNORMAL)
+  }
+
+  /** Put arbitrary bytes on the wire — AT-35's forged console message. */
+  sendRaw(data: string): boolean {
+    if (!this.isOpen) return false
+    this.socket!.send(data)
+    return true
+  }
+
   private startHeartbeat(): void {
     this.stopHeartbeat()
     this.pingTimer = this.setTimer(() => this.ping(), PING_INTERVAL_MS)

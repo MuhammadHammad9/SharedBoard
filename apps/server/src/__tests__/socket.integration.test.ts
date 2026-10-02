@@ -476,6 +476,23 @@ describe('ops over the socket', () => {
     }
   })
 
+  it('broadcasts ops appended over REST, so the outbox fallback is not invisible (F-8)', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const watcher = await connect(priya, boardId)
+    await watcher.join(boardId)
+
+    const op = createOp(sticky())
+    const response = await request(app)
+      .post(`/api/boards/${boardId}/operations`)
+      .set('authorization', `Bearer ${priya.token}`)
+      .send({ ops: [op] })
+    expect(response.status).toBe(200)
+
+    const batch = await watcher.waitFor('op_batch')
+    expect(batch.ops[0]).toMatchObject({ id: op.id, seq: 1 })
+  })
+
   it('does NOT echo an op back to its author', async () => {
     const priya = await signUp()
     const boardId = await createBoard(priya)
