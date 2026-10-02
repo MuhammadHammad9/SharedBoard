@@ -14,6 +14,7 @@ import { createPresenceEmitter } from '../presence/send.js'
 import { presenceStore } from '../presence/presenceStore.js'
 import { handlePresenceMessage } from '../presence/usePresence.js'
 import { setPresenceEmitter } from '../presence/bus.js'
+import { setSyncProbe } from './probe.js'
 
 /**
  * The board session — FLOWS §2.3 STEP 5, the whole of it in one place.
@@ -114,6 +115,14 @@ export class BoardSession {
     // Now the socket's buffer drains on top of the snapshot.
     this.sync.snapshotReady(state.seq)
 
+    // The convergence readout — R-CONV-011. Registered once there is a
+    // document for the hash to describe.
+    setSyncProbe({
+      appliedSeq: () => this.sync.appliedSeq,
+      pendingOps: () => this.persistence?.outbox.pending ?? 0,
+      connection: () => this.socket.connectionState,
+    })
+
     // The canvas can start emitting cursors. Registered only after the
     // snapshot, so nothing is sent about a board we have not loaded.
     setPresenceEmitter(this.presence)
@@ -177,6 +186,7 @@ export class BoardSession {
 
   dispose(): void {
     this.disposed = true
+    setSyncProbe(null)
     setPresenceEmitter(null)
     this.presence.dispose()
     presenceStore.clear()
