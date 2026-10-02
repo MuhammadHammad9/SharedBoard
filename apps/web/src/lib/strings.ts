@@ -128,6 +128,40 @@ export const guest = {
   viewOnly: 'View only',
 } as const
 
+/**
+ * FLOWS §10 — the share modal (S-12). The quoted strings are FLOWS §10.1–10.2
+ * verbatim; section labels follow the §10.1 anatomy drawing.
+ */
+export const sharing = {
+  title: (name: string) => `Share "${name}"`,
+  inviteHeading: 'Invite by email',
+  invitePlaceholder: 'name@company.com',
+  send: 'Send',
+  inviteRole: 'Role for invited people',
+  roleFor: (name: string) => `Role for ${name}`,
+  invitesSent: (count: number) =>
+    count === 1 ? 'Invites sent to 1 person' : `Invites sent to ${count} people`,
+  invalidEmail: (email: string) => `${email} is not a valid email address`,
+  peopleHeading: 'People with access',
+  owner: 'Owner',
+  editor: 'Editor',
+  viewer: 'Viewer',
+  guestSuffix: '(guest)',
+  invited: 'Invited',
+  remove: 'Remove',
+  removeLastEditor: (name: string) => `Remove ${name}? They are the last editor.`,
+  roleChangeFailed: "Couldn't change that role.",
+  removeFailed: "Couldn't remove that person.",
+  generalHeading: 'General access',
+  restricted: 'Restricted',
+  anyoneWithLink: 'Anyone with the link',
+  canEdit: 'can edit',
+  canView: 'can view',
+  copyFallback: (mod: string) => `Press ${mod}+C to copy`,
+  resetConfirm: 'Anyone using the old link will lose access.',
+  linkUpdateFailed: "Couldn't update the link.",
+} as const
+
 /** FLOWS §12 — full-screen states. */
 export const states = {
   accessDenied: {
@@ -328,6 +362,7 @@ export const strings = {
   emptyStates,
   validation,
   guest,
+  sharing,
   states,
   presence,
   boards,

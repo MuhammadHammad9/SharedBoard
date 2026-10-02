@@ -391,4 +391,58 @@
       transition-delay: 0ms;
     }
   }
+
+  /*
+   * Share modal micro-animations — features/sharing/ShareModal.tsx.
+   *
+   * Copy → "Copied!": a 150 ms content swap masked with blur(2px), so the two
+   * labels read as one changing thing rather than two overlapping words.
+   */
+  [data-copy-label] {
+    transition:
+      opacity 150ms ease,
+      filter 150ms ease;
+  }
+
+  @starting-style {
+    [data-copy-label] {
+      opacity: 0.4;
+      filter: blur(2px);
+    }
+  }
+
+  /*
+   * A member row whose role just changed: a success tint that fades out over
+   * 400 ms. The tint is an overlay whose OPACITY animates — never the
+   * background colour itself (only transform and opacity animate).
+   */
+  [data-member-row]::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: theme('colors.success / 10%');
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 400ms var(--ease-out);
+  }
+
+  [data-member-row][data-flash='true']::after {
+    animation: coboard-row-flash 400ms var(--ease-out);
+  }
+
+  @keyframes coboard-row-flash {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-copy-label] {
+      transition: opacity 150ms ease;
+    }
+  }
 }

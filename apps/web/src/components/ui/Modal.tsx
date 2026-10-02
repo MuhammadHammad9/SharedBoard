@@ -36,9 +36,19 @@ export interface ModalProps {
   /** Buttons. Rendered right-aligned; the primary action goes last. */
   footer?: ReactNode
   testId?: string
+  /** A wider panel — the share modal's three sections need the room. */
+  wide?: boolean
 }
 
-export function Modal({ open, onClose, title, children, footer, testId }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  testId,
+  wide = false,
+}: ModalProps) {
   const panel = useRef<HTMLDivElement | null>(null)
   const returnFocusTo = useRef<HTMLElement | null>(null)
   const pointerDownInside = useRef(false)
@@ -117,7 +127,7 @@ export function Modal({ open, onClose, title, children, footer, testId }: ModalP
         aria-labelledby={titleId}
         tabIndex={-1}
         data-testid={testId}
-        className="w-full max-w-md rounded-lg border border-border bg-app p-6 shadow-panel outline-none"
+        className={`w-full ${wide ? 'max-w-lg' : 'max-w-md'} rounded-lg border border-border bg-app p-6 shadow-panel outline-none`}
         onClick={event => event.stopPropagation()}
       >
         <h2 id={titleId} className="text-base font-semibold text-primary">

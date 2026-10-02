@@ -4,7 +4,9 @@ import { CaretLeft } from '@phosphor-icons/react'
 import { RenameInline } from '../../features/boards/RenameInline.js'
 import { useToast } from '../ui/Toast.js'
 import { useRenameBoard } from '../../features/boards/useBoards.js'
-import { boards as boardStrings } from '../../lib/strings.js'
+import { actions, boards as boardStrings } from '../../lib/strings.js'
+import { Button } from '../ui/Button.js'
+import { ShareModal } from '../../features/sharing/ShareModal.js'
 import { ConnectionIndicator } from './ConnectionIndicator.js'
 import { AvatarStack } from '../../features/presence/AvatarStack.js'
 import type { ConnectionState, Role } from '@coboard/shared'
@@ -52,6 +54,7 @@ export function BoardHeader({
 }) {
   const [params, setParams] = useSearchParams()
   const [editing, setEditing] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const [displayName, setDisplayName] = useState(name)
   const rename = useRenameBoard()
   const toast = useToast()
@@ -126,6 +129,22 @@ export function BoardHeader({
         {...(onRetry ? { onRetry } : {})}
       />
 
+      {/* FR-SHARE-001: inviting is the owner's alone, so the button is too. */}
+      {role === 'OWNER' && (
+        <span className="pointer-events-auto">
+          <Button onClick={() => setSharing(true)} data-testid="share-button">
+            {actions.share}
+          </Button>
+        </span>
+      )}
+      {role === 'OWNER' && (
+        <ShareModal
+          open={sharing}
+          onClose={() => setSharing(false)}
+          boardId={boardId}
+          boardName={displayName}
+        />
+      )}
     </header>
   )
 }
