@@ -4,12 +4,12 @@
 >
 > This document tells you **how to work here**. [`RULES.md`](./RULES.md) tells you **what you must not do**. When this file explains a constraint, it cites the rule ID so you can read the binding version.
 
-| Field      | Value                                                                                                                                                                                                                                         |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Product    | **CoBoard** — real-time collaborative whiteboard                                                                                                                                                                                              |
-| Repository | `MuhammadHammad9/SharedBoard`                                                                                                                                                                                                                 |
-| Status     | Phase 11 of 15 complete — M1–M4 done. Survives the network: offline editing, reconnect with replay, and a convergence harness that passes under chaos. Sharing is Phase 12. See `docs/04-IMPLEMENTATION-PLAN.md` and `docs/REMAINING-WORK.md` |
-| Stack      | React 18.3 · TypeScript 5.4 strict · Vite 6 (defect `D-4`) · Zustand 4 · Canvas 2D · Tailwind 3.x · Node 20 · Express 4 · `ws` · PostgreSQL 15 · Prisma 5 · Redis 7                                                                           |
+| Field      | Value                                                                                                                                                                                                                                                      |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Product    | **CoBoard** — real-time collaborative whiteboard                                                                                                                                                                                                           |
+| Repository | `MuhammadHammad9/SharedBoard`                                                                                                                                                                                                                              |
+| Status     | Phase 12 of 15 complete — M1–M4 done, M5 under way. Share links, guests without accounts, members and invites, and per-op server-side permission checks. Export and images are Phase 13. See `docs/04-IMPLEMENTATION-PLAN.md` and `docs/REMAINING-WORK.md` |
+| Stack      | React 18.3 · TypeScript 5.4 strict · Vite 6 (defect `D-4`) · Zustand 4 · Canvas 2D · Tailwind 3.x · Node 20 · Express 4 · `ws` · PostgreSQL 15 · Prisma 5 · Redis 7                                                                                        |
 
 ---
 

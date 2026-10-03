@@ -148,6 +148,36 @@ All six slices landed. The convergence harness found five more defects after the
 
 Exit gate: guest joins in < 10 s; `AT-20`–`AT-24` pass; a viewer cannot mutate the board even with a forged socket message; revocation and deletion eject connected users with the correct screens.
 
+#### Phase 12 outcome
+
+All six slices landed, and P-1, P-2 and P-3 are fixed with tests. Problems found while building:
+
+| #   | Finding                                                                                                                                                              | Fix                                                           |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| P-4 | Live pushes went to the wrong room registry when two gateways ran in one process (the fan-out test). The second gateway took over `liveRooms` and never gave it back | The gateway restores the previous rooms on close              |
+| P-5 | A returning guest got the first-join "You're in as" toast instead of the "Not you?" chip                                                                             | The auto-join path passes `returning` and no `joinedAs` state |
+| P-6 | The viewer toast fired twice under StrictMode, because the side effect ran inside a state updater                                                                    | Moved out of the updater (`roleRef`)                          |
+| P-7 | The guest-identity memory fallback answered even when storage worked but was empty                                                                                   | Memory is used only when storage throws (E-18)                |
+
+**Evidence.**
+
+- Unit and integration: 1010/1010.
+- Server integration covers AT-20 (a forged viewer op is nacked and nothing is written), AT-24, demotion and removal mid-session, every `/access` branch, every member and share endpoint including the authorization failures, and live ejection over a real socket.
+- e2e: `sharing.spec.ts` passed 21/21 over three repeats. A guest's first stroke reaches the owner in about 1.8 s from the page load, against a target of under 10 s. The spec also covers the returning guest, AT-20, a live role change without ejection, AT-22, AT-23 and the guest → account conversion.
+- AT-21 lives in `board-persistence.spec.ts`.
+- Full e2e suite: 146/146.
+
+**Interpretations and caveats** (flagged per the ambiguity rule):
+
+- An anonymous visitor who opens `/board/:id` with no link and no guest identity is sent to log in, not shown S-17. FLOWS does not say which.
+- Reset link confirms inline in the modal rather than in a nested dialog.
+- D-6: live ejection is pushed only from the instance that made the change. Enforcement does not depend on the push, because every op re-checks the role.
+- D-2: the 24-hour idle sweep of guest members is deferred to Phase 15.
+- OAuth signup from the guest bar does not post back to the board tab. The guest stays a guest in that tab until it reloads. Email signup converts in place.
+- Copy gaps: PRD §8 gives only the headlines for the dead-link and deleted-board screens. The bodies in `strings.ts` (`states`) are interim, and are commented as copy gaps there.
+- Two tabs of one signed-in user refreshing at the same instant can trip refresh-token reuse detection (R-SEC-006) and sign both out. Found by AT-23 and left as is: it needs a decision on a refresh grace window, not a quiet fix.
+- The S-08 dashboard dropdown flake from Phase 11 did not recur in these runs. It is not fixed.
+
 ### Phase 13 — Export, images, thumbnails, trash, duplicate (M5)
 
 | PR  | Scope                                                                                                                                                              | Plan tasks |
