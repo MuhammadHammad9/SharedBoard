@@ -135,7 +135,7 @@ export default function Trash() {
                   data-testid="trash-row"
                   data-trash-row
                   data-leaving={leaving.has(board.id) ? 'true' : 'false'}
-                  className="flex items-center gap-4 rounded-lg border border-border bg-app px-4 py-3"
+                  className="flex flex-wrap items-center gap-4 rounded-lg border border-border bg-app px-4 py-3"
                 >
                   {/* Phase 13 UI: the row carries the board's thumbnail. */}
                   <div className="flex h-12 w-20 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-subtle">
@@ -172,20 +172,24 @@ export default function Trash() {
                     </p>
                   </div>
 
-                  <Button
-                    variant="secondary"
-                    data-testid="restore"
-                    onClick={() => onRestore(board.id)}
-                  >
-                    {actions.restore}
-                  </Button>
-                  <Button
-                    variant="danger"
-                    data-testid="delete-forever"
-                    onClick={() => setTarget(board)}
-                  >
-                    {actions.deleteForever}
-                  </Button>
+                  {/* < 768 px the actions take their own line, so the name
+                      keeps the width it needs to be read (PRD §7.7). */}
+                  <div className="flex w-full justify-end gap-2 md:w-auto">
+                    <Button
+                      variant="secondary"
+                      data-testid="restore"
+                      onClick={() => onRestore(board.id)}
+                    >
+                      {actions.restore}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      data-testid="delete-forever"
+                      onClick={() => setTarget(board)}
+                    >
+                      {actions.deleteForever}
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>

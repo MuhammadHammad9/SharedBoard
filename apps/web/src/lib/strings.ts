@@ -501,6 +501,8 @@ export const dashboard = {
 
 /** FLOWS §14 — board chrome (S-10): toolbar, menus, properties, zoom, history. */
 export const boardChrome = {
+  // FLOWS §14.5 mobile header `⋯`. Copy gap: the drawing shows the glyph only.
+  more: 'More',
   renameBoard: 'Rename board',
   // R-A11Y-006 — the canvas text alternative.
   canvasLabel: (count: number) => `Whiteboard with ${count} objects`,
@@ -524,6 +526,9 @@ export const boardChrome = {
     text: 'Text',
     image: 'Image',
     comingLater: (label: string) => `${label} — coming in a later phase`,
+    // FLOWS §14.5: the mobile bar's `⋯`, opening a sheet with the rest.
+    // Copy gap: the drawing shows the glyph only. Interim.
+    more: 'More tools',
   },
 
   /** FR-CANVAS-019, FLOWS §14.2 — the right-click menu. */

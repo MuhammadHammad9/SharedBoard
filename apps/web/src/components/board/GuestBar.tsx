@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { actions, guest } from '../../lib/strings.js'
 import { Button } from '../ui/Button.js'
+import { useBreakpoint } from '../../lib/breakpoints.js'
 
 /**
  * "You're a guest. Sign up to save your boards." — FLOWS §7.4.
@@ -28,6 +29,8 @@ function dismissedRecently(boardId: string): boolean {
 
 export function GuestBar({ boardId }: { boardId: string }) {
   const [hidden, setHidden] = useState(() => dismissedRecently(boardId))
+  // Above the bottom toolbar on tablet and mobile (PRD §7.7).
+  const breakpoint = useBreakpoint()
   if (hidden) return null
 
   const signUp = () => {
@@ -49,7 +52,7 @@ export function GuestBar({ boardId }: { boardId: string }) {
     <div
       role="region"
       aria-label={guest.conversionBar}
-      className="pointer-events-auto absolute bottom-4 left-1/2 z-guestbar flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-app px-4 py-2 text-sm text-primary shadow-panel"
+      className={`pointer-events-auto absolute ${breakpoint === 'desktop' || breakpoint === 'laptop' ? 'bottom-4' : 'bottom-20'} left-1/2 z-guestbar flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-app px-4 py-2 text-sm text-primary shadow-panel`}
       data-testid="guest-bar"
     >
       <span>{guest.conversionBar}</span>

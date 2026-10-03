@@ -2,6 +2,7 @@ import { Minus, Plus, CornersOut } from '@phosphor-icons/react'
 import { ZOOM_MAX, ZOOM_MIN } from '@coboard/shared'
 import { useBoardStore } from '../../stores/boardStore.js'
 import { boardChrome } from '../../lib/strings.js'
+import { useBreakpoint } from '../../lib/breakpoints.js'
 
 /**
  * Zoom controls — FLOWS §14.2. Bottom-right, 16 px margins, z-index: panel.
@@ -30,6 +31,8 @@ const BUTTON =
 export function ZoomControls({ getSize }: ZoomControlsProps) {
   // Narrow selector — R-ARCH-003.
   const zoom = useBoardStore(s => s.viewport.zoom)
+  // On mobile it sits above the 56 px bottom bar (FLOWS §14.5).
+  const breakpoint = useBreakpoint()
   const zoomAt = useBoardStore(s => s.zoomAt)
   const resetZoom = useBoardStore(s => s.resetZoom)
   const zoomToFit = useBoardStore(s => s.zoomToFit)
@@ -45,7 +48,7 @@ export function ZoomControls({ getSize }: ZoomControlsProps) {
 
   return (
     <div
-      className="pointer-events-auto absolute bottom-4 right-4 z-panel flex items-center gap-1 rounded-md border border-border bg-app p-1 shadow-panel"
+      className={`pointer-events-auto absolute ${breakpoint === 'mobile' ? 'bottom-20' : 'bottom-4'} right-4 z-panel flex items-center gap-1 rounded-md border border-border bg-app p-1 shadow-panel`}
       role="group"
       aria-label={boardChrome.zoom.label}
       data-testid="zoom-controls"

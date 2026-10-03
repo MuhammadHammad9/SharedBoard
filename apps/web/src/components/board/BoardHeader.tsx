@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { CaretLeft } from '@phosphor-icons/react'
+import { CaretLeft, DotsThree, Keyboard } from '@phosphor-icons/react'
 import { RenameInline } from '../../features/boards/RenameInline.js'
 import { useToast } from '../ui/Toast.js'
 import { useRenameBoard } from '../../features/boards/useBoards.js'
-import { actions, boardChrome, boards as boardStrings } from '../../lib/strings.js'
+import {
+  actions,
+  boardChrome,
+  boards as boardStrings,
+  shortcuts,
+} from '../../lib/strings.js'
 import { Button } from '../ui/Button.js'
 import { ShareModal } from '../../features/sharing/ShareModal.js'
 import { ConnectionIndicator } from './ConnectionIndicator.js'
@@ -12,9 +17,9 @@ import { AvatarStack } from '../../features/presence/AvatarStack.js'
 import type { ConnectionState, Role } from '@coboard/shared'
 import { ExportModal } from '../../features/export/ExportModal.js'
 import { openExport } from '../../features/export/exportStore.js'
-import { Keyboard } from '@phosphor-icons/react'
 import { openShortcuts } from './shortcutsStore.js'
-import { shortcuts } from '../../lib/strings.js'
+import { Dropdown } from '../ui/Dropdown.js'
+import { useBreakpoint } from '../../lib/breakpoints.js'
 
 /** The canvas fills the window on the board route, so the window is the view. */
 const windowSize = () => ({ width: window.innerWidth, height: window.innerHeight })
@@ -60,6 +65,7 @@ export function BoardHeader({
   /** "Retry now". */
   onRetry?: () => void
 }) {
+  const mobile = useBreakpoint() === 'mobile'
   const [params, setParams] = useSearchParams()
   const [editing, setEditing] = useState(false)
   const [sharing, setSharing] = useState(false)
@@ -137,35 +143,73 @@ export function BoardHeader({
         {...(onRetry ? { onRetry } : {})}
       />
 
-      {/* FR-EXPORT-001: anyone who can see the board can export it. */}
-      <span className="pointer-events-auto">
-        <Button variant="secondary" onClick={openExport} data-testid="export-button">
-          {actions.exportLabel}
-        </Button>
-      </span>
-      <ExportModal boardName={displayName} getSize={windowSize} />
-      {/* S-15 — also on `?`, but a key nobody knows about needs a door. */}
-      <span className="pointer-events-auto">
-        <button
-          type="button"
-          onClick={openShortcuts}
-          aria-label={shortcuts.open}
-          aria-keyshortcuts="?"
-          data-testid="shortcuts-button"
-          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted outline-none transition-colors duration-fast hover:bg-subtle hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-        >
-          <Keyboard size={18} weight="light" aria-hidden="true" />
-        </button>
-      </span>
-
-      {/* FR-SHARE-001: inviting is the owner's alone, so the button is too. */}
-      {role === 'OWNER' && (
+      {mobile ? (
+        /* FLOWS §14.5: the 48 px mobile header keeps the name, presence and
+           connection; everything else lives behind `⋯`. */
         <span className="pointer-events-auto">
-          <Button onClick={() => setSharing(true)} data-testid="share-button">
-            {actions.share}
-          </Button>
+          <Dropdown
+            label={boardChrome.more}
+            items={[
+              {
+                label: actions.exportLabel,
+                onSelect: openExport,
+                testId: 'export-button',
+              },
+              ...(role === 'OWNER'
+                ? [
+                    {
+                      label: actions.share,
+                      onSelect: () => setSharing(true),
+                      testId: 'share-button',
+                    },
+                  ]
+                : []),
+            ]}
+            trigger={props => (
+              <button
+                {...props}
+                type="button"
+                aria-label={boardChrome.more}
+                data-testid="header-more"
+                className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-md bg-app/90 text-primary shadow-panel outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                <DotsThree size={20} weight="bold" aria-hidden="true" />
+              </button>
+            )}
+          />
         </span>
+      ) : (
+        <>
+          {/* FR-EXPORT-001: anyone who can see the board can export it. */}
+          <span className="pointer-events-auto">
+            <Button variant="secondary" onClick={openExport} data-testid="export-button">
+              {actions.exportLabel}
+            </Button>
+          </span>
+          {/* S-15 — also on `?`, but a key nobody knows about needs a door. */}
+          <span className="pointer-events-auto">
+            <button
+              type="button"
+              onClick={openShortcuts}
+              aria-label={shortcuts.open}
+              aria-keyshortcuts="?"
+              data-testid="shortcuts-button"
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted outline-none transition-colors duration-fast hover:bg-subtle hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <Keyboard size={18} weight="light" aria-hidden="true" />
+            </button>
+          </span>
+          {/* FR-SHARE-001: inviting is the owner's alone, so the button is too. */}
+          {role === 'OWNER' && (
+            <span className="pointer-events-auto">
+              <Button onClick={() => setSharing(true)} data-testid="share-button">
+                {actions.share}
+              </Button>
+            </span>
+          )}
+        </>
       )}
+      <ExportModal boardName={displayName} getSize={windowSize} />
       {role === 'OWNER' && (
         <ShareModal
           open={sharing}

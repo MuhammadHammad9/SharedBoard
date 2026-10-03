@@ -4,6 +4,7 @@ import { SelectionProperties } from './properties/SelectionProperties.js'
 import { ShapeProperties } from './properties/ShapeProperties.js'
 import { StickyProperties, TextProperties } from './properties/StickyTextProperties.js'
 import { boardChrome } from '../../lib/strings.js'
+import { useBreakpoint } from '../../lib/breakpoints.js'
 
 /**
  * Properties panel — FLOWS §14.2 and §14.4. 240 px, floating right, 16 px from
@@ -34,6 +35,7 @@ export function PropertiesPanel() {
   // Narrow selectors — R-ARCH-003. The COUNT, never the objects themselves.
   const activeTool = useBoardStore(s => s.activeTool)
   const hasSelection = useBoardStore(s => s.selection.length > 0)
+  const breakpoint = useBreakpoint()
 
   const context = hasSelection ? 'selection' : activeTool
 
@@ -62,6 +64,18 @@ export function PropertiesPanel() {
 
   // FLOWS §14.4: hidden entirely when there is nothing to show.
   if (!content) return null
+  // PRD §7.7: below 1280 px the panel is not resident. 768–1279 it is a
+  // popover, shown for a selection AND for a tool's own settings — otherwise
+  // pen colour has no home at those widths (D-17). On mobile it is a bottom
+  // sheet for a selection only (D-16).
+  if (breakpoint === 'mobile' && !hasSelection) return null
+
+  const placement =
+    breakpoint === 'desktop'
+      ? 'right-4 top-1/2 w-60 rounded-md'
+      : breakpoint === 'mobile'
+        ? 'inset-x-0 bottom-14 max-h-[50vh] overflow-y-auto rounded-t-lg'
+        : 'right-4 top-16 w-60 rounded-md'
 
   return (
     <aside
@@ -72,7 +86,8 @@ export function PropertiesPanel() {
       // transition rather than a keyframe and a fast P→V→P sweep retargets
       // instead of restarting.
       data-crossfade=""
-      className="pointer-events-auto absolute right-4 top-1/2 z-panel w-60 rounded-md border border-border bg-app p-3 shadow-panel"
+      className={`pointer-events-auto absolute z-panel border border-border bg-app p-3 shadow-panel ${placement}`}
+      data-layout={breakpoint === 'desktop' ? 'panel' : breakpoint === 'mobile' ? 'sheet' : 'popover'}
       aria-label={boardChrome.properties.label}
       data-testid="properties-panel"
       data-context={context}

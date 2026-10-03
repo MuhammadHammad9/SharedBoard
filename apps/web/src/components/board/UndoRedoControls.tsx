@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react'
 import { ArrowArcLeft, ArrowArcRight } from '@phosphor-icons/react'
 import { history } from '../../features/canvas/history/history.js'
 import { boardChrome } from '../../lib/strings.js'
+import { useBreakpoint } from '../../lib/breakpoints.js'
 
 /**
  * Undo / redo — FR-CANVAS-018, FLOWS §14.2.
@@ -36,7 +37,12 @@ const BUTTON =
   'aria-disabled:cursor-not-allowed aria-disabled:opacity-40 ' +
   'aria-disabled:hover:bg-transparent aria-disabled:active:scale-100'
 
-export function UndoRedoControls() {
+export function UndoRedoControls({
+  inline = false,
+}: {
+  /** Inside the mobile bottom bar rather than floating (FLOWS §14.5). */
+  inline?: boolean
+} = {}) {
   const readOnly = useBoardStore(s => s.readOnly)
   /*
    * The history stack is plain TypeScript with its own listener set, not a
@@ -56,12 +62,20 @@ export function UndoRedoControls() {
     history.canRedo,
   )
 
+  const breakpoint = useBreakpoint()
+
   // Nothing of a viewer's own to undo.
   if (readOnly) return null
+  // On mobile the bottom bar carries undo and redo itself.
+  if (breakpoint === 'mobile' && !inline) return null
 
   return (
     <div
-      className="pointer-events-auto absolute bottom-4 left-4 z-panel flex items-center gap-1 rounded-md border border-border bg-app p-1 shadow-panel"
+      className={
+        inline
+          ? 'flex items-center gap-1'
+          : 'pointer-events-auto absolute bottom-4 left-4 z-panel flex items-center gap-1 rounded-md border border-border bg-app p-1 shadow-panel'
+      }
       role="group"
       aria-label={boardChrome.history.label}
       data-testid="undo-redo-controls"

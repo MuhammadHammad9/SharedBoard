@@ -45,6 +45,7 @@ export function ShareModal({
       onClose={onClose}
       title={sharing.title(boardName)}
       wide
+      sheetOnMobile
       testId="share-modal"
     >
       <div className="flex flex-col gap-6">

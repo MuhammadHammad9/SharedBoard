@@ -112,8 +112,12 @@
    */
   [data-crossfade] {
     opacity: 1;
-    transform: translateY(-50%);
     transition: opacity var(--duration-fast) var(--ease-out);
+  }
+  /* Only the resident desktop panel is vertically centred; the popover and
+     the mobile sheet (PRD §7.7) sit where their classes put them. */
+  [data-crossfade][data-layout='panel'] {
+    transform: translateY(-50%);
   }
 
   @starting-style {

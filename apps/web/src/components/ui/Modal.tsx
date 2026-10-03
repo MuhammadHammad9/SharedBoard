@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useBreakpoint } from '../../lib/breakpoints.js'
 
 /**
  * Modal — FLOWS §6.7, `R-A11Y-004`.
@@ -61,6 +62,8 @@ export interface ModalProps {
    * do nothing until it settles (FLOWS §13.2).
    */
   dismissible?: boolean
+  /** FLOWS §14.5: on mobile, a full-screen sheet rather than a card. */
+  sheetOnMobile?: boolean
 }
 
 export function Modal({
@@ -73,7 +76,9 @@ export function Modal({
   wide = false,
   destructive = false,
   dismissible = true,
+  sheetOnMobile = false,
 }: ModalProps) {
+  const sheet = useBreakpoint() === 'mobile' && sheetOnMobile
   const panel = useRef<HTMLDivElement | null>(null)
   const returnFocusTo = useRef<HTMLElement | null>(null)
   const pointerDownInside = useRef(false)
@@ -152,7 +157,7 @@ export function Modal({
   return createPortal(
     <div
       data-modal-backdrop
-      className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 p-4"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-primary/40 ${sheet ? '' : 'p-4'}`}
       onPointerDown={event => {
         pointerDownInside.current = panel.current?.contains(event.target as Node) ?? false
       }}
@@ -172,7 +177,12 @@ export function Modal({
         aria-labelledby={titleId}
         tabIndex={-1}
         data-testid={testId}
-        className={`w-full ${wide ? 'max-w-lg' : 'max-w-md'} rounded-lg border border-border bg-app p-6 shadow-panel outline-none`}
+        data-sheet={sheet ? 'true' : undefined}
+        className={`w-full border border-border bg-app p-6 shadow-panel outline-none ${
+          sheet
+            ? 'h-[100dvh] max-w-none overflow-y-auto rounded-none'
+            : `${wide ? 'max-w-lg' : 'max-w-md'} rounded-lg`
+        }`}
         onClick={event => event.stopPropagation()}
       >
         <h2 id={titleId} className="text-base font-semibold text-primary">

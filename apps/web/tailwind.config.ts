@@ -16,6 +16,10 @@ import { PRESENCE_COLOURS, STICKY_COLOURS } from '@coboard/shared'
  */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // R-MOTION-061: `hover:` applies only where hover exists — wrapped in
+  // `@media (hover: hover)`, so a tap on a touch screen never leaves a
+  // control stuck in its hover state.
+  future: { hoverOnlyWhenSupported: true },
   theme: {
     extend: {
       colors: {

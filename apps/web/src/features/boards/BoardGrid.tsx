@@ -36,7 +36,8 @@ const loadAnimatedGrid = () => import('./AnimatedGrid.js')
 void loadAnimatedGrid()
 const AnimatedGrid = lazy(loadAnimatedGrid)
 
-const GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+// PRD §7.7: one column below 768 px, two from 768, then three and four.
+const GRID = 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
 
 export function BoardGridSkeleton({ count = 8 }: { count?: number }) {
   return (
