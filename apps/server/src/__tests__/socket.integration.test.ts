@@ -98,8 +98,8 @@ class Client {
   closeCode: number | null = null
   private constructor(readonly socket: WebSocket) {}
 
-  static async connect(ticket: string): Promise<Client> {
-    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws?ticket=${ticket}`)
+  static async connect(ticket: string, onPort = port): Promise<Client> {
+    const socket = new WebSocket(`ws://127.0.0.1:${onPort}/ws?ticket=${ticket}`)
     const client = new Client(socket)
     socket.on('message', data => {
       client.received.push(JSON.parse(String(data)) as ServerMessage)
@@ -865,6 +865,60 @@ describe('Redis pub/sub fan-out', () => {
     await gatewayB.close()
     await Promise.all([fanoutA.stop(), fanoutB.stop()])
     await new Promise<void>(resolve => serverB.close(() => resolve()))
+  })
+
+  it('relays ops, presence and live ejection to a socket on another instance', async () => {
+    /*
+     * The socket on instance B never touches instance A's room. Before this
+     * was wired, only `Fanout.publish` crossed — the op batch, the presence
+     * join and the revoke stayed on the instance that produced them, so two
+     * people on one board on different processes never saw each other.
+     */
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+
+    const roomsB = new RoomManager(0)
+    const serverB = createServer(app)
+    const gatewayB = attachGateway(serverB, { rooms: roomsB })
+    await new Promise<void>(resolve => serverB.listen(0, '127.0.0.1', resolve))
+    const portB = (serverB.address() as { port: number }).port
+    const fanoutA = new Fanout(gateway.rooms)
+    const fanoutB = new Fanout(roomsB)
+    await Promise.all([fanoutA.start(), fanoutB.start()])
+
+    try {
+      const onB = await Client.connect(await getTicket(priya, boardId), portB)
+      clients.push(onB)
+      const ackB = await onB.join(boardId)
+      const onA = await connect(priya, boardId)
+      const ackA = await onA.join(boardId)
+      // The arrival on A is told who is already on B, from Redis.
+      expect(ackA.users.map(u => u.sessionId)).toContain(ackB.sessionId)
+
+      // Presence: B hears about the arrival on A.
+      await onB.waitFor('presence_join')
+
+      // Ops: the batch flushed on A arrives on B, once.
+      const op = createOp(sticky())
+      onA.send({ t: 'op', op })
+      const batch = await onB.waitFor('op_batch')
+      expect(batch.ops.map(o => o.id)).toEqual([op.id])
+      // ...and the author on A is not sent its own op back by B.
+      await new Promise(r => setTimeout(r, 300))
+      expect(onA.all('op_batch')).toHaveLength(0)
+
+      // A live revoke issued on A ejects the socket on B (FLOWS §9.5).
+      gateway.rooms.control(boardId, {
+        action: 'revoke',
+        identityKey: `u:${priya.userId}`,
+      })
+      expect(await onB.waitFor('access_revoked')).toEqual({ t: 'access_revoked' })
+      expect(await onB.waitForClose()).toBe(CLOSE_CODES.FORBIDDEN)
+    } finally {
+      await Promise.all([fanoutA.stop(), fanoutB.stop()])
+      await gatewayB.close()
+      await new Promise<void>(resolve => serverB.close(() => resolve()))
+    }
   })
 
   it('does not deliver an instance its own message twice', async () => {

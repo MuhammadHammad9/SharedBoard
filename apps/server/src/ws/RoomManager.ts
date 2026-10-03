@@ -2,6 +2,8 @@ import {
   BROADCAST_BATCH_MS,
   MAX_USERS_PER_ROOM,
   PRESENCE_COLOURS,
+  CLOSE_CODES,
+  type Role,
   type ServerMessage,
   type ServerOp,
 } from '@coboard/shared'
@@ -32,6 +34,27 @@ import type { Session } from './Session.js'
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 
+/**
+ * What crosses to the other instances — TRD §15.2. Implemented by `Fanout`
+ * over Redis pub/sub; absent in a single-process test, where every room
+ * method below simply stays local.
+ */
+export interface Relay {
+  /** An unbatched room message: presence, join/leave, rename. */
+  message(boardId: string, message: ServerMessage, exceptSessionId?: string): void
+  /** A flushed op batch; each receiver drops ops by their own session id. */
+  ops(boardId: string, ops: ServerOp[]): void
+  /** A live permission change (ws/live.ts) for the sessions it names. */
+  control(boardId: string, control: Control): void
+}
+
+/** Server-to-server only. The identity key embeds a guest id, which is a
+ * credential (D-1), so a Control is never forwarded to a client. */
+export type Control =
+  | { action: 'role'; identityKey: string; role: Role }
+  | { action: 'revoke'; identityKey: string }
+  | { action: 'deleted' }
+
 interface Room {
   sessions: Map<string, Session>
   /** Ops waiting for the batch window to close. */
@@ -45,6 +68,8 @@ interface Room {
 
 export class RoomManager {
   private readonly rooms = new Map<string, Room>()
+  /** Set by `Fanout.start()`; null means this process is the whole world. */
+  relay: Relay | null = null
 
   /** Test seam so a suite can drive the batch window without waiting. */
   constructor(private readonly batchMs: number = BROADCAST_BATCH_MS) {}
@@ -107,11 +132,53 @@ export class RoomManager {
 
   /** Immediate, unbatched. Presence, join/leave, and every nack. */
   broadcast(boardId: string, message: ServerMessage, exceptSessionId?: string): void {
+    this.deliver(boardId, message, exceptSessionId)
+    this.relay?.message(boardId, message, exceptSessionId)
+  }
+
+  /** To the sessions on THIS instance only — the receiving end of the relay. */
+  deliver(boardId: string, message: ServerMessage, exceptSessionId?: string): void {
     const room = this.rooms.get(boardId)
     if (!room) return
     for (const session of room.sessions.values()) {
       if (session.id === exceptSessionId) continue
       session.send(message)
+    }
+  }
+
+  /** Every op except a session's own, to the sessions on this instance. */
+  deliverOps(boardId: string, ops: ServerOp[]): void {
+    const room = this.rooms.get(boardId)
+    if (!room) return
+    for (const session of room.sessions.values()) {
+      const forThem = ops.filter(op => op.actorSessionId !== session.id)
+      if (forThem.length === 0) continue
+      session.send({ t: 'op_batch', ops: forThem })
+    }
+  }
+
+  /** A live permission change, here and on every other instance. */
+  control(boardId: string, control: Control): void {
+    this.applyControl(boardId, control)
+    this.relay?.control(boardId, control)
+  }
+
+  /** FLOWS §9.5, applied to the matching sessions on this instance. */
+  applyControl(boardId: string, control: Control): void {
+    for (const session of this.sessions(boardId)) {
+      if (control.action === 'deleted') {
+        session.send({ t: 'board_deleted' })
+        session.close(CLOSE_CODES.NOT_FOUND, 'Board deleted')
+        continue
+      }
+      if (session.identityKey !== control.identityKey) continue
+      if (control.action === 'role') {
+        session.role = control.role
+        session.send({ t: 'role_changed', role: control.role })
+      } else {
+        session.send({ t: 'access_revoked' })
+        session.close(CLOSE_CODES.FORBIDDEN, 'Access revoked')
+      }
     }
   }
 
@@ -164,11 +231,10 @@ export class RoomManager {
     // handing it an out-of-order batch would create work it does not need.
     ops.sort((a, b) => a.seq - b.seq)
 
-    for (const session of room.sessions.values()) {
-      const forThem = ops.filter(op => op.actorSessionId !== session.id)
-      if (forThem.length === 0) continue
-      session.send({ t: 'op_batch', ops: forThem })
-    }
+    this.deliverOps(boardId, ops)
+    this.relay?.ops(boardId, ops)
+    // A REST write opens a room with no sockets in it; do not keep it.
+    if (room.sessions.size === 0) this.rooms.delete(boardId)
   }
 
   /** Board ids with at least one live session — for the presence sweep. */

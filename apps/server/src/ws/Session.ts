@@ -9,7 +9,7 @@ import {
   type ServerMessage,
 } from '@coboard/shared'
 import { logger } from '../lib/logger.js'
-import type { Identity } from '../lib/identity.js'
+import { identityKey, type Identity } from '../lib/identity.js'
 
 /**
  * One user's connection to one board — TRD §5.1.
@@ -50,6 +50,11 @@ export class Session {
   /** A guest's id. A bearer secret (D-1): never put it in an outbound message. */
   get guestId(): string | null {
     return this.identity.kind === 'guest' ? this.identity.guestId : null
+  }
+
+  /** For matching live permission changes. Server-side only. */
+  get identityKey(): string {
+    return identityKey(this.identity)
   }
 
   /** Any inbound frame counts, not only a ping — TRD §5.1. */

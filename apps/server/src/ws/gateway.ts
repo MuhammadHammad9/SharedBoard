@@ -105,7 +105,7 @@ export function attachGateway(server: Server, options: GatewayOptions = {}): Gat
       void presenceService.sweep(boardId).then(stale => {
         for (const sessionId of stale) {
           if (rooms.get(boardId, sessionId)) continue // still live here
-          rooms.broadcast(boardId, { t: 'presence_leave', sessionId })
+          rooms.deliver(boardId, { t: 'presence_leave', sessionId })
         }
       })
     }

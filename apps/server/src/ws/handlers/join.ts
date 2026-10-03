@@ -32,7 +32,22 @@ export async function handleJoin(
   // Record in Redis so other instances can see this session — TRD §15.2.
   void presenceService.touch(session.boardId, session.toPresenceUser())
 
-  const currentSeq = await opService.currentSeq(session.boardId)
+  const [currentSeq, everywhere] = await Promise.all([
+    opService.currentSeq(session.boardId),
+    presenceService.list(session.boardId),
+  ])
+
+  // Who is already here: this instance's room, plus the sessions other
+  // instances recorded in Redis (TRD §15.2). Local entries win — they are
+  // the authority for this process and are never stale.
+  const local = rooms
+    .sessions(session.boardId)
+    .filter(other => other.id !== session.id && other.joined)
+    .map(other => other.toPresenceUser())
+  const known = new Set([session.id, ...local.map(u => u.sessionId)])
+  const remote = everywhere
+    .filter(entry => !known.has(entry.sessionId))
+    .map(({ seenAt: _seenAt, ...user }) => user)
 
   /*
    * The ack goes out BEFORE the catch-up ops, and before the presence
@@ -46,10 +61,7 @@ export async function handleJoin(
     role: session.role,
     sessionId: session.id,
     colour: session.colour,
-    users: rooms
-      .sessions(session.boardId)
-      .filter(other => other.id !== session.id && other.joined)
-      .map(other => other.toPresenceUser()),
+    users: [...local, ...remote],
   })
 
   // Everyone else learns about the arrival. Presence is never persisted and
