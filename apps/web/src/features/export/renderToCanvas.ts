@@ -32,6 +32,9 @@ const CANVAS_BG = '#FAFAFA'
 /** The largest area an export may have — FLOWS §11 "8192×8192". */
 const MAX_PIXELS = EXPORT_MAX_DIMENSION * EXPORT_MAX_DIMENSION
 
+/** The longest side any browser will reliably allocate. */
+const MAX_SIDE = 16_384
+
 /** Objects per rAF chunk on a large board (FLOWS §11). */
 const CHUNK = 500
 
@@ -86,9 +89,15 @@ export function clampScale(
   rect: Rect,
   requested: number,
 ): { scale: number; clamped: boolean } {
-  const pixels = rect.width * requested * (rect.height * requested)
-  if (pixels <= MAX_PIXELS) return { scale: requested, clamped: false }
-  return { scale: Math.sqrt(MAX_PIXELS / (rect.width * rect.height)), clamped: true }
+  // Two limits. The AREA is FLOWS §11's "8192×8192". The longest SIDE is the
+  // browser's: a 20,000 × 50 canvas is far under the area and still fails to
+  // allocate (Safari and Firefox refuse sides past ~16,384 px).
+  const byArea = Math.sqrt(MAX_PIXELS / (rect.width * rect.height))
+  const bySide = MAX_SIDE / Math.max(rect.width, rect.height)
+  const limit = Math.min(byArea, bySide)
+  return requested <= limit
+    ? { scale: requested, clamped: false }
+    : { scale: limit, clamped: true }
 }
 
 export interface RenderArgs {

@@ -51,6 +51,12 @@ describe('exportContent', () => {
 })
 
 describe('clampScale — the 8192² limit', () => {
+  it('also caps the longest side, which the area alone would let through', () => {
+    const { scale, clamped } = clampScale({ x: 0, y: 0, width: 20_000, height: 50 }, 1)
+    expect(clamped).toBe(true)
+    expect(20_000 * scale).toBeLessThanOrEqual(16_384)
+  })
+
   it('leaves a scale that fits alone', () => {
     expect(clampScale({ x: 0, y: 0, width: 2_000, height: 1_000 }, 2)).toEqual({
       scale: 2,

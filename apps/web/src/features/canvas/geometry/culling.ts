@@ -29,11 +29,27 @@ export function getViewRect(v: Viewport, width: number, height: number): ViewRec
   }
 }
 
-export const isVisible = (o: BoardObject, view: ViewRect): boolean =>
-  o.x + o.width >= view.minX &&
-  o.x <= view.maxX &&
-  o.y + o.height >= view.minY &&
-  o.y <= view.maxY
+export function isVisible(o: BoardObject, view: ViewRect): boolean {
+  if (o.rotation === 0) {
+    return (
+      o.x + o.width >= view.minX &&
+      o.x <= view.maxX &&
+      o.y + o.height >= view.minY &&
+      o.y <= view.maxY
+    )
+  }
+  // Rotated: the circle through the corners bounds every rotation, with no
+  // trigonometry and no allocation in the hot path.
+  const r = Math.hypot(o.width, o.height) / 2
+  const cx = o.x + o.width / 2
+  const cy = o.y + o.height / 2
+  return (
+    cx + r >= view.minX &&
+    cx - r <= view.maxX &&
+    cy + r >= view.minY &&
+    cy - r <= view.maxY
+  )
+}
 
 /**
  * Filter to visible objects.
