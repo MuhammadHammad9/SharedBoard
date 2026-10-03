@@ -357,3 +357,67 @@ describe('POST /members/claim-guest — guest to account, FLOWS §7.4', () => {
     ).toBe(401)
   })
 })
+
+describe('the idle-guest sweep — FLOWS §10.3', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  async function addGuest(boardId: string, lastSeenAt: Date): Promise<string> {
+    const guestId = randomUUID()
+    await prisma.boardMember.create({
+      data: { boardId, guestId, guestName: 'Dana', role: 'VIEWER', lastSeenAt },
+    })
+    return guestId
+  }
+
+  const guestsOn = (boardId: string) =>
+    prisma.boardMember.count({ where: { boardId, guestId: { not: null } } })
+
+  it('drops guests once the board has been idle 24 h, and keeps everyone else', async () => {
+    const { memberService } = await import('../services/MemberService.js')
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const now = Date.now()
+    await prisma.board.update({
+      where: { id: boardId },
+      data: { lastActivityAt: new Date(now - 2 * DAY) },
+    })
+    await addGuest(boardId, new Date(now - 2 * DAY))
+
+    expect(await memberService.sweepIdleGuests(async () => false, now)).toBeGreaterThan(0)
+    expect(await guestsOn(boardId)).toBe(0)
+    // The owner row is untouched.
+    expect(await prisma.boardMember.count({ where: { boardId } })).toBe(1)
+  })
+
+  it('keeps guests while the board is not idle: a recent op, a recent guest, or anyone connected', async () => {
+    const { memberService } = await import('../services/MemberService.js')
+    const priya = await signUp()
+    const now = Date.now()
+
+    // A recent op.
+    const busy = await createBoard(priya)
+    await addGuest(busy, new Date(now - 2 * DAY))
+
+    // A guest who came back an hour ago.
+    const revisited = await createBoard(priya)
+    await prisma.board.update({
+      where: { id: revisited },
+      data: { lastActivityAt: new Date(now - 2 * DAY) },
+    })
+    await addGuest(revisited, new Date(now - 2 * DAY))
+    await addGuest(revisited, new Date(now - 60 * 60 * 1000))
+
+    // Someone connected right now.
+    const live = await createBoard(priya)
+    await prisma.board.update({
+      where: { id: live },
+      data: { lastActivityAt: new Date(now - 2 * DAY) },
+    })
+    await addGuest(live, new Date(now - 2 * DAY))
+
+    await memberService.sweepIdleGuests(async boardId => boardId === live, now)
+    expect(await guestsOn(busy)).toBe(1)
+    expect(await guestsOn(revisited)).toBe(2)
+    expect(await guestsOn(live)).toBe(1)
+  })
+})

@@ -4,6 +4,7 @@ import { createApp } from './http/app.js'
 import { env } from './lib/env.js'
 import { logger } from './lib/logger.js'
 import { attachGateway } from './ws/gateway.js'
+import { startMaintenance } from './jobs/maintenance.js'
 
 /**
  * Phase 9 server: REST auth, boards, the op log, snapshots, and the WebSocket
@@ -35,6 +36,7 @@ if (env().NODE_ENV !== 'test') {
     logger.info({ port: env().PORT }, 'CoBoard server listening')
   })
   attachGateway(server, { fanout: true })
+  startMaintenance()
 }
 
 export { app, createApp }

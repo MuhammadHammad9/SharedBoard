@@ -42,6 +42,9 @@ export interface InviteView {
   role: MemberRole
 }
 
+/** FLOWS §10.3: guests go once the board has been idle this long. */
+export const GUEST_IDLE_MS = 24 * 60 * 60 * 1000
+
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export class MemberService {
@@ -251,6 +254,52 @@ export class MemberService {
       permissionService.invalidate(boardId, userId),
     ])
     return role
+  }
+
+  /**
+   * FLOWS §10.3 / PRD Q-1 (interim, decision D-2): a guest who has left stays
+   * listed "for the session", and is dropped once the board has been idle for
+   * 24 hours.
+   *
+   * Idle means all three: no op in 24 h (`lastActivityAt`), no guest joined
+   * or came back in 24 h (`lastSeenAt` — a returning guest re-joins on every
+   * visit), and nobody connected on any instance right now (`isLive`, the
+   * Redis presence hash). Returns how many guest rows were removed.
+   */
+  async sweepIdleGuests(
+    isLive: (boardId: string) => Promise<boolean>,
+    now = Date.now(),
+  ): Promise<number> {
+    const cutoff = new Date(now - GUEST_IDLE_MS)
+    const candidates = await this.db.board.findMany({
+      where: {
+        lastActivityAt: { lt: cutoff },
+        members: { some: { guestId: { not: null } } },
+        NOT: {
+          members: { some: { guestId: { not: null }, lastSeenAt: { gte: cutoff } } },
+        },
+      },
+      select: { id: true },
+    })
+
+    let removed = 0
+    for (const { id: boardId } of candidates) {
+      if (await isLive(boardId)) continue
+      const guests = await this.db.boardMember.findMany({
+        where: { boardId, guestId: { not: null } },
+        select: { guestId: true },
+      })
+      const { count } = await this.db.boardMember.deleteMany({
+        where: { boardId, guestId: { not: null }, lastSeenAt: { lt: cutoff } },
+      })
+      removed += count
+      await Promise.all(
+        guests.map(g =>
+          permissionService.invalidate(boardId, { kind: 'guest', guestId: g.guestId! }),
+        ),
+      )
+    }
+    return removed
   }
 
   private async findEditable(boardId: string, memberId: string) {
