@@ -89,7 +89,10 @@ export function Toolbar() {
   // FR-SHARE-006: a viewer's toolbar is the badge, nothing else.
   if (readOnly) return <ViewOnlyBadge />
 
-  const toolButton = ({ tool, icon: IconComponent, label, shortcut }: ToolSpec, touch: boolean) => {
+  const toolButton = (
+    { tool, icon: IconComponent, label, shortcut }: ToolSpec,
+    touch: boolean,
+  ) => {
     const isImage = tool === 'image'
     const implemented = isImage || ACTIVE_TOOLS.includes(tool)
     const active = !isImage && activeTool === tool
@@ -174,7 +177,10 @@ export function Toolbar() {
             }}
           >
             {rest.map(spec => (
-              <div key={spec.tool} className="flex flex-col items-center gap-1 text-xs text-muted">
+              <div
+                key={spec.tool}
+                className="flex flex-col items-center gap-1 text-xs text-muted"
+              >
                 {toolButton(spec, true)}
                 {spec.label}
               </div>

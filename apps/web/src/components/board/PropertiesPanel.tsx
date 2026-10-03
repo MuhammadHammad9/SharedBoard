@@ -87,7 +87,9 @@ export function PropertiesPanel() {
       // instead of restarting.
       data-crossfade=""
       className={`pointer-events-auto absolute z-panel border border-border bg-app p-3 shadow-panel ${placement}`}
-      data-layout={breakpoint === 'desktop' ? 'panel' : breakpoint === 'mobile' ? 'sheet' : 'popover'}
+      data-layout={
+        breakpoint === 'desktop' ? 'panel' : breakpoint === 'mobile' ? 'sheet' : 'popover'
+      }
       aria-label={boardChrome.properties.label}
       data-testid="properties-panel"
       data-context={context}

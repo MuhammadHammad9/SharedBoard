@@ -215,8 +215,15 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
             'flex w-full cursor-pointer items-center justify-between gap-6 rounded-sm px-2 py-1.5 ' +
             'text-left text-xs transition-colors duration-fast ease-standard ' +
             'disabled:cursor-not-allowed disabled:opacity-40 ' +
-            (item.danger ? 'text-danger ' : 'text-primary ') +
-            (i === activeIndex ? (item.danger ? 'bg-danger/10' : 'bg-subtle') : '')
+            // Danger text on a danger tint is under 4.5:1; the focused danger item
+            // inverts instead.
+            (i === activeIndex
+              ? item.danger
+                ? 'bg-danger text-white'
+                : 'bg-subtle text-primary'
+              : item.danger
+                ? 'text-danger'
+                : 'text-primary')
           }
         >
           {item.label}

@@ -171,7 +171,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           // a list re-announces the whole list when one item leaves.
           className={`pointer-events-none fixed z-50 flex flex-col gap-2 ${
             // On the board: above the undo controls and any bottom toolbar.
-            where === 'board' ? 'bottom-20 left-6 items-start' : 'bottom-6 inset-x-0 items-center'
+            where === 'board'
+              ? 'bottom-20 left-6 items-start'
+              : 'bottom-6 inset-x-0 items-center'
           }`}
           data-testid="toast-host"
           data-placement={where}

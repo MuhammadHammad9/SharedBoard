@@ -220,6 +220,9 @@ export const presence = {
   othersOnBoard: (count: number) =>
     `${count} other ${count === 1 ? 'person' : 'people'} on this board`,
   viewing: 'Viewing',
+  // R-A11Y-002: the avatar's accessible name — the initials alone say nothing.
+  avatarLabel: (name: string, role?: string) => (role ? `${name}, ${role}` : name),
+  overflowLabel: (count: number, names: string) => `${count} more: ${names}`,
 } as const
 
 /** FLOWS §6 — board management. */

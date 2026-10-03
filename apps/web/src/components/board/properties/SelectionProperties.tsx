@@ -234,7 +234,7 @@ export function SelectionProperties() {
         className={
           'flex h-8 cursor-pointer items-center justify-center gap-2 rounded-sm ' +
           'text-xs text-danger transition-colors duration-fast ease-standard ' +
-          'hover:bg-danger/10 active:scale-[0.97] ' +
+          'hover:bg-danger hover:text-white active:scale-[0.97] ' +
           'focus-visible:outline focus-visible:outline-2 focus-visible:outline-danger'
         }
       >

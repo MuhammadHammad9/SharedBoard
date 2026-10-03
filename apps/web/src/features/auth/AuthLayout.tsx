@@ -49,7 +49,8 @@ export function AuthLayout({
         </div>
 
         {footer ? (
-          <div className="mt-4 text-center text-sm text-muted">{footer}</div>
+          // On the subtle page, not the card: primary, per D-18.
+          <div className="mt-4 text-center text-sm text-primary">{footer}</div>
         ) : null}
       </div>
     </main>

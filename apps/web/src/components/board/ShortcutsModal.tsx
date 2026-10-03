@@ -23,7 +23,13 @@ export function ShortcutsModal() {
       testId="shortcuts-modal"
       wide
     >
-      <div className="max-h-[60vh] overflow-y-auto pr-1">
+      <div
+        // A scroll region must be reachable by keyboard (WCAG 2.1.1).
+        tabIndex={0}
+        role="region"
+        aria-label={shortcuts.title}
+        className="max-h-[60vh] overflow-y-auto rounded-sm pr-1 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      >
         <table className="w-full text-left text-sm">
           <tbody>
             {shortcuts.rows.map(([keys, action, context]) => (

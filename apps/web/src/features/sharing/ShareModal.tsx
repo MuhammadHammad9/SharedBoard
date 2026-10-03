@@ -131,7 +131,7 @@ function InviteSection({
                 data-testid="invite-chip"
                 data-invalid={bad ? 'true' : 'false'}
                 title={bad ? sharing.invalidEmail(chip) : undefined}
-                className={`flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs ${bad ? 'bg-danger/10 text-danger' : 'bg-subtle text-primary'}`}
+                className={`flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs ${bad ? 'border border-danger/30 bg-app text-danger' : 'bg-subtle text-primary'}`}
               >
                 {chip}
                 <button

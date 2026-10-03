@@ -12,7 +12,13 @@ import { useEffect, useState } from 'react'
 export type Breakpoint = 'desktop' | 'laptop' | 'tablet' | 'mobile'
 
 export const breakpointFor = (width: number): Breakpoint =>
-  width >= 1280 ? 'desktop' : width >= 1024 ? 'laptop' : width >= 768 ? 'tablet' : 'mobile'
+  width >= 1280
+    ? 'desktop'
+    : width >= 1024
+      ? 'laptop'
+      : width >= 768
+        ? 'tablet'
+        : 'mobile'
 
 /** For plain-TS callers (the pointer handlers): the layout right now. */
 export const currentBreakpoint = (): Breakpoint =>

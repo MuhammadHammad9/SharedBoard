@@ -111,10 +111,17 @@ export function DashboardHeader({
   )
 }
 
+/*
+ * D-18: --color-text-secondary on --color-bg-subtle is 4.39:1, under WCAG AA.
+ * The sidebar and filters sit on the subtle page, so their text is primary and
+ * the active item is marked by a white pill and weight, not by greying the rest.
+ */
 export function DashboardSidebar() {
   const link = ({ isActive }: { isActive: boolean }) =>
     `block rounded-md px-3 py-2 text-sm transition-colors duration-fast ${
-      isActive ? 'bg-subtle font-medium text-primary' : 'text-muted hover:bg-subtle'
+      isActive
+        ? 'bg-app font-medium text-primary shadow-panel'
+        : 'text-primary hover:bg-app'
     }`
 
   return (
@@ -156,8 +163,8 @@ export function FilterTabs({
           onClick={() => onChange(filter.id)}
           className={`cursor-pointer rounded-md px-3 py-1.5 text-sm transition-colors duration-fast ${
             value === filter.id
-              ? 'bg-subtle font-medium text-primary'
-              : 'text-muted hover:bg-subtle'
+              ? 'bg-app font-medium text-primary shadow-panel'
+              : 'text-primary hover:bg-app'
           }`}
         >
           {filter.label}

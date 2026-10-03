@@ -220,7 +220,7 @@ function DangerSection({ displayName }: { displayName: string }) {
   })
 
   return (
-    <section className="rounded-lg border border-danger/30 bg-danger/5 p-6">
+    <section className="rounded-lg border border-danger/30 bg-app p-6">
       <h2 className="text-base font-medium text-danger">{auth.settings.dangerZone}</h2>
       <p className="mt-1 text-sm text-primary">{auth.settings.dangerBody}</p>
 

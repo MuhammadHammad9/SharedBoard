@@ -37,6 +37,10 @@ export function AvatarStack({ stale = false }: { stale?: boolean } = {}) {
 
   const visible = unique.slice(0, MAX_VISIBLE)
   const overflow = unique.length - visible.length
+  const hidden = unique
+    .slice(MAX_VISIBLE)
+    .map(u => u.name)
+    .join(', ')
 
   return (
     <div
@@ -63,6 +67,7 @@ export function AvatarStack({ stale = false }: { stale?: boolean } = {}) {
               type="button"
               data-testid="avatar"
               data-user-name={user.name}
+              aria-label={presence.avatarLabel(user.name, roleLabel(user.role))}
               // Focusable so the tooltip is reachable by keyboard — otherwise
               // the name is mouse-only and the colour is all a keyboard user
               // gets (R-A11Y-007).
@@ -77,16 +82,12 @@ export function AvatarStack({ stale = false }: { stale?: boolean } = {}) {
 
       {overflow > 0 ? (
         <div role="listitem" className="-ml-2">
-          <Tooltip
-            label={unique
-              .slice(MAX_VISIBLE)
-              .map(u => u.name)
-              .join(', ')}
-          >
+          <Tooltip label={hidden}>
             <button
               type="button"
+              aria-label={presence.overflowLabel(overflow, hidden)}
               data-testid="avatar-overflow"
-              className="flex h-7 w-7 cursor-default items-center justify-center rounded-full border-2 border-border bg-subtle text-[10px] font-semibold text-muted outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="flex h-7 w-7 cursor-default items-center justify-center rounded-full border-2 border-border bg-subtle text-[10px] font-semibold text-primary outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               +{overflow}
             </button>

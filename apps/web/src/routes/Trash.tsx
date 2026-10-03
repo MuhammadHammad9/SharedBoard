@@ -96,7 +96,7 @@ export default function Trash() {
           <h1 className="mb-1 text-lg font-semibold text-primary">
             {dashboard.trashTitle}
           </h1>
-          <p className="mb-6 text-sm text-muted">{emptyStates.trashEmpty.body}</p>
+          <p className="mb-6 text-sm text-primary">{emptyStates.trashEmpty.body}</p>
 
           {query.isPending ? (
             <div className="flex flex-col gap-2" aria-busy="true">

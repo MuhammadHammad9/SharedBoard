@@ -33,7 +33,8 @@ export function FullScreenState({
   testId,
 }: {
   headline: string
-  body: string
+  /** Optional: some states are one sentence (the unsupported browser). */
+  body?: string
   action?: ReactNode
   /** A quieter line under the action — S-17's "Signed in as …". */
   footer?: ReactNode
@@ -53,7 +54,7 @@ export function FullScreenState({
       data-testid={testId}
     >
       <h1 className="text-lg font-semibold text-primary">{headline}</h1>
-      <p className="max-w-sm text-sm text-muted">{body}</p>
+      {body ? <p className="max-w-sm text-sm text-muted">{body}</p> : null}
       {action ? <div className="mt-2">{action}</div> : null}
       {footer ? <div className="mt-4 text-sm text-muted">{footer}</div> : null}
     </div>

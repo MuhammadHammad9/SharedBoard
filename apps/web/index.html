@@ -8,6 +8,37 @@
   </head>
   <body>
     <div id="root"></div>
+    <!--
+      PRD §7.6: Internet Explorer cannot run the module bundle, so it gets this
+      static screen instead. The sentence must match errors.unsupportedBrowser
+      in src/lib/strings.ts exactly; lib/__tests__/browserSupport.test.ts
+      fails if they drift.
+    -->
+    <div
+      id="unsupported-browser"
+      style="
+        display: none;
+        font-family:
+          Inter,
+          system-ui,
+          -apple-system,
+          sans-serif;
+        color: #18181b;
+        background: #fafafa;
+        min-height: 100vh;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        text-align: center;
+      "
+    >
+      <h1 style="font-size: 18px; font-weight: 600; max-width: 28rem">
+        CoBoard needs a modern browser. Try Chrome, Firefox, Edge, or Safari.
+      </h1>
+    </div>
+    <script nomodule>
+      document.getElementById('unsupported-browser').style.display = 'flex'
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

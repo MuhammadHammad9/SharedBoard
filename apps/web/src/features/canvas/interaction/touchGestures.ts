@@ -92,7 +92,14 @@ export function createTouchTracker() {
     /** A touch press on an object: a long-press candidate. */
     notePress(e: PointerEvent, id: ObjectId, prior: readonly ObjectId[], p: Point): void {
       if (e.pointerType !== 'touch') return
-      press = { pointerId: e.pointerId, id, prior, at: e.timeStamp, origin: p, moved: false }
+      press = {
+        pointerId: e.pointerId,
+        id,
+        prior,
+        at: e.timeStamp,
+        origin: p,
+        moved: false,
+      }
     },
 
     /**
@@ -102,7 +109,8 @@ export function createTouchTracker() {
     takeLongPress(e: PointerEvent): ObjectId[] | null {
       const candidate = press
       press = null
-      if (!candidate || candidate.pointerId !== e.pointerId || candidate.moved) return null
+      if (!candidate || candidate.pointerId !== e.pointerId || candidate.moved)
+        return null
       if (e.timeStamp - candidate.at < LONG_PRESS_MS) return null
       return candidate.prior.includes(candidate.id)
         ? candidate.prior.filter(id => id !== candidate.id)
