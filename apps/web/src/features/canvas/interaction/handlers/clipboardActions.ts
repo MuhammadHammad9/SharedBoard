@@ -55,10 +55,16 @@ export function cutSelection(): BoardObject[] {
  * which preserves the objects' relative arrangement. Offsetting each object
  * individually to the pointer would collapse a diagram into a pile.
  */
-export async function pasteAt(canvasX: number, canvasY: number): Promise<BoardObject[]> {
+export async function pasteAt(
+  canvasX: number,
+  canvasY: number,
+  /** True once the same keystroke turned out to paste an image instead. */
+  standDown: () => boolean = () => false,
+): Promise<BoardObject[]> {
   const state = boardStore.getState()
 
   const raw = await readSystemClipboard()
+  if (standDown()) return []
   let objects = raw ? deserialize(raw) : []
 
   // FLOWS E-06: plain text that is not a CoBoard payload becomes a text
@@ -142,7 +148,11 @@ function reorderSelection(pick: (indices: number[]) => string[] | null): void {
 
 export function bringToFront(): void {
   reorderSelection(indices =>
-    keysAfterTop(boardStore.getState().objects, boardStore.getState().sortedIds, indices.length),
+    keysAfterTop(
+      boardStore.getState().objects,
+      boardStore.getState().sortedIds,
+      indices.length,
+    ),
   )
 }
 

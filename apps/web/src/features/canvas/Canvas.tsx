@@ -33,6 +33,8 @@ import { buildPresenceView } from '../presence/usePresence.js'
 import { emitSelection } from '../presence/bus.js'
 import { presenceStore } from '../presence/presenceStore.js'
 import { imageCache } from './imageCache.js'
+import { startUploads } from '../uploads/uploadEngine.js'
+import { UploadPlaceholders } from '../uploads/UploadPlaceholders.js'
 
 /**
  * The canvas surface — FLOWS §14.3.
@@ -147,7 +149,13 @@ export function Canvas() {
     rendererRef.current?.noteInput(timeStamp)
   }, [])
 
-  const { spaceHeld } = useKeyboard({ getSize, getElement, getPointer: getLastPointer })
+  const { spaceHeld } = useKeyboard({
+    getSize,
+    getElement,
+    getPointer: getLastPointer,
+    // FR-CANVAS-010: images pasted from the OS clipboard go to the centre.
+    onPasteImages: files => void startUploads(files),
+  })
   usePointer(container, spaceHeld, { onInput: noteInput })
   useWheel(container)
 
@@ -451,6 +459,38 @@ export function Canvas() {
     return () => container.removeEventListener('pointermove', onMove)
   }, [container, activeTool, interactionType])
 
+  /*
+   * Drag-and-drop of image files — FR-CANVAS-010. The drop point becomes the
+   * image's centre, converted once to canvas coordinates (R-COORD-004).
+   * Anything that is not files (a dragged link, text) is left alone.
+   */
+  useEffect(() => {
+    if (!container) return
+    const carriesFiles = (e: DragEvent) =>
+      Array.from(e.dataTransfer?.types ?? []).includes('Files')
+    const onDragOver = (e: DragEvent) => {
+      if (!carriesFiles(e) || boardStore.getState().readOnly) return
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    }
+    const onDrop = (e: DragEvent) => {
+      if (!carriesFiles(e)) return
+      // Always prevent: a file dropped and NOT handled navigates the tab to
+      // it, abandoning the board.
+      e.preventDefault()
+      if (boardStore.getState().readOnly) return
+      const rect = container.getBoundingClientRect()
+      const at = toCanvas(e.clientX - rect.left, e.clientY - rect.top)
+      void startUploads(Array.from(e.dataTransfer?.files ?? []), at)
+    }
+    container.addEventListener('dragover', onDragOver)
+    container.addEventListener('drop', onDrop)
+    return () => {
+      container.removeEventListener('dragover', onDragOver)
+      container.removeEventListener('drop', onDrop)
+    }
+  }, [container])
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-canvas">
       <div
@@ -472,6 +512,7 @@ export function Canvas() {
       </div>
 
       <TextOverlay container={container} />
+      <UploadPlaceholders />
       <Toolbar />
       <PropertiesPanel />
       <ContextMenu container={container} getSize={getSize} />

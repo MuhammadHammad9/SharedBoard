@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import {
   ArrowUpRight,
   Circle,
@@ -15,6 +16,8 @@ import {
 import { ViewOnlyBadge } from './ViewOnlyBadge.js'
 import { ACTIVE_TOOLS, useBoardStore, type Tool } from '../../stores/boardStore.js'
 import { Tooltip } from '../ui/Tooltip.js'
+import { ACCEPTED_IMAGE_TYPES } from '@coboard/shared'
+import { startUploads } from '../../features/uploads/uploadEngine.js'
 
 /**
  * Left toolbar — FLOWS §14.2. 56 px wide, vertically centred, floating with
@@ -68,6 +71,7 @@ export function Toolbar() {
   const setActiveTool = useBoardStore(s => s.setActiveTool)
   const interactionType = useBoardStore(s => s.interaction.type)
   const readOnly = useBoardStore(s => s.readOnly)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   // R-CANVAS-055 / FLOWS E-08: a tool change mid-interaction is ignored, not
   // queued into a half-finished stroke.
@@ -85,8 +89,9 @@ export function Toolbar() {
       data-testid="toolbar"
     >
       {TOOLS.map(({ tool, icon: IconComponent, label, shortcut }) => {
-        const implemented = ACTIVE_TOOLS.includes(tool)
-        const active = activeTool === tool
+        const isImage = tool === 'image'
+        const implemented = isImage || ACTIVE_TOOLS.includes(tool)
+        const active = !isImage && activeTool === tool
         return (
           <Tooltip
             key={tool}
@@ -102,7 +107,7 @@ export function Toolbar() {
               aria-pressed={active}
               disabled={!implemented || (locked && !active)}
               data-testid={`tool-${tool}`}
-              onClick={() => setActiveTool(tool)}
+              onClick={() => (isImage ? fileInput.current?.click() : setActiveTool(tool))}
               className={
                 'flex h-10 w-10 cursor-pointer items-center justify-center rounded-sm ' +
                 // Colour only. No transform on hover, no transform on the
@@ -120,6 +125,24 @@ export function Toolbar() {
           </Tooltip>
         )
       })}
+      {/* FR-CANVAS-010: Image is an action, not a mode — it opens the file
+          picker, and the chosen files go to the centre of the view. */}
+      <input
+        ref={fileInput}
+        type="file"
+        accept={ACCEPTED_IMAGE_TYPES.join(',')}
+        multiple
+        hidden
+        // Never a tab stop: the Image button is the control; this is plumbing.
+        tabIndex={-1}
+        data-testid="image-file-input"
+        onChange={e => {
+          const files = Array.from(e.target.files ?? [])
+          // Cleared, so choosing the same file again still fires `change`.
+          e.target.value = ''
+          if (files.length > 0) void startUploads(files)
+        }}
+      />
     </div>
   )
 }

@@ -445,4 +445,22 @@
       transition: opacity 150ms ease;
     }
   }
+
+  /*
+   * Upload progress ring — features/uploads/UploadPlaceholders.tsx.
+   * LINEAR, always: a progress indicator with easing misrepresents progress
+   * (Phase 13 motion table). It animates stroke-dashoffset on a 40 px SVG,
+   * not layout. Kept under reduced motion: it is information, not decoration.
+   */
+  [data-upload-ring] {
+    transition: stroke-dashoffset 120ms linear;
+  }
+
+  /* Placeholder → loaded image: a 200 ms crossfade, then it is removed. */
+  [data-upload-placeholder] {
+    transition: opacity 200ms var(--ease-out);
+  }
+  [data-upload-placeholder][data-status='done'] {
+    opacity: 0;
+  }
 }

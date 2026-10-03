@@ -69,6 +69,8 @@ export interface KeyboardOptions {
    * not carry one — so the pointer handler records it and this reads it back.
    */
   getPointer?: () => { x: number; y: number }
+  /** Image files pasted from the system clipboard — FR-CANVAS-010. */
+  onPasteImages?: (files: File[]) => void
 }
 
 export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolean } {
@@ -81,6 +83,9 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
       const { width, height } = optionsRef.current.getSize()
       return { x: width / 2, y: height / 2 }
     }
+
+    /** The latest Cmd+V, so an image paste can stand the object paste down. */
+    let pasteIntent: { claimed: boolean } | null = null
 
     const onKeyDown = (e: KeyboardEvent) => {
       // R-A11Y-009: never steal keys from a text field.
@@ -228,11 +233,19 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
             cutSelection()
             return
           case 'v': {
-            e.preventDefault()
+            /*
+             * NOT preventDefault: the browser must still fire its own `paste`
+             * event, because that is the only place an image copied from the
+             * OS arrives (clipboardData.files). If it carries one, the paste
+             * listener below claims this intent and the object paste stands
+             * down — the read below is async, so the claim always lands first.
+             */
+            const intent = { claimed: false }
+            pasteIntent = intent
             // "Paste places objects at the pointer position" — the last known
             // pointer position, since a keyboard event carries none.
             const at = optionsRef.current.getPointer?.() ?? { x: 0, y: 0 }
-            void pasteAt(at.x, at.y)
+            void pasteAt(at.x, at.y, () => intent.claimed)
             return
           }
           case 'd':
@@ -324,14 +337,33 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
       if (boardStore.getState().interaction.type === 'PANNING') endPan(null)
     }
 
+    /*
+     * The browser's own paste — FR-CANVAS-010. Fires after the Cmd+V keydown
+     * above (and for Edit → Paste). Only image FILES are handled here; text
+     * and CoBoard objects stay with `pasteAt`.
+     */
+    const onPaste = (e: ClipboardEvent) => {
+      if (isTextEntryTarget(e.target)) return
+      if (boardStore.getState().readOnly) return
+      const images = Array.from(e.clipboardData?.files ?? []).filter(f =>
+        f.type.startsWith('image/'),
+      )
+      if (images.length === 0) return
+      e.preventDefault()
+      if (pasteIntent) pasteIntent.claimed = true
+      optionsRef.current.onPasteImages?.(images)
+    }
+
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
     window.addEventListener('blur', onBlur)
+    window.addEventListener('paste', onPaste)
     // R-STATE-007: every listener has a matching remove.
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('blur', onBlur)
+      window.removeEventListener('paste', onPaste)
     }
   }, [])
 

@@ -16,6 +16,7 @@ import { useToast } from '../components/ui/Toast.js'
 import { boardStore } from '../stores/boardStore.js'
 import { clearGuest } from '../features/auth/guestIdentity.js'
 import { useBoardEntry } from './RequireBoardAccess.js'
+import { useImageUploads } from '../features/uploads/useImageUploads.js'
 import { GuestBar } from '../components/board/GuestBar.js'
 import { useGuestConversion } from '../features/sharing/useGuestConversion.js'
 
@@ -34,6 +35,7 @@ import { useGuestConversion } from '../features/sharing/useGuestConversion.js'
 export default function Board() {
   const { boardId } = useParams<{ boardId: string }>()
   const load = useBoardLoad(boardId)
+  useImageUploads(boardId)
   // "Marcus joined" / "Marcus left" — FR-RT-008. Derived from roster diffs,
   // so a second tab from the same person does not announce itself.
   useJoinLeaveToasts()
