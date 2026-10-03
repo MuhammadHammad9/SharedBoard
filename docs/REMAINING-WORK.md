@@ -167,16 +167,27 @@ All six slices landed, and P-1, P-2 and P-3 are fixed with tests. Problems found
 - AT-21 lives in `board-persistence.spec.ts`.
 - Full e2e suite: 146/146.
 
-**Interpretations and caveats** (flagged per the ambiguity rule):
+#### Phase 12 follow-up (12g): the caveats, done to spec
 
-- An anonymous visitor who opens `/board/:id` with no link and no guest identity is sent to log in, not shown S-17. FLOWS does not say which.
-- Reset link confirms inline in the modal rather than in a nested dialog.
-- D-6: live ejection is pushed only from the instance that made the change. Enforcement does not depend on the push, because every op re-checks the role.
-- D-2: the 24-hour idle sweep of guest members is deferred to Phase 15.
-- OAuth signup from the guest bar does not post back to the board tab. The guest stays a guest in that tab until it reloads. Email signup converts in place.
-- Copy gaps: PRD §8 gives only the headlines for the dead-link and deleted-board screens. The bodies in `strings.ts` (`states`) are interim, and are commented as copy gaps there.
-- Two tabs of one signed-in user refreshing at the same instant can trip refresh-token reuse detection (R-SEC-006) and sign both out. Found by AT-23 and left as is: it needs a decision on a refresh grace window, not a quiet fix.
-- The S-08 dashboard dropdown flake from Phase 11 did not recur in these runs. It is not fixed.
+Each caveat above was checked against the specs and fixed rather than left as an interpretation. Three were real defects, not just open questions:
+
+| #    | Was                                                                                                     | Now                                                                                                                                                                                                      | Source                    |
+| ---- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| P-8  | **Defect.** Only `Fanout.publish` crossed instances; op batches, presence and live pushes stayed local  | `RoomManager` takes a `Relay`; broadcasts, flushed op batches and live permission changes go local + Redis. `join_ack` lists users on other instances from the presence hash. Supersedes D-6             | TRD §15.2, CLAUDE.md §3.2 |
+| P-9  | **Defect.** Two simultaneous refreshes with one token both rotated: one secret became two live sessions | The revoke is conditional on the row still being live; the loser is reuse. The client serializes refreshes across tabs with a Web Lock, so two tabs no longer sign each other out                        | R-SEC-006                 |
+| P-10 | **Defect.** `BoardGrid` swapped live cards for the lazy animated grid, remounting every card            | The fallback is the skeleton; the chunk preloads with the dashboard. This was the S-08 flake: an open menu closed, focus fell to `<body>`, an inline rename was lost                                     | —                         |
+| —    | An anonymous visitor with no link was sent to log in                                                    | S-17 per the FLOWS §2.4 tree (S-18 for a missing or deleted board), with the §12.1 account line: "Signed in as … — Switch account", or Log in with `?next=` so deep links still survive login (FLOWS §4) | FLOWS §2.4, §12.1         |
+| —    | Reset link confirmed inline                                                                             | A real confirmation modal. `Modal` is stack-aware: only the topmost answers Escape and traps Tab                                                                                                         | FLOWS §10.2               |
+| —    | Guests were never dropped (D-2 deferral)                                                                | Hourly sweep: guests go once the board has had no op and no guest visit for 24 h and nobody is connected on any instance                                                                                 | FLOWS §10.3               |
+| —    | Google sign-up from the guest bar did not convert the board tab                                         | The signup tab marks itself before leaving for Google; `/auth/callback` announces over `BroadcastChannel`, which needs no `window.opener`                                                                | FLOWS §7.4                |
+
+**Evidence.** Unit and integration 1020/1020, including a cross-instance test (ops, presence, `join_ack` users and a live revoke reach a socket on a second instance) and a concurrent-refresh test that fails before the fix. The full e2e suite passes, 147/147. The new two-tab test fails with the Web Lock removed and passes with it. Dashboard + sharing ran 51/51 under parallel load, three repeats each.
+
+**Still open:**
+
+- **Copy gaps.** PRD §8 gives only the headlines for the dead-link and deleted-board screens. The bodies in `strings.ts` (`states`) are interim, commented as copy gaps, and need product copy.
+- **Signup rate limit in tests.** Running the sharing spec many times in one 15-minute window exhausts the per-IP signup limit, and the conversion test then fails with "Too many attempts". That limit belongs to the environment, not the code.
+- **Colours across instances.** Presence colours are round-robin per instance. With two instances, two people can draw the same colour. Single-instance v1 is unaffected; this belongs with Phase 15 scaling.
 
 ### Phase 13 — Export, images, thumbnails, trash, duplicate (M5)
 
