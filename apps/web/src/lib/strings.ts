@@ -245,6 +245,8 @@ export const boards = {
   deleteForeverPrompt: 'Type the board name to confirm',
   // Inline rename input — dashboard card and board header.
   nameLabel: 'Board name',
+  // The dev-only scratch board (`/board/<not-a-uuid>` in development).
+  scratchName: 'Scratch board',
 } as const
 
 /** FLOWS §11 — export. Labels follow the §11 S-14 drawing word for word. */
@@ -405,6 +407,13 @@ export const loading = {
   boards: 'Loading your boards',
   session: 'Checking your session',
   board: 'Opening board',
+  invite: 'Opening invite',
+} as const
+
+/** FLOWS §13.1 — the toast stack. */
+export const toastStrings = {
+  // R-UI-055: older toasts collapse into a count.
+  more: (count: number) => `+${count} more`,
 } as const
 
 /** FLOWS §6.1–6.4 — dashboard chrome (S-07, S-08): header, sidebar, filters, cards. */

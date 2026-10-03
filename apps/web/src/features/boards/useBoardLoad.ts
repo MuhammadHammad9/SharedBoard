@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ConnectionState, Role } from '@coboard/shared'
+import { SNAPSHOT_TIMEOUT_MS, type ConnectionState, type Role } from '@coboard/shared'
 import { ApiError } from '../../lib/api.js'
 import { useToast } from '../../components/ui/Toast.js'
-import { errors, presence } from '../../lib/strings.js'
+import { boards as boardStrings, errors, presence } from '../../lib/strings.js'
 import { BoardSession } from '../sync/session.js'
 import { abandonPersistence } from '../sync/persistence.js'
 import { track } from '../../lib/analytics.js'
@@ -86,7 +86,7 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
 
     if (isScratchBoard(boardId)) {
       setRole('OWNER')
-      setName('Scratch board')
+      setName(boardStrings.scratchName)
       setStatus('ready')
       return
     }
@@ -136,7 +136,15 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
 
     void (async () => {
       try {
-        const result = await session.start()
+        // E-21: never a spinner forever. On a hopeless connection the load
+        // gives up at 30 s and the error screen offers Retry (a fresh session).
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const result = await Promise.race([
+          session.start(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new LoadTimeout()), SNAPSHOT_TIMEOUT_MS)
+          }),
+        ]).finally(() => clearTimeout(timer))
         if (sessionRef.current !== session) return
         roleRef.current = result.role
         setRole(result.role)
@@ -148,6 +156,11 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
         track('board_opened', { load_ms: Math.round(performance.now() - startedAt) })
       } catch (error) {
         if (sessionRef.current !== session) return
+        if (error instanceof LoadTimeout) {
+          session.dispose()
+          setStatus('error')
+          return
+        }
         if (!(error instanceof ApiError)) {
           setStatus('error')
           return
@@ -186,5 +199,13 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
     retryConnection: () => sessionRef.current?.resume(),
     reconnect,
     retry: () => setAttempt(n => n + 1),
+  }
+}
+
+/** The load outran E-21's 30 s. */
+class LoadTimeout extends Error {
+  constructor() {
+    super('Board load timed out')
+    this.name = 'LoadTimeout'
   }
 }

@@ -160,6 +160,8 @@ export const BROADCAST_BATCH_MS = 16
 /** Heartbeat — TRD §5.1, R-SYNC-032. */
 export const PING_INTERVAL_MS = 25_000
 export const PONG_TIMEOUT_MS = 10_000
+/** E-21: a board load gives up after this and offers an inline retry. */
+export const SNAPSHOT_TIMEOUT_MS = 30_000
 export const SERVER_SOCKET_IDLE_TIMEOUT_MS = 60_000
 
 /** Reconnection — TRD §10.2, R-SYNC-030 full jitter. */

@@ -11,6 +11,7 @@ import ForgotPassword from './routes/ForgotPassword.js'
 import ResetPassword from './routes/ResetPassword.js'
 import OAuthCallback from './routes/OAuthCallback.js'
 import Settings from './routes/Settings.js'
+import { loading } from './lib/strings.js'
 
 /**
  * The router — FLOWS §2.1.
@@ -111,7 +112,7 @@ export default function App() {
               path="/dashboard"
               element={
                 <RequireAuth>
-                  <Suspense fallback={<FullScreenSpinner label="Loading your boards" />}>
+                  <Suspense fallback={<FullScreenSpinner label={loading.boards} />}>
                     <Dashboard />
                   </Suspense>
                 </RequireAuth>
@@ -137,7 +138,7 @@ export default function App() {
             <Route
               path="/join/:token"
               element={
-                <Suspense fallback={<FullScreenSpinner label="Opening invite" />}>
+                <Suspense fallback={<FullScreenSpinner label={loading.invite} />}>
                   <GuestEntry />
                 </Suspense>
               }
@@ -147,7 +148,7 @@ export default function App() {
               path="/trash"
               element={
                 <RequireAuth>
-                  <Suspense fallback={<FullScreenSpinner label="Loading your boards" />}>
+                  <Suspense fallback={<FullScreenSpinner label={loading.boards} />}>
                     <Trash />
                   </Suspense>
                 </RequireAuth>
@@ -166,7 +167,7 @@ function BoardRoute() {
   const { boardId = '' } = useParams<{ boardId: string }>()
   return (
     <RequireBoardAccess boardId={boardId}>
-      <Suspense fallback={<FullScreenSpinner label="Opening board" />}>
+      <Suspense fallback={<FullScreenSpinner label={loading.board} />}>
         <Board />
       </Suspense>
     </RequireBoardAccess>

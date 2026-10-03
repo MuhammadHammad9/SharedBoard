@@ -29,6 +29,7 @@ export function FullScreenState({
   body,
   action,
   footer,
+  overlay = false,
   testId,
 }: {
   headline: string
@@ -36,11 +37,18 @@ export function FullScreenState({
   action?: ReactNode
   /** A quieter line under the action — S-17's "Signed in as …". */
   footer?: ReactNode
+  /**
+   * Over a frozen board rather than instead of it (S-19, FLOWS §12.3). The
+   * board stays visible, dimmed, behind the message.
+   */
+  overlay?: boolean
   testId: string
 }) {
   return (
     <div
-      className="flex min-h-[100dvh] w-full flex-col items-center justify-center gap-3 bg-app px-6 text-center"
+      className={`flex w-full flex-col items-center justify-center gap-3 px-6 text-center ${
+        overlay ? 'absolute inset-0 z-modal bg-app/90' : 'min-h-[100dvh] bg-app'
+      }`}
       role="alert"
       data-testid={testId}
     >

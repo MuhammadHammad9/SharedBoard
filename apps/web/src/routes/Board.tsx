@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { Canvas } from '../features/canvas/Canvas.js'
+import { ErrorBoundary } from '../components/states/ErrorBoundary.js'
+import { BoardEmptyHint } from '../components/board/BoardEmptyHint.js'
 import { BoardHeader } from '../components/board/BoardHeader.js'
 import { SessionExpiredBanner } from '../components/board/SessionExpiredBanner.js'
 import { OfflineBanner } from '../components/board/OfflineBanner.js'
@@ -10,9 +12,9 @@ import { BackToDashboard, FullScreenState } from '../components/ui/FullScreenSta
 import { Button } from '../components/ui/Button.js'
 import { useBoardLoad } from '../features/boards/useBoardLoad.js'
 import { useJoinLeaveToasts } from '../features/presence/useJoinLeaveToasts.js'
-import { actions, guest, states } from '../lib/strings.js'
+import { actions, guest, loading, states } from '../lib/strings.js'
 import { setGuestCredential } from '../lib/api.js'
-import { useToast } from '../components/ui/Toast.js'
+import { useBoardToastPlacement, useToast } from '../components/ui/Toast.js'
 import { boardStore } from '../stores/boardStore.js'
 import { clearGuest } from '../features/auth/guestIdentity.js'
 import { useBoardEntry } from './RequireBoardAccess.js'
@@ -37,6 +39,8 @@ export default function Board() {
   const { boardId } = useParams<{ boardId: string }>()
   const load = useBoardLoad(boardId)
   useImageUploads(boardId)
+  // FLOWS §13.1: toasts bottom-left here, clear of the properties panel.
+  useBoardToastPlacement()
   // FR-BOARD-003: the dashboard thumbnail, kept current by an editor's client.
   useThumbnailUpkeep(
     boardId,
@@ -54,9 +58,12 @@ export default function Board() {
 
   // Viewer mode — FR-SHARE-006. Follows the role live, so a role:changed to
   // viewer disables the canvas on the spot (FLOWS §9.5).
+  // FLOWS §9.5: an ejected board is FROZEN under its overlay — the user
+  // still sees their work, and nothing on it can change.
+  const ejected = load.status === 'deleted' || load.status === 'revoked'
   useEffect(() => {
-    boardStore.getState().setReadOnly(load.role === 'VIEWER')
-  }, [load.role])
+    boardStore.getState().setReadOnly(load.role === 'VIEWER' || ejected)
+  }, [load.role, ejected])
   useEffect(() => () => boardStore.getState().setReadOnly(false), [])
 
   // FLOWS §7.1 step 9: "You're in as Marcus" — once, when arriving from S-11.
@@ -69,7 +76,7 @@ export default function Board() {
   }, [joinedAs, load.status, toast])
 
   if (load.status === 'loading') {
-    return <FullScreenSpinner label="Opening board" />
+    return <FullScreenSpinner label={loading.board} />
   }
 
   if (load.status === 'not-found') {
@@ -96,30 +103,6 @@ export default function Board() {
     )
   }
 
-  // FLOWS §9.5 — the board was deleted while open: S-19.
-  if (load.status === 'deleted') {
-    return (
-      <FullScreenState
-        headline={states.boardDeleted.headline}
-        body={states.boardDeleted.body}
-        action={<BackToDashboard label={actions.backToDashboard} />}
-        testId="board-deleted-live"
-      />
-    )
-  }
-
-  // FLOWS §9.5 — access removed while open: S-17, "access removed" copy.
-  if (load.status === 'revoked') {
-    return (
-      <FullScreenState
-        headline={states.accessRemoved.headline}
-        body={states.accessRemoved.body}
-        action={<BackToDashboard label={actions.backToDashboard} />}
-        testId="board-access-removed"
-      />
-    )
-  }
-
   if (load.status === 'error') {
     return (
       <FullScreenState
@@ -140,7 +123,12 @@ export default function Board() {
       className="relative h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-canvas"
       data-board-role={load.role ?? 'OWNER'}
     >
-      <Canvas />
+      {/* S-21, the inner boundary: a canvas crash leaves the header and the
+          way back to the dashboard working (FLOWS §12.4). */}
+      <ErrorBoundary variant="canvas">
+        <Canvas />
+      </ErrorBoundary>
+      <BoardEmptyHint neverEdited={load.seq === 0} />
       <BoardHeader
         boardId={boardId ?? ''}
         name={load.name}
@@ -166,6 +154,27 @@ export default function Board() {
                 },
               }
             : {})}
+        />
+      )}
+
+      {/* S-19 / S-17 — FLOWS §12.3, §9.5: a full-screen overlay ON TOP OF the
+          frozen canvas, so the user sees what just happened to what. */}
+      {load.status === 'deleted' && (
+        <FullScreenState
+          overlay
+          headline={states.boardDeleted.headline}
+          body={states.boardDeleted.body}
+          action={<BackToDashboard label={actions.backToDashboard} />}
+          testId="board-deleted-live"
+        />
+      )}
+      {load.status === 'revoked' && (
+        <FullScreenState
+          overlay
+          headline={states.accessRemoved.headline}
+          body={states.accessRemoved.body}
+          action={<BackToDashboard label={actions.backToDashboard} />}
+          testId="board-access-removed"
         />
       )}
     </main>

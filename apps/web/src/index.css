@@ -487,6 +487,17 @@
    * (only transform and opacity animate), so the row fades and the list then
    * closes the gap without animation.
    */
+  /*
+   * The board's empty hint (PRD §8.3) fades out once, permanently, at the
+   * first object: opacity only, 200 ms, --ease-out.
+   */
+  [data-board-hint] {
+    transition: opacity 200ms var(--ease-out);
+  }
+  [data-board-hint][data-gone='true'] {
+    opacity: 0;
+  }
+
   [data-trash-row] {
     transition: opacity 200ms var(--ease-out);
   }

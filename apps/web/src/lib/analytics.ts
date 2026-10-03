@@ -10,12 +10,22 @@
  * data — no names, no emails, and never a guest id (decision D-1).
  */
 
+/** PRD §9 — the fourteen events, exactly. */
 export type AnalyticsEvent =
+  | 'account_created'
+  | 'logged_in'
+  | 'board_created'
   | 'board_opened'
   | 'board_joined_as_guest'
+  | 'object_created'
+  | 'tool_selected'
   | 'share_link_created'
   | 'share_link_copied'
   | 'export_completed'
+  | 'socket_disconnected'
+  | 'socket_reconnected'
+  | 'op_rejected'
+  | 'client_error'
 
 type Props = Record<string, string | number | boolean>
 
