@@ -87,7 +87,10 @@ async function upload(
 const stored = (key: string) => s3.objects.get(`coboard/${key}`)
 
 beforeAll(async () => {
-  s3 = await startFakeS3()
+  s3 = await startFakeS3(0, '127.0.0.1', {
+    accessKeyId: 'test',
+    secretAccessKey: 'test-secret',
+  })
   for (const k of ['S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET'])
     saved[k] = process.env[k]
   Object.assign(process.env, {
@@ -171,6 +174,54 @@ describe('POST /uploads/presign', () => {
       expect((await presign(priya, boardId, 'image/png', 100)).status).toBe(200)
     }
     expect((await presign(priya, boardId, 'image/png', 100)).status).toBe(429)
+  })
+})
+
+describe('the presigned URL itself — enforced like S3 (SigV4)', () => {
+  it('refuses a PUT whose content type differs from what was signed', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const signed = await presign(priya, boardId, 'image/png', PNG.length)
+    const put = await fetch(signed.body.uploadUrl as string, {
+      method: 'PUT',
+      body: Buffer.from(PNG),
+      headers: { 'content-type': 'text/html' },
+    })
+    expect(put.status).toBe(403)
+    expect(stored(signed.body.key as string)).toBeUndefined()
+  })
+
+  it('refuses a PUT of a different size than was signed', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const signed = await presign(priya, boardId, 'image/png', PNG.length)
+    const put = await fetch(signed.body.uploadUrl as string, {
+      method: 'PUT',
+      body: Buffer.concat([Buffer.from(PNG), Buffer.alloc(1024)]),
+      headers: signed.body.headers as Record<string, string>,
+    })
+    expect(put.status).toBe(403)
+  })
+
+  it('refuses a tampered signature, and a URL with its expiry pushed out', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const signed = await presign(priya, boardId, 'image/png', PNG.length)
+    const url = signed.body.uploadUrl as string
+    for (const forged of [
+      url.replace(
+        /X-Amz-Signature=([0-9a-f])/,
+        (_m, c: string) => `X-Amz-Signature=${c === 'a' ? 'b' : 'a'}`,
+      ),
+      url.replace(/X-Amz-Expires=\d+/, 'X-Amz-Expires=999999'),
+    ]) {
+      const put = await fetch(forged, {
+        method: 'PUT',
+        body: Buffer.from(PNG),
+        headers: signed.body.headers as Record<string, string>,
+      })
+      expect(put.status).toBe(403)
+    }
   })
 })
 

@@ -43,6 +43,15 @@ function s3(): S3Client {
     // Path-style (`endpoint/bucket/key`): what MinIO and the local fake speak,
     // and what S3 itself still accepts.
     forcePathStyle: true,
+    /*
+     * Checksums only where S3 demands them. The SDK's default computes one
+     * for every request — including a presigned PUT, where it checksums the
+     * EMPTY body at signing time (`x-amz-checksum-crc32=AAAAAA==`) and S3
+     * then rejects the real bytes the browser sends. Found by the fake S3
+     * verifying what real S3 verifies.
+     */
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
     credentials: {
       accessKeyId: env().S3_ACCESS_KEY!,
       secretAccessKey: env().S3_SECRET_KEY!,
@@ -67,7 +76,12 @@ export const storage = {
         ContentType: contentType,
         ContentLength: size,
       }),
-      { expiresIn: PRESIGN_SECONDS },
+      {
+        expiresIn: PRESIGN_SECONDS,
+        // Without this the SDK signs only content-length and host, and a
+        // browser could PUT any content type on the URL.
+        signableHeaders: new Set(['content-type']),
+      },
     )
   },
 
