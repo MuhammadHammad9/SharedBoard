@@ -189,17 +189,32 @@ export function Canvas() {
     )
     rendererRef.current = renderer
 
+    let sized = false
     const applySize = () => {
       const rect = container.getBoundingClientRect()
       const width = Math.max(1, Math.floor(rect.width))
       const height = Math.max(1, Math.floor(rect.height))
+      const previous = sized ? sizeRef.current : null
       sizeRef.current = { width, height }
+      sized = true
+      /*
+       * FLOWS E-10: preserve the viewport CENTRE. The pan is a screen-space
+       * offset, so the canvas point at the middle stays there when the window
+       * grows by half the growth on each axis. A drag in flight survives it:
+       * the dragged object's screen position depends only on the pointer, so
+       * it stays under the finger while the board recentres around it.
+       */
+      if (previous && (previous.width !== width || previous.height !== height)) {
+        boardStore
+          .getState()
+          .panBy((width - previous.width) / 2, (height - previous.height) / 2)
+      }
       dprRef.current = Math.min(window.devicePixelRatio || 1, MAX_DPR)
       resizeCanvas(objectsCanvas, width, height)
       resizeCanvas(interactionCanvas, width, height)
       resizeCanvas(overlayCanvas, width, height)
-      // FLOWS E-10: a resize mid-drag must not drop the interaction. Only the
-      // backing store changes; viewport and interaction state are untouched.
+      // FLOWS E-10: a resize mid-drag must not drop the interaction —
+      // interaction state is untouched.
       renderer.markAllDirty()
     }
 

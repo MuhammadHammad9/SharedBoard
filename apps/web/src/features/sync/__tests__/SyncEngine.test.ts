@@ -234,6 +234,25 @@ describe('the concurrent edit matrix', () => {
     })
   })
 
+  it('E-03: a wrong client clock cannot reorder — seq decides, never updatedAt', () => {
+    const sync = engine()
+    sync.snapshotReady(0)
+    const a = sticky()
+    sync.receiveOps([createOp(1, a)])
+
+    // The seq-3 writer's clock is a year behind; the seq-2 writer's is ahead.
+    sync.receiveOps([
+      updateOp(3, a.id, { color: '#BBF7D0', updatedAt: Date.parse('2025-01-01') }),
+    ])
+    sync.receiveOps([
+      updateOp(2, a.id, { color: '#FECACA', updatedAt: Date.parse('2027-01-01') }),
+    ])
+
+    expect(boardStore.getState().objects.get(a.id as never)).toMatchObject({
+      color: '#BBF7D0',
+    })
+  })
+
   it('AT-04: delete beats a concurrent update, with no zombie', () => {
     const sync = engine()
     sync.snapshotReady(0)

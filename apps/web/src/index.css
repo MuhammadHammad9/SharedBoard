@@ -252,6 +252,23 @@
   }
 
   /*
+   * Mobile sheet (FLOWS §14.5): it rises from the bottom edge it is attached
+   * to, by its own height (a percentage, so any content fits), on the drawer
+   * curve. Phase 14f motion review.
+   */
+  [data-modal-panel][data-sheet='true'] {
+    transition:
+      opacity var(--duration-slow) var(--ease-drawer),
+      translate var(--duration-slow) var(--ease-drawer);
+  }
+  @starting-style {
+    [data-modal-panel][data-sheet='true'] {
+      opacity: 1;
+      translate: 0 100%;
+    }
+  }
+
+  /*
    * Toast — components/ui/Toast.tsx.
    *
    * Enters from below with a translate, because that is where it comes from.
@@ -339,7 +356,7 @@
    * only, so it is kept under reduced motion: it explains something.
    */
   [data-presence-stale] {
-    transition: filter 300ms var(--ease-out);
+    transition: filter var(--duration-base) var(--ease-out);
   }
 
   [data-presence-stale='true'] {
@@ -428,11 +445,11 @@
     background: theme('colors.success / 10%');
     opacity: 0;
     pointer-events: none;
-    transition: opacity 400ms var(--ease-out);
+    transition: opacity var(--duration-slow) var(--ease-out);
   }
 
   [data-member-row][data-flash='true']::after {
-    animation: coboard-row-flash 400ms var(--ease-out);
+    animation: coboard-row-flash var(--duration-slow) var(--ease-out);
   }
 
   @keyframes coboard-row-flash {

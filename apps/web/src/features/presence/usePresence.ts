@@ -48,13 +48,17 @@ export function handlePresenceMessage(message: ServerMessage): boolean {
       presenceStore.setSelection(message.sessionId, message.ids as ObjectId[])
       return true
 
-    case 'stroke':
-      presenceStore.appendStroke(
+    case 'xform':
+      presenceStore.setTransform(
         message.sessionId,
-        message.id,
-        message.pts,
-        message.done,
+        message.ids as ObjectId[],
+        message.dx,
+        message.dy,
       )
+      return true
+
+    case 'stroke':
+      presenceStore.appendStroke(message.sessionId, message.id, message.pts, message.done)
       return true
 
     default:
@@ -87,15 +91,20 @@ export function buildPresenceView(): PresenceView | null {
       return [{ ...cursor, name: truncateName(user.name), colour: user.colour }]
     }),
 
-    selections: selections.flatMap(({ sessionId, ids }) => {
+    selections: selections.flatMap(({ sessionId, ids, offset }) => {
       const user = presenceStore.user(sessionId)
       if (!user) return []
       const selected = ids.flatMap(id => {
         const object = objects.get(id)
         return object ? [object] : []
       })
-      const box = selectionBounds(selected)
-      return box ? [{ box, colour: user.colour, name: truncateName(user.name) }] : []
+      const bounds = selectionBounds(selected)
+      if (!bounds) return []
+      // E-07: mid-drag, the outline travels with the sender's pointer.
+      const box = offset
+        ? { ...bounds, x: bounds.x + offset.dx, y: bounds.y + offset.dy }
+        : bounds
+      return [{ box, colour: user.colour, name: truncateName(user.name) }]
     }),
 
     strokes: strokes.flatMap(stroke => {

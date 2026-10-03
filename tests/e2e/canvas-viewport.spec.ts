@@ -239,3 +239,49 @@ test('the canvas is focusable and has a text alternative — R-A11Y-006/008', as
   await expect(el).toHaveAttribute('role', 'img')
   await expect(el).toHaveAttribute('aria-label', /Whiteboard with \d+ objects/)
 })
+
+test('a resize mid-drag keeps the centre and the drag — FLOWS E-10', async ({ page }) => {
+  type Vp = { x: number; y: number; zoom: number }
+  const viewport = () =>
+    page.evaluate(() =>
+      (window as unknown as { __coboardViewport: () => Vp }).__coboardViewport(),
+    )
+  const objects = () =>
+    page.evaluate(() =>
+      (
+        window as unknown as { __coboardObjects: () => { x: number }[] }
+      ).__coboardObjects(),
+    )
+  const size = page.viewportSize()!
+
+  // A stroke to drag.
+  await page.getByTestId('tool-pen').click()
+  await page.mouse.move(500, 400)
+  await page.mouse.down()
+  await page.mouse.move(560, 440, { steps: 6 })
+  await page.mouse.up()
+  await page.getByTestId('tool-select').click()
+  await expect.poll(async () => (await objects()).length).toBe(1)
+  const startX = (await objects())[0]!.x
+
+  const before = await viewport()
+  const centreBefore = (size.width / 2 - before.x) / before.zoom
+
+  await page.mouse.move(530, 420)
+  await page.mouse.down()
+  await page.mouse.move(560, 420, { steps: 4 })
+
+  // Shrink the window mid-drag.
+  await page.setViewportSize({ width: size.width - 200, height: size.height })
+  await expect
+    .poll(async () => {
+      const v = await viewport()
+      return Math.round((size.width - 200) / 2 - v.x) / v.zoom
+    })
+    .toBeCloseTo(Math.round(centreBefore), 0)
+
+  // The drag is still alive: moving on and releasing commits a move.
+  await page.mouse.move(600, 420, { steps: 4 })
+  await page.mouse.up()
+  await expect.poll(async () => (await objects())[0]!.x).not.toBe(startX)
+})

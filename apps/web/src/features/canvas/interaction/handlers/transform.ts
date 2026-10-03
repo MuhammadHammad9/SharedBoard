@@ -14,6 +14,7 @@ import { canTransition } from '../machine.js'
 import { applyAndEmit, snapshotReader, updateOps } from '../../history/apply.js'
 import { LABELS, nudgeKey } from '../../history/grouping.js'
 import { releaseCapture } from './select.js'
+import { emitTransform, emitTransformEnd } from '../../../presence/bus.js'
 
 /**
  * Move, resize and rotate — FR-CANVAS-011/012/013, FLOWS §8.2.3.
@@ -163,8 +164,9 @@ export function updateDrag(px: number, py: number, snapEnabled = true): void {
   }
   state.updateObjects(next)
 
-  // PHASE 10 SLOT: throttled presence:transform at 20 Hz, dropping to 10 Hz
-  // above 100 selected objects (FLOWS E-07). Ephemeral, never an op.
+  // FLOWS E-07: presence, throttled to 20 Hz (10 Hz above 100 selected).
+  // Ephemeral, never an op — the op is the one commit on pointerup.
+  emitTransform(interaction.ids, dx, dy)
 }
 
 /**
@@ -190,7 +192,10 @@ export function endDrag(element: Element | null): void {
 
   // A press that never crossed the threshold moved nothing. Recording it would
   // put an entry on the stack whose undo is invisible.
-  if (interaction.moved) commitTransform(interaction.ids, interaction.origin, LABELS.move)
+  if (interaction.moved) {
+    commitTransform(interaction.ids, interaction.origin, LABELS.move)
+    emitTransformEnd()
+  }
 }
 
 /**
@@ -230,6 +235,7 @@ export function cancelDrag(element: Element | null): void {
   releaseCapture(element, interaction.pointerId)
   updateObjects([...interaction.origin.values()])
   setInteraction({ type: 'IDLE' })
+  if (interaction.moved) emitTransformEnd()
 }
 
 /* ── Resize ───────────────────────────────────────────────────────────────── */

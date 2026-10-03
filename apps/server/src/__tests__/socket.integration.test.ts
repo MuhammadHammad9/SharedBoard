@@ -1090,4 +1090,30 @@ describe('live access changes — FLOWS §9.5, Phase 12c', () => {
       name: 'Q4 Planning',
     })
   })
+
+  it('E-19: two simultaneous renames — last write wins, and everyone ends on it', async () => {
+    const { priya, marcus, boardId } = await boardWithEditor()
+    const m = await connect(marcus, boardId)
+    await m.join(boardId)
+    const rename = (name: string) =>
+      request(app)
+        .patch(`/api/boards/${boardId}`)
+        .set({ Authorization: `Bearer ${priya.token}` })
+        .send({ name })
+    const results = await Promise.all([rename('Q4 Planning'), rename('Q4 Roadmap')])
+    expect(results.map(r => r.status)).toEqual([200, 200])
+
+    const stored = await request(app)
+      .get(`/api/boards/${boardId}`)
+      .set({ Authorization: `Bearer ${priya.token}` })
+    const final = stored.body.board.name as string
+    expect(['Q4 Planning', 'Q4 Roadmap']).toContain(final)
+
+    // Both broadcasts arrive; the LAST one a client sees is the stored name.
+    const deadline = Date.now() + 4_000
+    while (m.all('board_renamed').length < 2 && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 10))
+    }
+    expect(m.all('board_renamed').at(-1)?.name).toBe(final)
+  })
 })

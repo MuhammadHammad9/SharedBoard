@@ -1,8 +1,4 @@
-import {
-  PRESENCE_SWEEP_IDLE_MS,
-  type ObjectId,
-  type PresenceUser,
-} from '@coboard/shared'
+import { PRESENCE_SWEEP_IDLE_MS, type ObjectId, type PresenceUser } from '@coboard/shared'
 import type { RemoteCursor } from './interpolate.js'
 
 /**
@@ -43,6 +39,8 @@ export class PresenceStore {
   private readonly users = new Map<string, PresenceUser>()
   private readonly cursors = new Map<string, RemoteCursor>()
   private readonly selections = new Map<string, readonly ObjectId[]>()
+  /** FLOWS E-07: a remote drag in flight, as an offset of its selection. */
+  private readonly offsets = new Map<string, { dx: number; dy: number }>()
   private readonly strokes = new Map<string, RemoteStroke>()
 
   /** Our own session. Never rendered as a remote cursor. */
@@ -79,6 +77,7 @@ export class PresenceStore {
     // behind by a departed user is a ghost that never moves again.
     this.cursors.delete(sessionId)
     this.selections.delete(sessionId)
+    this.offsets.delete(sessionId)
     for (const [key, stroke] of this.strokes) {
       if (stroke.sessionId === sessionId) this.strokes.delete(key)
     }
@@ -153,8 +152,36 @@ export class PresenceStore {
     else this.selections.set(sessionId, ids)
   }
 
-  allSelections(): Array<{ sessionId: string; ids: readonly ObjectId[] }> {
-    return [...this.selections].map(([sessionId, ids]) => ({ sessionId, ids }))
+  allSelections(): Array<{
+    sessionId: string
+    ids: readonly ObjectId[]
+    offset?: { dx: number; dy: number }
+  }> {
+    return [...this.selections].map(([sessionId, ids]) => {
+      const offset = this.offsets.get(sessionId)
+      return offset ? { sessionId, ids, offset } : { sessionId, ids }
+    })
+  }
+
+  /**
+   * A remote drag — `xform`. The objects themselves do not move until the
+   * committed op lands (presence never touches the document, R-SYNC-001);
+   * what moves is the sender's selection outline, on the overlay layer.
+   * An empty `ids` is the end of the drag.
+   */
+  setTransform(
+    sessionId: string,
+    ids: readonly ObjectId[],
+    dx: number,
+    dy: number,
+  ): void {
+    if (sessionId === this.ownSessionId) return
+    if (ids.length === 0) {
+      this.offsets.delete(sessionId)
+      return
+    }
+    this.selections.set(sessionId, ids)
+    this.offsets.set(sessionId, { dx, dy })
   }
 
   /* ── In-progress strokes ────────────────────────────────────────────────── */
@@ -226,6 +253,7 @@ export class PresenceStore {
     this.users.clear()
     this.cursors.clear()
     this.selections.clear()
+    this.offsets.clear()
     this.strokes.clear()
     this.ownSessionId = null
     this.bumpRoster()
