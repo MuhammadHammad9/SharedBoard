@@ -224,10 +224,10 @@ describe('drawObjects — run-length batching, defect D-5', () => {
     expect(moves).toEqual(['moveTo(0,0)', 'moveTo(2,2)', 'moveTo(4,4)'])
   })
 
-  it('still blockout-renders IMAGES, the last type without a renderer', () => {
-    // Phase 5 gave shapes, sticky notes and text real renderers. Images are
-    // FR-CANVAS-010 [P1] and land in Phase 12, so the placeholder rectangle
-    // survives for them alone.
+  it('draws an IMAGE through the image source, and a stroke after it re-sets its style', () => {
+    // FR-CANVAS-010 (Phase 13): the blockout branch is gone. An image whose
+    // bitmap is not ready yet fills its box; the next stroke must not inherit
+    // that fill state.
     const { ctx, ops } = recorder()
     const mixed = [
       stroke(0, { points: [0, 0, 0.5, 5, 5, 0.5] }),
@@ -240,9 +240,14 @@ describe('drawObjects — run-length batching, defect D-5', () => {
         naturalHeight: 10,
         cornerRadius: 0,
       } as unknown as BoardObject,
+      stroke(2, { points: [0, 0, 0.5, 5, 5, 0.5] }),
     ]
-    drawObjects(ctx, args(mixed))
+    const images = { get: vi.fn(() => null), status: () => 'loading' as const }
+    drawObjects(ctx, { ...args(mixed), images })
+    expect(images.get).toHaveBeenCalledWith('https://example.test/a.png')
     expect(ops).toContain('fillRect(10)')
+    // Two strokes of one style, split by an image: the style is written twice.
+    expect(ops.filter(op => op.startsWith('strokeStyle=')).length).toBe(2)
   })
 
   it('culls before drawing, so an off-screen stroke costs nothing', () => {

@@ -1,9 +1,9 @@
 import {
   POLYLINE_ZOOM_THRESHOLD,
   type BoardObject,
-  type ObjectType,
   type ShapeObject,
   type StickyObject,
+  type ImageObject,
   type StrokeObject,
   type TextObject,
   type Viewport,
@@ -12,14 +12,14 @@ import { collectVisible, getViewRect } from '../geometry/culling.js'
 import { applyStrokeStyle, strokePath, strokeStyleKey } from './shapes/stroke.js'
 import { applyShapeStyle, drawShape, shapeStyleKey } from './shapes/shapes.js'
 import { drawSticky, drawText } from './shapes/textual.js'
+import { drawImageObject } from './shapes/image.js'
+import { imageCache, type ImageSource } from '../imageCache.js'
 
 /**
  * Layer 1 — committed objects.
  *
- * PHASE 5 SCOPE: strokes, shapes, sticky notes and text all render for real.
- * Only images still draw as a tinted bounding box — the last survivor of the
- * transitional BLOCKOUT renderer Phase 2 added so the 10,000-object frame-rate
- * gate could be measured honestly. FR-CANVAS-010 retires it in Phase 12.
+ * Every object type renders for real. Images (FR-CANVAS-010, Phase 13) were
+ * the last to draw as a tinted blockout box; that branch is gone.
  *
  * R-CANVAS-021: apply the viewport transform ONCE per frame, not per object.
  * R-CANVAS-024: never allocate inside the draw loop.
@@ -55,24 +55,16 @@ export interface DrawObjectsArgs {
   scratch: BoardObject[]
   /** Object under the eraser, drawn in --color-danger — FR-CANVAS-006. */
   eraseCandidate?: string | null
+  /** Decoded bitmaps for image objects. The shared LRU cache by default. */
+  images?: ImageSource
 }
 
 /** PRD §15 --color-danger. The eraser's "this is what you are about to lose". */
 const DANGER = '#DC2626'
 
-/**
- * Blockout tint for the ONE type still without a real renderer.
- *
- * Phase 5 replaced shapes, sticky notes and text; images are FR-CANVAS-010
- * [P1] and land in Phase 12, so the placeholder rectangle survives for them
- * alone. When that goes, so does this and the whole blockout branch below.
- */
-const TINTS: Partial<Record<ObjectType, string>> = {
-  image: '#E4E4E7',
-}
-
 export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs): void {
   const { viewport, width, height, dpr, objects, scratch, eraseCandidate } = args
+  const images = args.images ?? imageCache
 
   ctx.save()
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -95,7 +87,6 @@ export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs
   // Run-length batching state. Empty string can never equal a real key, which
   // always contains two pipes.
   let styleKey = ''
-  let blockoutTint = ''
 
   for (let i = 0; i < visible.length; i++) {
     const o = visible[i]!
@@ -124,8 +115,6 @@ export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs
       if (key !== styleKey) {
         applyStrokeStyle(ctx, s)
         styleKey = key
-        // A fill-styled blockout may follow; force it to re-set its own state.
-        blockoutTint = ''
       }
       strokePath(ctx, s.points, coarse)
       continue
@@ -151,7 +140,6 @@ export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs
       if (key !== styleKey) {
         applyShapeStyle(ctx, s)
         styleKey = key
-        blockoutTint = ''
       }
       drawShape(ctx, s)
       continue
@@ -167,26 +155,19 @@ export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs
     if (o.type === 'sticky') {
       drawSticky(ctx, o as StickyObject)
       styleKey = ''
-      blockoutTint = ''
       continue
     }
 
     if (o.type === 'text') {
       drawText(ctx, o as TextObject)
       styleKey = ''
-      blockoutTint = ''
       continue
     }
 
-    const tint = TINTS[o.type]
-    if (!tint) continue
-    if (tint !== blockoutTint) {
-      ctx.fillStyle = tint
-      ctx.globalAlpha = coarse ? 0.7 : 0.85
-      blockoutTint = tint
+    if (o.type === 'image') {
+      drawImageObject(ctx, o as ImageObject, images)
       styleKey = ''
     }
-    ctx.fillRect(o.x, o.y, o.width, o.height)
   }
 
   ctx.globalAlpha = 1

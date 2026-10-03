@@ -32,6 +32,7 @@ import { devFlags, loadStressFixture } from './devFixture.js'
 import { buildPresenceView } from '../presence/usePresence.js'
 import { emitSelection } from '../presence/bus.js'
 import { presenceStore } from '../presence/presenceStore.js'
+import { imageCache } from './imageCache.js'
 
 /**
  * The canvas surface — FLOWS §14.3.
@@ -285,6 +286,9 @@ export function Canvas() {
       if (buildPresenceView()) renderer.markDirty('overlay')
     }, 33)
 
+    // An image finishing its load is a change to layer 1 only (FR-CANVAS-010).
+    const stopImages = imageCache.onChange(() => renderer.markDirty('objects'))
+
     // R-CANVAS-013: stop when hidden, restart when visible.
     const onVisibility = () => {
       if (document.hidden) renderer.stop()
@@ -353,6 +357,7 @@ export function Canvas() {
       // R-CANVAS-014 / R-STATE-007: cancel the loop, drop every listener.
       renderer.stop()
       unsubscribe()
+      stopImages()
       // R-UNDO-006: history does not outlive the board. Keeping a stack whose
       // entries name objects on a board the user has left is worse than
       // keeping none — the first Ctrl+Z on the next board would be a silent
