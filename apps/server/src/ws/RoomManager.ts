@@ -106,9 +106,15 @@ export class RoomManager {
     return this.size(boardId) >= MAX_USERS_PER_ROOM
   }
 
-  join(session: Session): void {
+  /**
+   * `slot` is the board-wide rotation position from Redis (shared by every
+   * instance). Without one — Redis down, or a test — this room's own
+   * rotation is used.
+   */
+  join(session: Session, slot?: number | null): void {
     const room = this.room(session.boardId)
-    session.colour = PRESENCE_COLOURS[room.colourCursor % PRESENCE_COLOURS.length]!
+    const index = slot ?? room.colourCursor
+    session.colour = PRESENCE_COLOURS[index % PRESENCE_COLOURS.length]!
     room.colourCursor += 1
     room.sessions.set(session.id, session)
   }

@@ -28,7 +28,7 @@ export async function handleJoin(
   if (session.joined) return
   session.joined = true
 
-  rooms.join(session)
+  rooms.join(session, await presenceService.nextColourSlot(session.boardId))
   // Record in Redis so other instances can see this session — TRD §15.2.
   void presenceService.touch(session.boardId, session.toPresenceUser())
 

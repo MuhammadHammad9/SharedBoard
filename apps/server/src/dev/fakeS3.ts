@@ -28,6 +28,7 @@ import * as zlib from 'node:zlib'
 interface Stored {
   body: Buffer
   contentType: string
+  modified: Date
 }
 
 export interface FakeS3 {
@@ -193,11 +194,34 @@ export async function startFakeS3(
           }
         }
         objects.set(key, {
+          modified: new Date(),
           body,
           contentType: req.headers['content-type'] ?? 'application/octet-stream',
         })
         res.writeHead(200, { ...CORS, etag: `"${objects.size}"` }).end()
       })
+      return
+    }
+
+    // ListObjectsV2 — `GET /{bucket}?list-type=2&prefix=…`, one page.
+    const query = new URL(req.url ?? '/', 'http://x').searchParams
+    const bucketName = key.replace(/\/$/, '')
+    if (
+      req.method === 'GET' &&
+      query.get('list-type') === '2' &&
+      !bucketName.includes('/')
+    ) {
+      const prefix = `${bucketName}/${query.get('prefix') ?? ''}`
+      const items = [...objects.entries()]
+        .filter(([k]) => k.startsWith(prefix))
+        .map(
+          ([k, o]) =>
+            `<Contents><Key>${k.slice(bucketName.length + 1)}</Key><LastModified>${o.modified.toISOString()}</LastModified><Size>${o.body.length}</Size></Contents>`,
+        )
+      res.writeHead(200, { ...CORS, 'content-type': 'application/xml' })
+      res.end(
+        `<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><Name>${bucketName}</Name><Prefix>${query.get('prefix') ?? ''}</Prefix><KeyCount>${items.length}</KeyCount><IsTruncated>false</IsTruncated>${items.join('')}</ListBucketResult>`,
+      )
       return
     }
 

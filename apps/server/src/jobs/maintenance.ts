@@ -1,5 +1,6 @@
 import { logger } from '../lib/logger.js'
 import { boardService } from '../services/BoardService.js'
+import { imageCollector } from '../services/ImageCollector.js'
 import { memberService } from '../services/MemberService.js'
 import { thumbnailService } from '../services/ThumbnailService.js'
 import { presenceService } from '../services/PresenceService.js'
@@ -35,6 +36,14 @@ export async function runMaintenance(now = Date.now()): Promise<void> {
     if (purged > 0) logger.info({ purged }, 'purged expired trash')
   } catch (error) {
     logger.warn({ err: error }, 'trash purge failed')
+  }
+
+  // After the purge: boards just purged may have held the last reference.
+  try {
+    const images = await imageCollector.collect(now)
+    if (images > 0) logger.info({ images }, 'collected unreferenced images')
+  } catch (error) {
+    logger.warn({ err: error }, 'image collection failed')
   }
 }
 

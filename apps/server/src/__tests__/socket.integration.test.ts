@@ -894,6 +894,9 @@ describe('Redis pub/sub fan-out', () => {
       const ackA = await onA.join(boardId)
       // The arrival on A is told who is already on B, from Redis.
       expect(ackA.users.map(u => u.sessionId)).toContain(ackB.sessionId)
+      // One colour rotation for the board across instances (R-UI-013): each
+      // instance's room is fresh, so local rotation would give both slot 0.
+      expect(ackA.colour).not.toBe(ackB.colour)
 
       // Presence: B hears about the arrival on A.
       await onB.waitFor('presence_join')

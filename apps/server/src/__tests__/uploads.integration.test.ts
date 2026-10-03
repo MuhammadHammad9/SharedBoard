@@ -446,3 +446,49 @@ describe('the trash purge — FR-BOARD-006', () => {
     expect(stored(key)).toBeUndefined()
   })
 })
+
+/* ── Image garbage collection — reference scan ────────────────────────────── */
+
+describe('the image collector', () => {
+  it('deletes only images older than the grace that no op or snapshot mentions', async () => {
+    const { imageCollector, IMAGE_GRACE_MS } =
+      await import('../services/ImageCollector.js')
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const used = await upload(priya, boardId, 'image/png', PNG)
+    const orphan = await upload(priya, boardId, 'image/png', PNG)
+    const young = await upload(priya, boardId, 'image/png', PNG)
+    const inSnapshot = await upload(priya, boardId, 'image/png', PNG)
+
+    // `used` is on a board through an op — on ANOTHER board, as a paste
+    // between boards would leave it.
+    const other = await createBoard(priya)
+    await prisma.operation.create({
+      data: {
+        id: crypto.randomUUID(),
+        boardId: other,
+        seq: 1,
+        type: 'CREATE',
+        objectId: crypto.randomUUID(),
+        payload: { type: 'image', url: used.confirm.body.url },
+      },
+    })
+    await prisma.snapshot.create({
+      data: {
+        boardId,
+        seq: 1,
+        state: { objects: [{ url: inSnapshot.confirm.body.url }] },
+      },
+    })
+
+    // Age everything but `young` past the grace.
+    const old = new Date(Date.now() - IMAGE_GRACE_MS - 60_000)
+    for (const key of [used.key, orphan.key, inSnapshot.key]) stored(key)!.modified = old
+
+    expect(await imageCollector.collect()).toBe(1)
+    expect(stored(orphan.key)).toBeUndefined()
+    expect(stored(used.key)).toBeDefined()
+    expect(stored(inSnapshot.key)).toBeDefined()
+    expect(stored(young.key)).toBeDefined()
+  })
+})

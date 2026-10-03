@@ -2,6 +2,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
@@ -113,6 +114,30 @@ export const storage = {
         CacheControl: 'public, max-age=31536000, immutable',
       }),
     )
+  },
+
+  /** Every key under a prefix, with when it was written. Paginates. */
+  async list(
+    prefix: string,
+    max = 10_000,
+  ): Promise<Array<{ key: string; modified: Date }>> {
+    const out: Array<{ key: string; modified: Date }> = []
+    let token: string | undefined
+    do {
+      const page = await s3().send(
+        new ListObjectsV2Command({
+          Bucket: bucket(),
+          Prefix: prefix,
+          ContinuationToken: token,
+        }),
+      )
+      for (const item of page.Contents ?? []) {
+        if (item.Key)
+          out.push({ key: item.Key, modified: item.LastModified ?? new Date(0) })
+      }
+      token = page.IsTruncated ? page.NextContinuationToken : undefined
+    } while (token && out.length < max)
+    return out
   },
 
   async remove(key: string): Promise<void> {
