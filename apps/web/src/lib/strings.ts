@@ -410,6 +410,52 @@ export const loading = {
   invite: 'Opening invite',
 } as const
 
+/**
+ * S-15 — the shortcuts reference, FR-SET-003. Every row is PRD Appendix A,
+ * verbatim: the action words, the key names and the context.
+ */
+export const shortcuts = {
+  title: 'Keyboard shortcuts',
+  rule: 'Every shortcut is disabled while a text input or on-canvas text editor has focus, except Escape and Cmd/Ctrl+Enter.',
+  contexts: { Board: 'Board', Global: 'Global', Forms: 'Forms' },
+  /** [keys, action, context] — Appendix A order. `Mod` reads Cmd or Ctrl. */
+  rows: [
+    [['V'], 'Select tool', 'Board'],
+    [['H'], 'Hand / pan tool', 'Board'],
+    [['P'], 'Pen tool', 'Board'],
+    [['E'], 'Eraser tool', 'Board'],
+    [['R'], 'Rectangle', 'Board'],
+    [['O'], 'Ellipse', 'Board'],
+    [['L'], 'Line', 'Board'],
+    [['A'], 'Arrow', 'Board'],
+    [['N'], 'Sticky note', 'Board'],
+    [['T'], 'Text', 'Board'],
+    [['Space (hold)'], 'Temporary pan', 'Board'],
+    [['Mod', 'Z'], 'Undo', 'Board'],
+    [['Mod', 'Shift', 'Z'], 'Redo', 'Board'],
+    [['Mod', 'C'], 'Copy', 'Board'],
+    [['Mod', 'X'], 'Cut', 'Board'],
+    [['Mod', 'V'], 'Paste', 'Board'],
+    [['Mod', 'D'], 'Duplicate', 'Board'],
+    [['Mod', 'A'], 'Select all', 'Board'],
+    [['Delete / Backspace'], 'Delete selection', 'Board'],
+    [['Escape'], 'Deselect / cancel / close modal', 'Global'],
+    [['Arrow keys'], 'Nudge 1 px', 'Board'],
+    [['Shift', 'Arrow'], 'Nudge 10 px', 'Board'],
+    [['Mod', 'Scroll'], 'Zoom', 'Board'],
+    [['Mod', '0'], 'Reset zoom to 100%', 'Board'],
+    [['Mod', '1'], 'Zoom to fit', 'Board'],
+    [['Mod', '+ / -'], 'Zoom in / out', 'Board'],
+    [[']'], 'Bring forward', 'Board'],
+    [['Mod', ']'], 'Bring to front', 'Board'],
+    [['['], 'Send backward', 'Board'],
+    [['Mod', '['], 'Send to back', 'Board'],
+    [['?'], 'Shortcuts modal', 'Global'],
+    [['Mod', 'Enter'], 'Submit form', 'Forms'],
+  ],
+  open: 'Keyboard shortcuts',
+} as const
+
 /** FLOWS §13.1 — the toast stack. */
 export const toastStrings = {
   // R-UI-055: older toasts collapse into a count.
@@ -571,6 +617,7 @@ export const strings = {
   presence,
   boards,
   export: exportStrings,
+  shortcuts,
   brand,
   loading,
   dashboard,

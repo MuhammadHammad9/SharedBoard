@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams } from 'react-router'
 import { Canvas } from '../features/canvas/Canvas.js'
 import { ErrorBoundary } from '../components/states/ErrorBoundary.js'
 import { BoardEmptyHint } from '../components/board/BoardEmptyHint.js'
+import { ShortcutsModal } from '../components/board/ShortcutsModal.js'
 import { BoardHeader } from '../components/board/BoardHeader.js'
 import { SessionExpiredBanner } from '../components/board/SessionExpiredBanner.js'
 import { OfflineBanner } from '../components/board/OfflineBanner.js'
@@ -123,12 +124,9 @@ export default function Board() {
       className="relative h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-canvas"
       data-board-role={load.role ?? 'OWNER'}
     >
-      {/* S-21, the inner boundary: a canvas crash leaves the header and the
-          way back to the dashboard working (FLOWS §12.4). */}
-      <ErrorBoundary variant="canvas">
-        <Canvas />
-      </ErrorBoundary>
-      <BoardEmptyHint neverEdited={load.seq === 0} />
+      {/* FLOWS §13.3 tab order: header → toolbar → canvas → properties →
+          zoom. The header comes first in the DOM for that reason alone; it is
+          absolutely positioned, so the order changes nothing on screen. */}
       <BoardHeader
         boardId={boardId ?? ''}
         name={load.name}
@@ -138,6 +136,13 @@ export default function Board() {
         pending={load.pending}
         onRetry={load.retryConnection}
       />
+      {/* S-21, the inner boundary: a canvas crash leaves the header and the
+          way back to the dashboard working (FLOWS §12.4). */}
+      <ErrorBoundary variant="canvas">
+        <Canvas />
+      </ErrorBoundary>
+      <BoardEmptyHint neverEdited={load.seq === 0} />
+      <ShortcutsModal />
       <OfflineBanner state={load.connection} pending={load.pending} />
       <SessionExpiredBanner />
       {actingGuest && <GuestBar boardId={boardId ?? ''} />}

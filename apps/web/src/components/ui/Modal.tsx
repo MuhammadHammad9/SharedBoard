@@ -32,6 +32,11 @@ import { createPortal } from 'react-dom'
 
 /** Open modals, oldest first. Only the last one handles keys. */
 const openStack: symbol[] = []
+/** The body's overflow before the first modal opened. */
+let previousOverflow = ''
+
+/** True while any modal is open — the canvas shortcuts stand down (P14-1). */
+export const isModalOpen = (): boolean => openStack.length > 0
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -46,6 +51,16 @@ export interface ModalProps {
   testId?: string
   /** A wider panel — the share modal's three sections need the room. */
   wide?: boolean
+  /**
+   * FLOWS §13.2: a destructive modal does not close on a backdrop click — a
+   * stray click must not be what decides whether a board is deleted.
+   */
+  destructive?: boolean
+  /**
+   * False while a destructive action is in flight: Escape and the backdrop
+   * do nothing until it settles (FLOWS §13.2).
+   */
+  dismissible?: boolean
 }
 
 export function Modal({
@@ -56,16 +71,25 @@ export function Modal({
   footer,
   testId,
   wide = false,
+  destructive = false,
+  dismissible = true,
 }: ModalProps) {
   const panel = useRef<HTMLDivElement | null>(null)
   const returnFocusTo = useRef<HTMLElement | null>(null)
   const pointerDownInside = useRef(false)
   const titleId = useId()
+  // Read by the key handler without re-binding it on every busy change.
+  const dismissibleRef = useRef(dismissible)
+  dismissibleRef.current = dismissible
 
   const focusFirst = useCallback(() => {
     const node = panel.current
     if (!node) return
-    const target = node.querySelector<HTMLElement>(FOCUSABLE)
+    // FLOWS §13.2: the first interactive element — or, for a confirmation,
+    // the primary action, which marks itself `data-autofocus`.
+    const target =
+      node.querySelector<HTMLElement>('[data-autofocus]:not([disabled])') ??
+      node.querySelector<HTMLElement>(FOCUSABLE)
     // The panel itself is focusable as a fallback, so a dialog with no
     // controls still receives focus rather than leaving it outside.
     ;(target ?? node).focus()
@@ -78,12 +102,18 @@ export function Modal({
     focusFirst()
     const self = Symbol('modal')
     openStack.push(self)
+    // FLOWS §13.2: the page behind does not scroll. Restored when the LAST
+    // open modal closes, so a stacked confirmation does not unlock it early.
+    if (openStack.length === 1) {
+      previousOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+    }
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (openStack[openStack.length - 1] !== self) return
       if (event.key === 'Escape') {
         event.stopPropagation()
-        onClose()
+        if (dismissibleRef.current) onClose()
         return
       }
       if (event.key !== 'Tab') return
@@ -112,6 +142,7 @@ export function Modal({
     return () => {
       document.removeEventListener('keydown', onKeyDown, true)
       openStack.splice(openStack.indexOf(self), 1)
+      if (openStack.length === 0) document.body.style.overflow = previousOverflow
       returnFocusTo.current?.focus?.()
     }
   }, [open, onClose, focusFirst])
@@ -126,8 +157,10 @@ export function Modal({
         pointerDownInside.current = panel.current?.contains(event.target as Node) ?? false
       }}
       onClick={() => {
-        // Only a click that both started and ended on the backdrop closes.
-        if (!pointerDownInside.current) onClose()
+        // Only a click that both started and ended on the backdrop closes —
+        // and never on a destructive modal, or while one is busy.
+        if (!pointerDownInside.current && !destructive && dismissibleRef.current)
+          onClose()
         pointerDownInside.current = false
       }}
     >

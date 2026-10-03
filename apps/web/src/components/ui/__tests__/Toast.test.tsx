@@ -115,3 +115,36 @@ describe('Toast', () => {
     expect(toast.getAttribute('aria-live')).toBe('polite')
   })
 })
+
+describe('FLOWS §13.1 conventions', () => {
+  it('durations: info 3 s, error 6 s, error with an action 8 s; an explicit duration wins', async () => {
+    const { durationFor } = await import('../Toast.js')
+    expect(durationFor({})).toBe(3_000)
+    expect(durationFor({ variant: 'danger' })).toBe(6_000)
+    expect(
+      durationFor({ variant: 'danger', action: { label: 'Retry', onAction: () => {} } }),
+    ).toBe(8_000)
+    expect(durationFor({ durationMs: 1_000, variant: 'danger' })).toBe(1_000)
+  })
+
+  it('an error is announced assertively; information politely', () => {
+    renderToast(api => {
+      api.show({ message: 'Saved' })
+      api.show({ message: 'That change couldn’t be saved.', variant: 'danger' })
+    })
+    raise()
+    const [info, error] = screen.getAllByTestId('toast')
+    expect(info!.getAttribute('aria-live')).toBe('polite')
+    expect(error!.getAttribute('aria-live')).toBe('assertive')
+    expect(error!.getAttribute('role')).toBe('alert')
+  })
+
+  it('collapses past three into "+N more"', () => {
+    renderToast(api => {
+      for (let i = 0; i < 5; i++) api.show({ message: `Toast ${i}` })
+    })
+    raise()
+    expect(screen.getAllByTestId('toast')).toHaveLength(3)
+    expect(screen.getByTestId('toast-collapsed').textContent).toBe('+2 more')
+  })
+})

@@ -12,6 +12,9 @@ import { AvatarStack } from '../../features/presence/AvatarStack.js'
 import type { ConnectionState, Role } from '@coboard/shared'
 import { ExportModal } from '../../features/export/ExportModal.js'
 import { openExport } from '../../features/export/exportStore.js'
+import { Keyboard } from '@phosphor-icons/react'
+import { openShortcuts } from './shortcutsStore.js'
+import { shortcuts } from '../../lib/strings.js'
 
 /** The canvas fills the window on the board route, so the window is the view. */
 const windowSize = () => ({ width: window.innerWidth, height: window.innerHeight })
@@ -78,7 +81,7 @@ export function BoardHeader({
   const canRename = role === 'OWNER'
 
   return (
-    <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-3 px-4 py-3">
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-header flex items-center gap-3 px-4 py-3">
       <Link
         to="/dashboard"
         aria-label={actions.backToDashboard}
@@ -141,6 +144,19 @@ export function BoardHeader({
         </Button>
       </span>
       <ExportModal boardName={displayName} getSize={windowSize} />
+      {/* S-15 — also on `?`, but a key nobody knows about needs a door. */}
+      <span className="pointer-events-auto">
+        <button
+          type="button"
+          onClick={openShortcuts}
+          aria-label={shortcuts.open}
+          aria-keyshortcuts="?"
+          data-testid="shortcuts-button"
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted outline-none transition-colors duration-fast hover:bg-subtle hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          <Keyboard size={18} weight="light" aria-hidden="true" />
+        </button>
+      </span>
 
       {/* FR-SHARE-001: inviting is the owner's alone, so the button is too. */}
       {role === 'OWNER' && (

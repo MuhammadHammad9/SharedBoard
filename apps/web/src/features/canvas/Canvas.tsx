@@ -494,6 +494,9 @@ export function Canvas() {
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-canvas">
+      {/* Before the surface in the DOM: the toolbar is tabbed to before the
+          canvas (FLOWS §13.3). Positioned absolutely, so nothing moves. */}
+      <Toolbar />
       <div
         ref={setContainer}
         className="absolute inset-0 touch-none"
@@ -514,7 +517,6 @@ export function Canvas() {
 
       <TextOverlay container={container} />
       <UploadPlaceholders />
-      <Toolbar />
       <PropertiesPanel />
       <ContextMenu container={container} getSize={getSize} />
       <ZoomControls getSize={getSize} />

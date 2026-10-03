@@ -27,8 +27,8 @@ import {
   boards as boardStrings,
   dashboard,
   emptyStates,
-  errors,
 } from '../lib/strings.js'
+import { serverErrorMessage } from '../lib/errorCopy.js'
 
 /**
  * S-07 Dashboard — FLOWS §6.
@@ -147,8 +147,8 @@ export default function Dashboard() {
               }),
           },
         }),
-      onError: () =>
-        toast.show({ message: errors.genericServerError, variant: 'danger' }),
+      onError: error =>
+        toast.show({ message: serverErrorMessage(error), variant: 'danger' }),
     })
   }
 
@@ -186,7 +186,7 @@ export default function Dashboard() {
               className="flex flex-col items-center gap-3 rounded-lg border border-danger/30 bg-app px-6 py-16 text-center"
             >
               <p className="text-base font-medium text-primary">
-                {errors.genericServerError}
+                {serverErrorMessage(query.error)}
               </p>
               <Button variant="secondary" onClick={() => void query.refetch()}>
                 {actions.retry}
@@ -255,9 +255,9 @@ export default function Dashboard() {
                   onTrash={() => onTrash(board.id)}
                   onDuplicate={() =>
                     duplicate.mutate(board.id, {
-                      onError: () =>
+                      onError: error =>
                         toast.show({
-                          message: errors.genericServerError,
+                          message: serverErrorMessage(error),
                           variant: 'danger',
                         }),
                     })

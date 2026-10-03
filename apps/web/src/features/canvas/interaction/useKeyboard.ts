@@ -24,6 +24,8 @@ import { applyAndEmit, deleteOps } from '../history/apply.js'
 import { LABELS } from '../history/grouping.js'
 import { history } from '../history/history.js'
 import { openExport } from '../../export/exportStore.js'
+import { isModalOpen } from '../../../components/ui/Modal.js'
+import { openShortcuts } from '../../../components/board/shortcutsStore.js'
 
 /** Arrow key → unit direction. FR-CANVAS-011. */
 const ARROW_DELTAS: Record<string, { x: number; y: number } | undefined> = {
@@ -91,6 +93,17 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
     const onKeyDown = (e: KeyboardEvent) => {
       // R-A11Y-009: never steal keys from a text field.
       if (isTextEntryTarget(e.target)) return
+      // …nor from a modal (P14-1). The modal answers its own Escape, so
+      // nothing here does — not even the canvas's deselect.
+      if (isModalOpen()) return
+
+      // S-15 — `?` opens the shortcuts reference (PRD Appendix A, FR-SET-003).
+      // Shift+/ on most layouts; matched on the character, not the key code.
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        openShortcuts()
+        return
+      }
 
       const store = boardStore.getState()
       const mod = e.metaKey || e.ctrlKey
@@ -355,7 +368,7 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
      * and CoBoard objects stay with `pasteAt`.
      */
     const onPaste = (e: ClipboardEvent) => {
-      if (isTextEntryTarget(e.target)) return
+      if (isTextEntryTarget(e.target) || isModalOpen()) return
       if (boardStore.getState().readOnly) return
       const images = Array.from(e.clipboardData?.files ?? []).filter(f =>
         f.type.startsWith('image/'),

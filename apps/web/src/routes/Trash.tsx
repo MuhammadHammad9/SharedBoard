@@ -19,10 +19,10 @@ import {
   boards as boardStrings,
   dashboard,
   emptyStates,
-  errors,
 } from '../lib/strings.js'
 import type { BoardSummary } from '../features/boards/api.js'
 import { EmptyBoardGraphic } from '../features/boards/EmptyBoardGraphic.js'
+import { serverErrorMessage } from '../lib/errorCopy.js'
 
 const RESTORE_FADE_MS = 200
 
@@ -56,14 +56,14 @@ export default function Trash() {
     window.setTimeout(() => {
       restore.mutate(id, {
         onSuccess: () => toast.show({ message: boardStrings.restored }),
-        onError: () => {
+        onError: error => {
           // Back into view: it is still in Trash.
           setLeaving(s => {
             const next = new Set(s)
             next.delete(id)
             return next
           })
-          toast.show({ message: errors.genericServerError, variant: 'danger' })
+          toast.show({ message: serverErrorMessage(error), variant: 'danger' })
         },
       })
     }, RESTORE_FADE_MS)
@@ -112,7 +112,7 @@ export default function Trash() {
               data-testid="trash-error"
               className="flex flex-col items-center gap-3 rounded-lg border border-danger/30 bg-app px-6 py-12 text-center"
             >
-              <p className="text-sm text-primary">{errors.genericServerError}</p>
+              <p className="text-sm text-primary">{serverErrorMessage(query.error)}</p>
               <Button variant="secondary" onClick={() => void query.refetch()}>
                 {actions.retry}
               </Button>
@@ -198,6 +198,10 @@ export default function Trash() {
         onClose={closeModal}
         title={boardStrings.deleteForeverTitle(target?.name ?? '')}
         testId="permanent-delete-modal"
+        // FLOWS §13.2: no backdrop dismissal on a destructive modal, and no
+        // dismissal at all while the delete is in flight.
+        destructive
+        dismissible={!destroy.isPending}
         footer={
           <>
             <Button variant="secondary" onClick={closeModal}>
@@ -214,9 +218,9 @@ export default function Trash() {
                   { id: target.id, confirmName },
                   {
                     onSuccess: closeModal,
-                    onError: () =>
+                    onError: error =>
                       toast.show({
-                        message: errors.genericServerError,
+                        message: serverErrorMessage(error),
                         variant: 'danger',
                       }),
                   },

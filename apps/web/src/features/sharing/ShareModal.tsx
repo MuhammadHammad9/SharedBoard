@@ -421,6 +421,8 @@ function LinkSection({ data }: { data: ReturnType<typeof useSharing> }) {
             onClose={() => setConfirmReset(false)}
             title={actions.resetLink}
             testId="reset-confirm"
+            destructive
+            dismissible={!busy}
             footer={
               <>
                 <Button variant="secondary" onClick={() => setConfirmReset(false)}>
@@ -435,6 +437,8 @@ function LinkSection({ data }: { data: ReturnType<typeof useSharing> }) {
                     })
                   }
                   loading={busy}
+                  // FLOWS §13.2: a confirmation opens on its primary action.
+                  data-autofocus
                   data-testid="reset-confirm-yes"
                 >
                   {actions.resetLink}

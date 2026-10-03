@@ -3,7 +3,7 @@ import type { Rect } from '@coboard/shared'
 import { Modal } from '../../components/ui/Modal.js'
 import { Button } from '../../components/ui/Button.js'
 import { useToast } from '../../components/ui/Toast.js'
-import { actions, errors, exportStrings as t } from '../../lib/strings.js'
+import { actions, exportStrings as t } from '../../lib/strings.js'
 import { track } from '../../lib/analytics.js'
 import { boardStore, objectsInZOrder, useBoardStore } from '../../stores/boardStore.js'
 import {
@@ -16,6 +16,7 @@ import {
 } from './renderToCanvas.js'
 import { downloadBlob, exportFilename } from './download.js'
 import { closeExport, useExportStore } from './exportStore.js'
+import { serverErrorMessage } from '../../lib/errorCopy.js'
 
 /**
  * S-14 — export, FLOWS §11, FR-EXPORT-001.
@@ -131,9 +132,9 @@ function ExportDialog({
       track('export_completed', { format: 'png', scope: options.scope })
       closeExport()
       toast.show({ message: t.exported })
-    } catch {
+    } catch (error) {
       setProgress(null)
-      toast.show({ message: errors.genericServerError, variant: 'danger' })
+      toast.show({ message: serverErrorMessage(error), variant: 'danger' })
     }
   }
 
@@ -147,7 +148,8 @@ function ExportDialog({
   return (
     <Modal
       open
-      onClose={() => !busy && closeExport()}
+      onClose={closeExport}
+      dismissible={!busy}
       title={t.title}
       testId="export-modal"
       footer={
