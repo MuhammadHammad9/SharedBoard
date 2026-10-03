@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { DotsThreeVertical, Image as ImageIcon } from '@phosphor-icons/react'
+import { DotsThreeVertical } from '@phosphor-icons/react'
 import { Dropdown } from '../../components/ui/Dropdown.js'
+import { EmptyBoardGraphic } from './EmptyBoardGraphic.js'
 import { RenameInline } from './RenameInline.js'
 import { absoluteTime, relativeTime } from '../../lib/relativeTime.js'
 import { actions } from '../../lib/strings.js'
@@ -100,18 +101,8 @@ export function BoardCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          /*
-           * The empty-board placeholder — FLOWS §6.2. Thumbnails need object
-           * storage, which is Phase 13, so today every card shows this. It is
-           * a real specified state rather than a stand-in.
-           */
-          <ImageIcon
-            size={28}
-            weight="light"
-            aria-hidden="true"
-            className="text-muted/50"
-            data-testid="thumb-placeholder"
-          />
+          // FLOWS §6.2 / FR-BOARD-003: no thumbnail yet, or an empty board.
+          <EmptyBoardGraphic />
         )}
       </div>
 
@@ -142,7 +133,10 @@ export function BoardCard({
           )}
 
           <p className="mt-1 truncate text-xs text-muted">
-            <time dateTime={board.lastActivityAt} title={absoluteTime(board.lastActivityAt)}>
+            <time
+              dateTime={board.lastActivityAt}
+              title={absoluteTime(board.lastActivityAt)}
+            >
               {relativeTime(board.lastActivityAt)}
             </time>
             {!isOwner ? <span> · {board.ownerName}</span> : null}

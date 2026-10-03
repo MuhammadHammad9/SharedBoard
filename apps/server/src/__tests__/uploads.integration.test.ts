@@ -266,3 +266,132 @@ describe('POST /uploads/confirm', () => {
     expect(confirm.status).toBe(404)
   })
 })
+
+/* ── Thumbnails — FR-BOARD-003, D13-4 ─────────────────────────────────────── */
+
+const JPEG_THUMB = Buffer.from([
+  0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1,
+])
+
+const putThumb = (actor: Actor, boardId: string, body: Buffer, type = 'image/jpeg') =>
+  request(app)
+    .put(`/api/boards/${boardId}/thumbnail`)
+    .set({ ...auth(actor), 'content-type': type })
+    .send(body)
+
+const thumbnailOf = async (boardId: string) =>
+  (await prisma.board.findUniqueOrThrow({ where: { id: boardId } })).thumbnailUrl
+
+describe('PUT/DELETE /boards/:id/thumbnail', () => {
+  it('stores a JPEG under a fresh key, and replacing it deletes the old object', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+
+    const first = await putThumb(priya, boardId, JPEG_THUMB)
+    expect(first.status).toBe(200)
+    expect(first.body.thumbnailUrl).toMatch(
+      new RegExp(`^${s3.url}/coboard/thumbnails/${boardId}/[0-9a-f-]{36}\\.jpg$`),
+    )
+    const firstKey = (first.body.thumbnailUrl as string).slice(
+      `${s3.url}/coboard/`.length,
+    )
+    expect(stored(firstKey)).toBeDefined()
+
+    const second = await putThumb(priya, boardId, JPEG_THUMB)
+    expect(second.body.thumbnailUrl).not.toBe(first.body.thumbnailUrl)
+    expect(stored(firstKey)).toBeUndefined()
+    expect(await thumbnailOf(boardId)).toBe(second.body.thumbnailUrl)
+  })
+
+  it('refuses anything that is not a JPEG by its bytes, and a viewer', async () => {
+    const priya = await signUp()
+    const dana = await signUp()
+    const boardId = await createBoard(priya)
+    expect((await putThumb(priya, boardId, Buffer.from(PNG), 'image/jpeg')).status).toBe(
+      415,
+    )
+    await prisma.boardMember.create({
+      data: { boardId, userId: dana.userId, role: 'VIEWER' },
+    })
+    expect((await putThumb(dana, boardId, JPEG_THUMB)).status).toBe(403)
+    expect(await thumbnailOf(boardId)).toBeNull()
+  })
+
+  it('DELETE returns the board to the placeholder and removes the object', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const { body } = await putThumb(priya, boardId, JPEG_THUMB)
+    const key = (body.thumbnailUrl as string).slice(`${s3.url}/coboard/`.length)
+
+    const cleared = await request(app)
+      .delete(`/api/boards/${boardId}/thumbnail`)
+      .set(auth(priya))
+    expect(cleared.status).toBe(204)
+    expect(await thumbnailOf(boardId)).toBeNull()
+    expect(stored(key)).toBeUndefined()
+  })
+
+  it('Duplicate gives the copy its OWN thumbnail object', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const { body } = await putThumb(priya, boardId, JPEG_THUMB)
+
+    const copy = await request(app)
+      .post(`/api/boards/${boardId}/duplicate`)
+      .set(auth(priya))
+    expect(copy.status).toBe(201)
+    const copyUrl = copy.body.board.thumbnailUrl as string
+    expect(copyUrl).toMatch(new RegExp(`/thumbnails/${copy.body.board.id}/`))
+    expect(copyUrl).not.toBe(body.thumbnailUrl)
+
+    // Replacing the original's thumbnail leaves the copy's picture intact.
+    await putThumb(priya, boardId, JPEG_THUMB)
+    expect(stored(copyUrl.slice(`${s3.url}/coboard/`.length))).toBeDefined()
+  })
+
+  it('permanent delete removes the thumbnail object', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const { body } = await putThumb(priya, boardId, JPEG_THUMB)
+    const key = (body.thumbnailUrl as string).slice(`${s3.url}/coboard/`.length)
+
+    await request(app).delete(`/api/boards/${boardId}`).set(auth(priya))
+    const gone = await request(app)
+      .post(`/api/boards/${boardId}/permanent-delete`)
+      .set(auth(priya))
+      .send({ confirmName: 'Moodboard' })
+    expect(gone.status).toBe(204)
+    await new Promise(r => setTimeout(r, 100))
+    expect(stored(key)).toBeUndefined()
+  })
+})
+
+describe('the trash purge — FR-BOARD-006', () => {
+  it('removes boards trashed over 30 days ago, and their thumbnails; nothing else', async () => {
+    const { runMaintenance } = await import('../jobs/maintenance.js')
+    const priya = await signUp()
+    const old = await createBoard(priya)
+    const recent = await createBoard(priya)
+    const live = await createBoard(priya)
+    const { body } = await putThumb(priya, old, JPEG_THUMB)
+    const key = (body.thumbnailUrl as string).slice(`${s3.url}/coboard/`.length)
+
+    const now = Date.now()
+    await prisma.board.update({
+      where: { id: old },
+      data: { deletedAt: new Date(now - 31 * 86_400_000) },
+    })
+    await prisma.board.update({
+      where: { id: recent },
+      data: { deletedAt: new Date(now - 29 * 86_400_000) },
+    })
+
+    await runMaintenance(now)
+    const left = await prisma.board.findMany({
+      where: { id: { in: [old, recent, live] } },
+      select: { id: true },
+    })
+    expect(left.map(b => b.id).sort()).toEqual([recent, live].sort())
+    expect(stored(key)).toBeUndefined()
+  })
+})

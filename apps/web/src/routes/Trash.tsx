@@ -8,10 +8,17 @@ import {
   DashboardHeader,
   DashboardSidebar,
 } from '../components/dashboard/DashboardChrome.js'
-import { usePermanentlyDelete, useRestoreBoard, useTrash } from '../features/boards/useBoards.js'
+import {
+  usePermanentlyDelete,
+  useRestoreBoard,
+  useTrash,
+} from '../features/boards/useBoards.js'
 import { absoluteTime, relativeTime } from '../lib/relativeTime.js'
 import { actions, boards as boardStrings, emptyStates, errors } from '../lib/strings.js'
 import type { BoardSummary } from '../features/boards/api.js'
+import { EmptyBoardGraphic } from '../features/boards/EmptyBoardGraphic.js'
+
+const RESTORE_FADE_MS = 200
 
 /**
  * S-08 Trash — FR-BOARD-006, FLOWS §6.
@@ -34,6 +41,27 @@ export default function Trash() {
   const toast = useToast()
 
   const [target, setTarget] = useState<BoardSummary | null>(null)
+  // Rows fading out after Restore — Phase 13 motion: 200 ms, --ease-out.
+  const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set())
+
+  const onRestore = (id: string) => {
+    setLeaving(s => new Set(s).add(id))
+    // The fade runs first; the list refetch then removes the row for real.
+    window.setTimeout(() => {
+      restore.mutate(id, {
+        onSuccess: () => toast.show({ message: boardStrings.restored }),
+        onError: () => {
+          // Back into view: it is still in Trash.
+          setLeaving(s => {
+            const next = new Set(s)
+            next.delete(id)
+            return next
+          })
+          toast.show({ message: errors.genericServerError, variant: 'danger' })
+        },
+      })
+    }, RESTORE_FADE_MS)
+  }
   const [confirmName, setConfirmName] = useState('')
 
   const closeModal = () => {
@@ -48,7 +76,12 @@ export default function Trash() {
       {/* Search and create are meaningless here, so they are inert rather
           than absent — removing the header entirely would make Trash feel
           like a different application. */}
-      <DashboardHeader search="" onSearch={() => {}} onCreate={() => {}} creating={false} />
+      <DashboardHeader
+        search=""
+        onSearch={() => {}}
+        onCreate={() => {}}
+        creating={false}
+      />
 
       <div className="mx-auto flex w-full max-w-7xl gap-8 px-4 py-6">
         <DashboardSidebar />
@@ -92,8 +125,23 @@ export default function Trash() {
                 <li
                   key={board.id}
                   data-testid="trash-row"
+                  data-trash-row
+                  data-leaving={leaving.has(board.id) ? 'true' : 'false'}
                   className="flex items-center gap-4 rounded-lg border border-border bg-app px-4 py-3"
                 >
+                  {/* Phase 13 UI: the row carries the board's thumbnail. */}
+                  <div className="flex h-12 w-20 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-subtle">
+                    {board.thumbnailUrl ? (
+                      <img
+                        src={board.thumbnailUrl}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <EmptyBoardGraphic />
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-primary">
                       {board.name}
@@ -101,13 +149,17 @@ export default function Trash() {
                     <p className="text-xs text-muted">
                       <time
                         dateTime={board.deletedAt ?? undefined}
-                        title={board.deletedAt ? absoluteTime(board.deletedAt) : undefined}
+                        title={
+                          board.deletedAt ? absoluteTime(board.deletedAt) : undefined
+                        }
                       >
-                        Deleted {board.deletedAt ? relativeTime(board.deletedAt) : ''}
+                        {boardStrings.deletedAgo(
+                          board.deletedAt ? relativeTime(board.deletedAt) : '',
+                        )}
                       </time>
                       {' · '}
                       <span data-testid="days-remaining">
-                        {board.daysUntilPurge ?? 0} days left
+                        {boardStrings.daysLeft(board.daysUntilPurge ?? 0)}
                       </span>
                     </p>
                   </div>
@@ -115,16 +167,7 @@ export default function Trash() {
                   <Button
                     variant="secondary"
                     data-testid="restore"
-                    onClick={() =>
-                      restore.mutate(board.id, {
-                        onSuccess: () => toast.show({ message: boardStrings.restored }),
-                        onError: () =>
-                          toast.show({
-                            message: errors.genericServerError,
-                            variant: 'danger',
-                          }),
-                      })
-                    }
+                    onClick={() => onRestore(board.id)}
                   >
                     {actions.restore}
                   </Button>
@@ -145,7 +188,7 @@ export default function Trash() {
       <Modal
         open={target !== null}
         onClose={closeModal}
-        title={`Delete '${target?.name ?? ''}' forever?`}
+        title={boardStrings.deleteForeverTitle(target?.name ?? '')}
         testId="permanent-delete-modal"
         footer={
           <>
@@ -177,12 +220,10 @@ export default function Trash() {
           </>
         }
       >
-        <p>
-          This cannot be undone. Every stroke, note and shape on this board will be
-          removed permanently.
-        </p>
+        <p>{boardStrings.deleteForeverBody}</p>
         <label className="mt-4 block text-sm text-primary">
-          Type <span className="font-medium">{target?.name}</span> to confirm
+          {boardStrings.deleteForeverPrompt}:{' '}
+          <span className="font-medium">{target?.name}</span>
           <input
             value={confirmName}
             onChange={event => setConfirmName(event.target.value)}

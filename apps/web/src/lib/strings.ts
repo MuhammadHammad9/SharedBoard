@@ -229,6 +229,14 @@ export const boards = {
   resetLinkConfirm: 'Anyone using the old link will lose access.',
   invitesSent: (count: number) => `Invites sent to ${count} people`,
   clipboardFallback: 'Press Cmd+C to copy',
+  // S-08 Trash — Phase 13 UI: "deleted 3 days ago", "28 days left".
+  deletedAgo: (relative: string) => `Deleted ${relative}`,
+  daysLeft: (days: number) => (days === 1 ? '1 day left' : `${days} days left`),
+  // FR-BOARD-006: the copy "must say plainly that it is irreversible".
+  deleteForeverTitle: (name: string) => `Delete '${name}' forever?`,
+  deleteForeverBody:
+    'This cannot be undone. Every stroke, note and shape on this board will be removed permanently.',
+  deleteForeverPrompt: 'Type the board name to confirm',
 } as const
 
 /** FLOWS §11 — export. Labels follow the §11 S-14 drawing word for word. */

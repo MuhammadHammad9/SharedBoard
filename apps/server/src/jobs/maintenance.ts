@@ -1,5 +1,7 @@
 import { logger } from '../lib/logger.js'
+import { boardService } from '../services/BoardService.js'
 import { memberService } from '../services/MemberService.js'
+import { thumbnailService } from '../services/ThumbnailService.js'
 import { presenceService } from '../services/PresenceService.js'
 
 /**
@@ -23,6 +25,16 @@ export async function runMaintenance(now = Date.now()): Promise<void> {
     if (guests > 0) logger.info({ guests }, 'swept idle guests')
   } catch (error) {
     logger.warn({ err: error }, 'guest sweep failed')
+  }
+
+  // FR-BOARD-006: Trash keeps a board 30 days, then it is gone for good.
+  try {
+    const purged = await boardService.purgeExpiredTrash(new Date(now), async urls => {
+      await Promise.all(urls.map(url => thumbnailService.discard(url)))
+    })
+    if (purged > 0) logger.info({ purged }, 'purged expired trash')
+  } catch (error) {
+    logger.warn({ err: error }, 'trash purge failed')
   }
 }
 

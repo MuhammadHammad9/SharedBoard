@@ -150,15 +150,17 @@ export class BoardService {
         : query.filter === 'shared'
           ? { ownerId: { not: userId }, members: { some: { userId } } }
           : // 'starred' has no model until Phase 12 (there is no Star table yet),
-          // so it resolves to the same set as 'all' rather than returning an
-          // empty list that would read as "you have no boards".
-          { OR: [{ ownerId: userId }, { members: { some: { userId } } }] }
+            // so it resolves to the same set as 'all' rather than returning an
+            // empty list that would read as "you have no boards".
+            { OR: [{ ownerId: userId }, { members: { some: { userId } } }] }
 
     const where: Prisma.BoardWhereInput = {
       AND: [
         scope,
         { deletedAt: null },
-        ...(query.q ? [{ name: { contains: query.q, mode: 'insensitive' as const } }] : []),
+        ...(query.q
+          ? [{ name: { contains: query.q, mode: 'insensitive' as const } }]
+          : []),
         ...(this.cursorFilter(query, query.cursor) ?? []),
       ],
     }
@@ -205,8 +207,14 @@ export class BoardService {
     if (!decoded) return null
 
     const asc = query.sort === 'name'
-    const field = query.sort === 'name' ? 'name' : query.sort === 'created' ? 'createdAt' : 'lastActivityAt'
-    const value: string | Date = query.sort === 'name' ? decoded.value : new Date(decoded.value)
+    const field =
+      query.sort === 'name'
+        ? 'name'
+        : query.sort === 'created'
+          ? 'createdAt'
+          : 'lastActivityAt'
+    const value: string | Date =
+      query.sort === 'name' ? decoded.value : new Date(decoded.value)
     if (value instanceof Date && Number.isNaN(value.getTime())) return null
 
     const beyond = asc ? { gt: value } : { lt: value }
@@ -384,12 +392,30 @@ export class BoardService {
    * Called by a scheduled job, and exposed here so a test can call it directly
    * with a clock it controls rather than waiting a month.
    */
-  async purgeExpiredTrash(now: Date = new Date()): Promise<number> {
+  async purgeExpiredTrash(
+    now: Date = new Date(),
+    /** Their thumbnails' URLs, for the caller to delete from storage. */
+    onPurged?: (thumbnailUrls: string[]) => Promise<void>,
+  ): Promise<number> {
     const cutoff = new Date(now.getTime() - TRASH_RETENTION_DAYS * 86_400_000)
-    const { count } = await this.db.board.deleteMany({
+    const expired = await this.db.board.findMany({
       where: { deletedAt: { lt: cutoff } },
+      select: { id: true, thumbnailUrl: true },
     })
+    if (expired.length === 0) return 0
+    const { count } = await this.db.board.deleteMany({
+      where: { id: { in: expired.map(b => b.id) }, deletedAt: { lt: cutoff } },
+    })
+    await onPurged?.(expired.flatMap(b => (b.thumbnailUrl ? [b.thumbnailUrl] : [])))
     return count
+  }
+
+  async thumbnailOf(boardId: string): Promise<string | null> {
+    const row = await this.db.board.findUnique({
+      where: { id: boardId },
+      select: { thumbnailUrl: true },
+    })
+    return row?.thumbnailUrl ?? null
   }
 }
 

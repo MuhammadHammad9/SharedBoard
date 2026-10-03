@@ -39,6 +39,8 @@ interface RequestOptions {
   /** Internal: suppresses the refresh-and-replay, so refresh cannot recurse. */
   skipAuthRetry?: boolean
   signal?: AbortSignal
+  /** Outlive the page — a thumbnail sent as the tab closes (FR-BOARD-003). */
+  keepalive?: boolean
 }
 
 /**
@@ -141,7 +143,10 @@ export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { method = 'GET', body, skipAuthRetry = false, signal } = options
+  const { method = 'GET', body, skipAuthRetry = false, signal, keepalive } = options
+  // A Blob goes as itself, with its own type (a thumbnail JPEG); anything
+  // else is JSON.
+  const raw = body instanceof Blob
 
   const send = async (): Promise<Response> => {
     const token = getAccessToken()
@@ -150,15 +155,20 @@ export async function apiRequest<T>(
       // Always, so the refresh cookie rides along on the auth routes.
       credentials: 'include',
       headers: {
-        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+        ...(body === undefined
+          ? {}
+          : { 'content-type': raw ? (body as Blob).type : 'application/json' }),
         ...(token
           ? { authorization: `Bearer ${token}` }
           : guestCredential
             ? { 'x-coboard-guest': guestCredential }
             : {}),
       },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...(body !== undefined
+        ? { body: raw ? (body as Blob) : JSON.stringify(body) }
+        : {}),
       ...(signal ? { signal } : {}),
+      ...(keepalive ? { keepalive } : {}),
     })
   }
 

@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import express, { Router } from 'express'
 import { z } from 'zod'
 import {
   ClientOpSchema,
@@ -13,6 +13,7 @@ import { boardService } from '../../services/BoardService.js'
 import { opService } from '../../services/OpService.js'
 import { permissionService } from '../../services/PermissionService.js'
 import { snapshotService } from '../../services/SnapshotService.js'
+import { THUMBNAIL_MAX_BYTES, thumbnailService } from '../../services/ThumbnailService.js'
 import { liveRooms } from '../../ws/RoomManager.js'
 import {
   assertAuthenticated,
@@ -324,7 +325,9 @@ export function createBoardsRouter(): Router {
       const id = boardId(req.params.id)
       await permissionService.requireOwner(id, userId)
       const { confirmName } = req.body as z.infer<typeof PermanentDeleteSchema>
+      const thumbnail = await boardService.thumbnailOf(id)
       await boardService.destroy(id, userId, confirmName)
+      void thumbnailService.discard(thumbnail)
       res.status(204).end()
     }),
   )
@@ -340,7 +343,44 @@ export function createBoardsRouter(): Router {
       const board = await boardService.duplicate(id, userId, source =>
         snapshotService.materialise(source),
       )
-      res.status(201).json({ board })
+      // The copy looks like its source on the dashboard straight away.
+      await thumbnailService.copy(id, board.id)
+      res
+        .status(201)
+        .json({
+          board: { ...board, thumbnailUrl: await boardService.thumbnailOf(board.id) },
+        })
+    }),
+  )
+
+  /* ── Thumbnail — FR-BOARD-003, D13-4 ──────────────────────────────────── */
+
+  /**
+   * A client-rendered 640×400 JPEG (raw body, not JSON). Editors only: a
+   * viewer could otherwise replace a board's dashboard face with anything.
+   */
+  router.put(
+    '/:id/thumbnail',
+    express.raw({ type: 'image/jpeg', limit: THUMBNAIL_MAX_BYTES }),
+    ah(async (req, res) => {
+      const identity = assertIdentified(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireEdit(id, identity)
+      const body = Buffer.isBuffer(req.body) ? new Uint8Array(req.body) : new Uint8Array()
+      const thumbnailUrl = await thumbnailService.store(id, body)
+      res.json({ thumbnailUrl })
+    }),
+  )
+
+  /** The board became empty: back to the placeholder graphic. */
+  router.delete(
+    '/:id/thumbnail',
+    ah(async (req, res) => {
+      const identity = assertIdentified(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireEdit(id, identity)
+      await thumbnailService.clear(id)
+      res.status(204).end()
     }),
   )
 

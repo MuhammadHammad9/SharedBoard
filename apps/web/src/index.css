@@ -480,4 +480,17 @@
   [data-export-progress] {
     transition: transform 120ms linear;
   }
+
+  /*
+   * Trash row restore — Phase 13 motion: opacity, 200 ms, --ease-out. The
+   * table also says "collapse"; that would animate height, which is banned
+   * (only transform and opacity animate), so the row fades and the list then
+   * closes the gap without animation.
+   */
+  [data-trash-row] {
+    transition: opacity 200ms var(--ease-out);
+  }
+  [data-trash-row][data-leaving='true'] {
+    opacity: 0;
+  }
 }

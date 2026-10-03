@@ -17,6 +17,7 @@ import { boardStore } from '../stores/boardStore.js'
 import { clearGuest } from '../features/auth/guestIdentity.js'
 import { useBoardEntry } from './RequireBoardAccess.js'
 import { useImageUploads } from '../features/uploads/useImageUploads.js'
+import { useThumbnailUpkeep } from '../features/boards/useThumbnailUpkeep.js'
 import { GuestBar } from '../components/board/GuestBar.js'
 import { useGuestConversion } from '../features/sharing/useGuestConversion.js'
 
@@ -36,6 +37,11 @@ export default function Board() {
   const { boardId } = useParams<{ boardId: string }>()
   const load = useBoardLoad(boardId)
   useImageUploads(boardId)
+  // FR-BOARD-003: the dashboard thumbnail, kept current by an editor's client.
+  useThumbnailUpkeep(
+    boardId,
+    load.status === 'ready' && (load.role === 'OWNER' || load.role === 'EDITOR'),
+  )
   // "Marcus joined" / "Marcus left" — FR-RT-008. Derived from roster diffs,
   // so a second tab from the same person does not announce itself.
   useJoinLeaveToasts()
