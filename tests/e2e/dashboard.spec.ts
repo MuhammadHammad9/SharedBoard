@@ -158,7 +158,10 @@ test('FR-BOARD-002: search, filter and sort survive a reload via the URL', async
   await expect(page.getByTestId('board-search')).toHaveValue('Pricing')
   await expect(cards(page)).toHaveCount(1)
 
-  await page.getByTestId('empty-search').isVisible().catch(() => false)
+  await page
+    .getByTestId('empty-search')
+    .isVisible()
+    .catch(() => false)
   await page.getByTestId('board-search').fill('nothing matches this')
   await expect(page.getByTestId('empty-search')).toContainText('nothing matches this')
 })
@@ -221,6 +224,10 @@ test('S-08: a trashed board appears in Trash with days remaining, and restores',
   await expect(row.getByTestId('days-remaining')).toContainText('30 days left')
 
   await row.getByTestId('restore').click()
+  // Wait for the restore to land before leaving. Navigating straight away
+  // raced the POST: under a loaded parallel run the dashboard's list request
+  // could be answered before the restore committed, and nothing refetches it.
+  await expect(row).toHaveCount(0)
   await page.goto('/dashboard')
   await expect(cards(page).filter({ hasText: 'Mobile gestures' })).toHaveCount(1)
 })

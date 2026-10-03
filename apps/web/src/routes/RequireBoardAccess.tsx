@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate, type NavigateFunction } from 'react-router'
 import { ApiError, setGuestCredential } from '../lib/api.js'
 import { actions, states, strings } from '../lib/strings.js'
 import { useAuthStore } from '../stores/authStore.js'
@@ -15,6 +15,7 @@ import { Spinner } from '../components/ui/Spinner.js'
 import { BackToDashboard, FullScreenState } from '../components/ui/FullScreenState.js'
 import { loginUrlFor } from './nextParam.js'
 import { RequireAuth, useSessionBootstrap } from './guards.js'
+import { logout } from '../features/auth/api.js'
 
 /**
  * `requireBoardAccess` — FLOWS §2.3, "the most important guard in the app".
@@ -27,12 +28,11 @@ import { RequireAuth, useSessionBootstrap } from './guards.js'
  *
  * STEP 5 onward is the board route's own `useBoardLoad`.
  *
- * ONE INTERPRETATION, flagged per the ambiguity rule: the FLOWS §2.4 tree
- * sends a fully anonymous visitor with no share link to S-17. Phase 7's exit
- * gate — "deep-link preserved" — sends them to log in with `?next=`, and its
- * e2e tests still hold. A logged-out MEMBER is far likelier than a stranger
- * at that URL, and "You don't have access" would be wrong for them, so the
- * login redirect stays for that one case. Anyone identified still gets S-17.
+ * An anonymous visitor — no session, no guest identity, no link — still asks
+ * `/access`, so the §2.4 tree holds exactly: a missing board is S-18, a
+ * deleted one S-18 (deleted), anything else S-17. S-17 then offers "Log in"
+ * with `?next=` back to this board, which is how a logged-out member gets in
+ * and how deep links survive login (FLOWS §4).
  */
 
 export interface BoardEntry {
@@ -57,7 +57,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 type Decision =
   | { kind: 'resolving' }
   | { kind: 'enter'; entry: BoardEntry }
-  | { kind: 'login' }
   | { kind: 'denied'; reason: 'no_access' | 'link_revoked' }
   | { kind: 'not-found' }
   | { kind: 'deleted' }
@@ -93,11 +92,6 @@ function Guard({ boardId, children }: { boardId: string; children: ReactNode }) 
     const guest = status === 'authenticated' ? null : readGuest()
     // A user's token always wins; otherwise the guest header, if any.
     setGuestCredential(guest?.id ?? null)
-
-    if (status !== 'authenticated' && !guest && !shareToken) {
-      setDecision({ kind: 'login' })
-      return
-    }
 
     setDecision({ kind: 'resolving' })
     void (async () => {
@@ -148,8 +142,6 @@ function Guard({ boardId, children }: { boardId: string; children: ReactNode }) 
   switch (decision.kind) {
     case 'resolving':
       return <BoardShell />
-    case 'login':
-      return <Navigate to={loginUrlFor(location.pathname, location.search)} replace />
     case 'enter':
       return (
         <BoardEntryContext.Provider value={decision.entry}>
@@ -165,6 +157,12 @@ function Guard({ boardId, children }: { boardId: string; children: ReactNode }) 
           headline={copy.headline}
           body={copy.body}
           action={<BackToDashboard label={actions.backToDashboard} />}
+          footer={
+            <AccountLine
+              next={loginUrlFor(location.pathname, location.search)}
+              navigate={navigate}
+            />
+          }
           testId="board-forbidden"
         />
       )
@@ -204,6 +202,42 @@ function Guard({ boardId, children }: { boardId: string; children: ReactNode }) 
         </BoardShell>
       )
   }
+}
+
+/**
+ * S-17's account line — FLOWS §12.1. Signed in: who, and a way to switch
+ * (sign out, then log in and come straight back here). Not signed in: a way
+ * to log in that returns here.
+ */
+function AccountLine({ next, navigate }: { next: string; navigate: NavigateFunction }) {
+  const email = useAuthStore(s => s.user?.email)
+  if (!email) {
+    return (
+      <Link
+        to={next}
+        className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+        data-testid="forbidden-log-in"
+      >
+        {actions.logIn}
+      </Link>
+    )
+  }
+  const switchAccount = async () => {
+    await logout()
+    navigate(next, { replace: true })
+  }
+  return (
+    <span data-testid="forbidden-account">
+      {states.accessDenied.signedInAs(email)} —{' '}
+      <button
+        type="button"
+        onClick={() => void switchAccount()}
+        className="cursor-pointer rounded-sm font-medium text-accent outline-none hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        {actions.switchAccount}
+      </button>
+    </span>
+  )
 }
 
 function decisionFor(error: unknown): Decision {

@@ -35,10 +35,11 @@ async function apiAs<T>(
 ): Promise<T> {
   const result = await page.evaluate(
     async ({ method, path, body }) => {
-      const refresh = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        credentials: 'include',
-      })
+      // Under the app's own cross-tab lock, so this never races a tab's
+      // refresh into reuse detection (R-SEC-006).
+      const refresh = await navigator.locks.request('coboard:auth-refresh', () =>
+        fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' }),
+      )
       const { accessToken } = (await refresh.json()) as { accessToken: string }
       const r = await fetch(`/api${path}`, {
         method,
@@ -272,5 +273,32 @@ test('guest → account: sign up in a new tab, and nothing on the canvas is lost
   await expect.poll(async () => (await reading(owner))?.objects).toBe(3)
 
   await guestContext.close()
+  await context.close()
+})
+
+test('two tabs of one user cold-loading at the same instant both stay signed in', async ({
+  browser,
+}) => {
+  // Each cold load runs a silent refresh with the SAME cookie. Unserialized,
+  // the second is refresh-token reuse and signs both tabs out (R-SEC-006);
+  // the cross-tab Web Lock in lib/api.ts makes them take turns.
+  const { owner, context, boardId } = await ownerWithBoard(browser)
+  const second = await context.newPage()
+  await second.goto(`/board/${boardId}?debug=1`)
+  await connected(second)
+
+  const refresh = (page: Page) =>
+    page.evaluate(() =>
+      (
+        window as unknown as { __coboardAuth: { refresh(): Promise<boolean> } }
+      ).__coboardAuth.refresh(),
+    )
+  for (let round = 0; round < 5; round++) {
+    // Both tabs present the shared cookie in the same instant.
+    expect(await Promise.all([refresh(owner), refresh(second)])).toEqual([true, true])
+  }
+  // And the session is still alive for a fresh load in either tab.
+  await second.reload()
+  await connected(second)
   await context.close()
 })

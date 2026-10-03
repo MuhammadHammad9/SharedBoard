@@ -21,11 +21,6 @@ import type { LinkRole, Member } from './api.js'
  * shared opacity + 8 px entry, and the two micro-animations here — the Copy
  * label swap and the role-change flash — are CSS on opacity only. See
  * index.css.
- *
- * ONE DEVIATION, noted: FLOWS §10.2 asks for a confirmation MODAL on Reset
- * link. The confirmation is inline, in the same words, because a modal over
- * this modal would also catch Escape and close both — single-modal
- * enforcement is Phase 14 task 8.
  */
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -411,39 +406,44 @@ function LinkSection({ data }: { data: ReturnType<typeof useSharing> }) {
             </p>
           )}
 
-          {confirmReset ? (
-            <div
-              role="alert"
-              className="flex items-center gap-2 text-xs text-primary"
-              data-testid="reset-confirm"
-            >
-              <span className="flex-1">{sharing.resetConfirm}</span>
-              <Button variant="secondary" onClick={() => setConfirmReset(false)}>
-                {actions.cancel}
-              </Button>
-              <Button
-                onClick={() =>
-                  void run(async () => {
-                    await data.reset()
-                    setConfirmReset(false)
-                  })
-                }
-                loading={busy}
-                data-testid="reset-confirm-yes"
-              >
-                {actions.resetLink}
-              </Button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmReset(true)}
-              className="self-start cursor-pointer rounded-sm text-xs font-medium text-accent outline-none hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-              data-testid="link-reset"
-            >
-              {actions.resetLink}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setConfirmReset(true)}
+            className="self-start cursor-pointer rounded-sm text-xs font-medium text-accent outline-none hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            data-testid="link-reset"
+          >
+            {actions.resetLink}
+          </button>
+          {/* FLOWS §10.2: "Confirmation modal: Anyone using the old link will
+              lose access." Stacked over this one; Escape closes only it. */}
+          <Modal
+            open={confirmReset}
+            onClose={() => setConfirmReset(false)}
+            title={actions.resetLink}
+            testId="reset-confirm"
+            footer={
+              <>
+                <Button variant="secondary" onClick={() => setConfirmReset(false)}>
+                  {actions.cancel}
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() =>
+                    void run(async () => {
+                      await data.reset()
+                      setConfirmReset(false)
+                    })
+                  }
+                  loading={busy}
+                  data-testid="reset-confirm-yes"
+                >
+                  {actions.resetLink}
+                </Button>
+              </>
+            }
+          >
+            {sharing.resetConfirm}
+          </Modal>
         </>
       )}
     </section>

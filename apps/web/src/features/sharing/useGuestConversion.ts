@@ -3,8 +3,8 @@ import type { PublicUser } from '@coboard/shared'
 import { api, attemptSilentRefresh, setGuestCredential } from '../../lib/api.js'
 import { getAccessToken, useAuthStore } from '../../stores/authStore.js'
 import {
-  ACCOUNT_CREATED_MESSAGE,
   clearGuest,
+  onAccountCreated,
   type GuestIdentity,
 } from '../auth/guestIdentity.js'
 import { claimGuestSeat } from './api.js'
@@ -12,7 +12,7 @@ import { claimGuestSeat } from './api.js'
 /**
  * Guest → account, in place — FLOWS §7.4.
  *
- *   the signup tab posts ACCOUNT_CREATED_MESSAGE to this one
+ *   the signup tab announces ACCOUNT_CREATED_MESSAGE (email or Google)
  *     → pick up the new session (the refresh cookie is shared)
  *     → the account takes over the guest's seat, as an Editor
  *     → forget the guest identity; reconnect the socket as the account
@@ -35,11 +35,7 @@ export function useGuestConversion(
     if (!guest) return
     let busy = false
 
-    const onMessage = async (event: MessageEvent) => {
-      // Same origin, and exactly our message — anything else is ignored.
-      if (event.origin !== window.location.origin) return
-      if ((event.data as { type?: unknown } | null)?.type !== ACCOUNT_CREATED_MESSAGE)
-        return
+    const upgrade = async () => {
       if (busy) return
       busy = true
       try {
@@ -58,8 +54,8 @@ export function useGuestConversion(
       }
     }
 
-    window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
+    // Both routes may deliver; `busy` and the guest clearing make it once.
+    return onAccountCreated(() => void upgrade())
   }, [boardId, guest, reconnect])
 
   return guest

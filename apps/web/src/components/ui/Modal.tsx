@@ -23,7 +23,15 @@ import { createPortal } from 'react-dom'
  *
  * Rendered through a portal so no ancestor's `overflow` or `transform` can
  * clip it or break `position: fixed`.
+ *
+ * STACKING: a confirmation may open over another modal (Reset link over the
+ * share modal, FLOWS §10.2). Only the TOPMOST open modal answers Escape and
+ * traps Tab; without that, one Escape would close both, and Tab would be
+ * fought over by two traps.
  */
+
+/** Open modals, oldest first. Only the last one handles keys. */
+const openStack: symbol[] = []
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -68,8 +76,11 @@ export function Modal({
 
     returnFocusTo.current = document.activeElement as HTMLElement | null
     focusFirst()
+    const self = Symbol('modal')
+    openStack.push(self)
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (openStack[openStack.length - 1] !== self) return
       if (event.key === 'Escape') {
         event.stopPropagation()
         onClose()
@@ -100,6 +111,7 @@ export function Modal({
     document.addEventListener('keydown', onKeyDown, true)
     return () => {
       document.removeEventListener('keydown', onKeyDown, true)
+      openStack.splice(openStack.indexOf(self), 1)
       returnFocusTo.current?.focus?.()
     }
   }, [open, onClose, focusFirst])

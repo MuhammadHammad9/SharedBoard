@@ -121,3 +121,82 @@ export function shareTokenFor(boardId: string): string | null {
  * tab — FLOWS §7.4. Same-origin only, checked on both ends.
  */
 export const ACCOUNT_CREATED_MESSAGE = 'coboard:account-created'
+
+/**
+ * Two routes, because neither alone always arrives:
+ *
+ *   window.opener.postMessage   the guest bar opens signup with window.open,
+ *                               so the email path has an opener
+ *   BroadcastChannel            the Google path leaves for accounts.google.com
+ *                               and back; a cross-origin opener policy on the
+ *                               way can sever `window.opener` for good. A
+ *                               channel needs no opener — same origin only.
+ *
+ * The receiver acts once however many copies arrive (useGuestConversion).
+ */
+const CHANNEL = 'coboard:guest'
+
+/** Set by a signup tab from the guest bar before it leaves for Google. */
+const FROM_GUEST_KEY = 'coboard.signup.fromGuest'
+
+export function markSignupFromGuest(): void {
+  try {
+    sessionStorage.setItem(FROM_GUEST_KEY, '1')
+  } catch {
+    // E-18: the board tab stays a guest; nothing on it is lost.
+  }
+}
+
+/** True once, in the tab that started signup from the guest bar. */
+export function takeSignupFromGuest(): boolean {
+  try {
+    const marked = sessionStorage.getItem(FROM_GUEST_KEY) === '1'
+    sessionStorage.removeItem(FROM_GUEST_KEY)
+    return marked
+  } catch {
+    return false
+  }
+}
+
+export function announceAccountCreated(): void {
+  const message = { type: ACCOUNT_CREATED_MESSAGE }
+  try {
+    ;(window.opener as Window | null)?.postMessage(message, window.location.origin)
+  } catch {
+    // The opener went away.
+  }
+  try {
+    const channel = new BroadcastChannel(CHANNEL)
+    channel.postMessage(message)
+    channel.close()
+  } catch {
+    // No BroadcastChannel: the opener route above is all there is.
+  }
+}
+
+/** Calls `onCreated` for either route. Returns the unsubscribe. */
+export function onAccountCreated(onCreated: () => void): () => void {
+  const isOurs = (data: unknown) =>
+    (data as { type?: unknown } | null)?.type === ACCOUNT_CREATED_MESSAGE
+
+  const onMessage = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin || !isOurs(event.data)) return
+    onCreated()
+  }
+  window.addEventListener('message', onMessage)
+
+  let channel: BroadcastChannel | null = null
+  try {
+    channel = new BroadcastChannel(CHANNEL)
+    channel.onmessage = event => {
+      if (isOurs(event.data)) onCreated()
+    }
+  } catch {
+    channel = null
+  }
+
+  return () => {
+    window.removeEventListener('message', onMessage)
+    channel?.close()
+  }
+}

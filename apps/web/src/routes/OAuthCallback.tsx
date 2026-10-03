@@ -7,6 +7,10 @@ import { OAUTH_NEXT_KEY } from '../features/auth/api.js'
 import { FullScreenSpinner } from '../components/ui/Spinner.js'
 import { auth } from '../lib/strings.js'
 import { safeNext } from './nextParam.js'
+import {
+  announceAccountCreated,
+  takeSignupFromGuest,
+} from '../features/auth/guestIdentity.js'
 
 /**
  * S-06 OAuth callback — FLOWS §3.3.
@@ -61,6 +65,8 @@ export default function OAuthCallback() {
         if (done) return
         done = true
         setSession(user, getAccessToken() ?? '')
+        // Guest → account through Google (FLOWS §7.4): tell the board tab.
+        if (takeSignupFromGuest()) announceAccountCreated()
 
         // The deep link stashed before we left for Google. Validated the same
         // way as any other `next`, because sessionStorage is writable by any

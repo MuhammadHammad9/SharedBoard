@@ -139,7 +139,6 @@ describe('login rate limiting counts FAILURES, not logins', () => {
   )
 })
 
-
 /* ── Registration — FR-AUTH-001 ───────────────────────────────────────────── */
 
 describe('POST /api/auth/register', () => {
@@ -357,6 +356,30 @@ describe('POST /api/auth/refresh', () => {
       where: { tokenHash: hashToken(first) },
     })
     expect(row?.revokedAt).toBeInstanceOf(Date)
+  })
+
+  it('two simultaneous refreshes with one token never both succeed — no silent fork', async () => {
+    // Both pass the "is it revoked?" read at the same instant. Without the
+    // conditional revoke both rotated, and one secret became two live
+    // sessions. Exactly one may win; the other is reuse (R-SEC-006).
+    const { response: registered } = await registerUser()
+    const token = refreshCookie(registered)!
+    const attempts = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        request(app)
+          .post('/api/auth/refresh')
+          .set('Cookie', `${REFRESH_COOKIE}=${token}`),
+      ),
+    )
+    const won = attempts.filter(r => r.status === 200)
+    expect(won.length).toBeLessThanOrEqual(1)
+    const row = await prisma.refreshToken.findUniqueOrThrow({
+      where: { tokenHash: hashToken(token) },
+    })
+    const live = await prisma.refreshToken.count({
+      where: { familyId: row.familyId, revokedAt: null },
+    })
+    expect(live).toBeLessThanOrEqual(1)
   })
 
   it('401s with no cookie at all', async () => {

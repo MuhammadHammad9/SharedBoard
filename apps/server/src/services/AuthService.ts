@@ -176,7 +176,8 @@ export class AuthService {
    * forced to log in again.
    *
    * That is a deliberately harsh response to what is occasionally an innocent
-   * cause — two tabs racing, or a retry after a dropped response. The
+   * cause — two tabs racing (the client serializes refreshes across tabs with
+   * a Web Lock to avoid exactly this), or a retry after a dropped response. The
    * alternative is a grace window, and a grace window is exactly the hole an
    * attacker with a copied cookie needs. Losing a session is recoverable;
    * a silently shared session is not.
@@ -192,17 +193,7 @@ export class AuthService {
       throw new AuthError(ERROR_CODES.INVALID_REFRESH, 'Unknown refresh token', 401)
     }
 
-    if (existing.revokedAt) {
-      logger.warn(
-        { userId: existing.userId, familyId: existing.familyId },
-        'refresh token reuse detected — revoking family',
-      )
-      await this.db.refreshToken.updateMany({
-        where: { familyId: existing.familyId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      })
-      throw new AuthError(ERROR_CODES.INVALID_REFRESH, 'Refresh token reused', 401)
-    }
+    if (existing.revokedAt) return this.reuseDetected(existing)
 
     if (existing.expiresAt.getTime() <= Date.now()) {
       throw new AuthError(ERROR_CODES.INVALID_REFRESH, 'Refresh token expired', 401)
@@ -216,13 +207,20 @@ export class AuthService {
      * Split across two statements, a crash between them either leaves the old
      * token live alongside the new (two valid sessions) or revokes the old
      * with no replacement (the user is logged out by a hiccup).
+     *
+     * The revoke is CONDITIONAL on the row still being live. Two requests
+     * presenting the same token at the same instant both pass the check
+     * above; without the condition both would rotate, and one secret would
+     * silently become two live sessions — the exact outcome reuse detection
+     * exists to prevent. With it, exactly one wins and the other is reuse.
      */
-    await this.db.$transaction([
-      this.db.refreshToken.update({
-        where: { id: existing.id },
+    const rotated = await this.db.$transaction(async tx => {
+      const { count } = await tx.refreshToken.updateMany({
+        where: { id: existing.id, revokedAt: null },
         data: { revokedAt: new Date() },
-      }),
-      this.db.refreshToken.create({
+      })
+      if (count === 0) return false
+      await tx.refreshToken.create({
         data: {
           userId: existing.userId,
           tokenHash: hashToken(refreshToken),
@@ -231,8 +229,10 @@ export class AuthService {
           expiresAt,
           userAgent: userAgent?.slice(0, 255),
         },
-      }),
-    ])
+      })
+      return true
+    })
+    if (!rotated) return this.reuseDetected(existing)
 
     return {
       user: toPublicUser(existing.user),
@@ -240,6 +240,21 @@ export class AuthService {
       refreshToken,
       refreshExpiresAt: expiresAt,
     }
+  }
+
+  private async reuseDetected(existing: {
+    userId: string
+    familyId: string
+  }): Promise<never> {
+    logger.warn(
+      { userId: existing.userId, familyId: existing.familyId },
+      'refresh token reuse detected — revoking family',
+    )
+    await this.db.refreshToken.updateMany({
+      where: { familyId: existing.familyId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    })
+    throw new AuthError(ERROR_CODES.INVALID_REFRESH, 'Refresh token reused', 401)
   }
 
   /** Revoke one session — FR-AUTH-007. Idempotent: logging out twice is fine. */

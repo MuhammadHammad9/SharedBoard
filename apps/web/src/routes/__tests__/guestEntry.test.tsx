@@ -205,10 +205,29 @@ describe('requireBoardAccess — FLOWS §2.3 STEP 4', () => {
     expect(await screen.findByTestId('join-card')).toBeTruthy()
   })
 
-  it('sends a fully anonymous visitor with no link to log in (deep link kept)', async () => {
+  it('shows a fully anonymous visitor with no link S-17, with a Log in that returns here', async () => {
+    // FLOWS §2.4: not a member and no share token → S-17. It still asks the
+    // server, so a missing or deleted board is S-18, not S-17.
+    boards.getBoardAccess.mockRejectedValue(apiError(403, 'no_access'))
     app(`/board/${BOARD}`)
-    expect(await screen.findByTestId('login')).toBeTruthy()
-    expect(boards.getBoardAccess).not.toHaveBeenCalled()
+    expect(await screen.findByText(states.accessDenied.headline)).toBeTruthy()
+    expect(boards.getBoardAccess).toHaveBeenCalled()
+    const logIn = screen.getByTestId('forbidden-log-in')
+    expect(logIn.getAttribute('href')).toBe(
+      `/login?next=${encodeURIComponent(`/board/${BOARD}`)}`,
+    )
+  })
+
+  it('S-17 for a signed-in user says who they are, with Switch account', async () => {
+    useAuthStore.setState({
+      status: 'authenticated',
+      user: { id: 'u1', email: 'priya@x.com', displayName: 'Priya' } as never,
+    })
+    boards.getBoardAccess.mockRejectedValue(apiError(403, 'no_access'))
+    app(`/board/${BOARD}`)
+    expect((await screen.findByTestId('forbidden-account')).textContent).toContain(
+      'Signed in as priya@x.com',
+    )
   })
 
   it.each([

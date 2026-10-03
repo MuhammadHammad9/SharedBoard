@@ -68,6 +68,7 @@ export const actions = {
   resetLink: 'Reset link',
   requestAccess: 'Request access',
   switchAccount: 'Switch account',
+  logIn: 'Log in',
   notYou: 'Not you?',
   joinBoard: 'Join board',
   createAccount: 'Create account',
@@ -169,6 +170,8 @@ export const states = {
     // someone cannot access is an information leak.
     headline: errors.noBoardAccess,
     body: 'Ask the person who shared it to invite you.',
+    // FLOWS §12.1: "Signed in as priya@x.com — [Switch account]".
+    signedInAs: (email: string) => `Signed in as ${email}`,
   },
   boardNotFound: {
     headline: errors.boardNotFound,

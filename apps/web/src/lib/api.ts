@@ -51,16 +51,30 @@ interface RequestOptions {
  * for loading a page.
  *
  * So: the first 401 starts a refresh, everyone else awaits the same promise.
+ *
+ * The same race exists BETWEEN TABS, which share the refresh cookie but not
+ * this module: two tabs of one user refreshing in the same instant present
+ * the same cookie, and the loser signs both out. A Web Lock serializes the
+ * refresh across every tab of the origin; the second tab waits, then sends
+ * the cookie the first one was just given. Where Web Locks are unavailable
+ * the request goes unlocked, as before.
  */
+export const REFRESH_LOCK = 'coboard:auth-refresh'
+
+function acrossTabs<T>(task: () => Promise<T>): Promise<T> {
+  const locks = globalThis.navigator?.locks
+  // The lock callback returns a promise; `request` resolves with its value.
+  return locks ? (locks.request(REFRESH_LOCK, task) as Promise<T>) : task()
+}
+
 let refreshInFlight: Promise<boolean> | null = null
 
 async function refreshSession(): Promise<boolean> {
   refreshInFlight ??= (async () => {
     try {
-      const response = await fetch(`${BASE}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      })
+      const response = await acrossTabs(() =>
+        fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' }),
+      )
       if (!response.ok) return false
 
       const body = (await response.json()) as { accessToken: string; user?: never }
@@ -82,6 +96,13 @@ async function refreshSession(): Promise<boolean> {
 /** Exposed for the guard, which refreshes before any request is made. */
 export async function attemptSilentRefresh(): Promise<boolean> {
   return refreshSession()
+}
+
+// The two-tab race e2e drives the real refresh from two pages at once.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  ;(window as unknown as Record<string, unknown>).__coboardAuth = {
+    refresh: refreshSession,
+  }
 }
 
 async function toApiError(response: Response): Promise<ApiError> {

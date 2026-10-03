@@ -284,14 +284,20 @@ test.describe('board persistence', () => {
     await expect(page.getByTestId('board-not-found')).toBeVisible()
   })
 
-  test('an unauthenticated visitor is sent to login with next preserved', async ({
+  test('an anonymous visitor with no link gets S-17, and Log in returns to the board', async ({
     page,
   }) => {
-    await page.goto('/board/11111111-1111-4111-8111-111111111111')
-    await expect(page).toHaveURL(/\/login\?next=/)
-    expect(new URL(page.url()).searchParams.get('next')).toBe(
-      '/board/11111111-1111-4111-8111-111111111111',
-    )
+    // FLOWS §2.4: not a member, no share token → S-17. The deep link survives
+    // through the screen's Log in, which carries ?next= (FLOWS §4).
+    const boardId = await openNewBoard(page)
+    const stranger = await page.context().browser()!.newContext()
+    const anon = await stranger.newPage()
+    await anon.goto(`/board/${boardId}`)
+    await expect(anon.getByTestId('board-forbidden')).toBeVisible()
+    await anon.getByTestId('forbidden-log-in').click()
+    await expect(anon).toHaveURL(/\/login\?next=/)
+    expect(new URL(anon.url()).searchParams.get('next')).toBe(`/board/${boardId}`)
+    await stranger.close()
   })
 
   test('AT-11: draw, close the browser, reopen — the work is there', async ({

@@ -24,8 +24,31 @@ vi.mock('../api.js', () => sharingApi)
 
 const { GuestBar } = await import('../../../components/board/GuestBar.js')
 const { useGuestConversion } = await import('../useGuestConversion.js')
-const { ACCOUNT_CREATED_MESSAGE, saveGuest, readGuest, clearGuest } =
-  await import('../../auth/guestIdentity.js')
+const {
+  ACCOUNT_CREATED_MESSAGE,
+  announceAccountCreated,
+  markSignupFromGuest,
+  saveGuest,
+  readGuest,
+  clearGuest,
+  takeSignupFromGuest,
+} = await import('../../auth/guestIdentity.js')
+
+/** An in-memory BroadcastChannel: every instance with a name hears the others. */
+class FakeChannel {
+  static open = new Set<FakeChannel>()
+  onmessage: ((event: { data: unknown }) => void) | null = null
+  constructor(readonly name: string) {
+    FakeChannel.open.add(this)
+  }
+  postMessage(data: unknown) {
+    for (const other of FakeChannel.open)
+      if (other !== this && other.name === this.name) other.onmessage?.({ data })
+  }
+  close() {
+    FakeChannel.open.delete(this)
+  }
+}
 
 const BOARD = '00000000-0000-4000-8000-000000000001'
 
@@ -40,6 +63,8 @@ function storage() {
 
 beforeEach(() => {
   vi.stubGlobal('localStorage', storage())
+  vi.stubGlobal('sessionStorage', storage())
+  vi.stubGlobal('BroadcastChannel', FakeChannel)
   clearGuest()
   for (const fn of [...Object.values(lib), ...Object.values(sharingApi)]) fn.mockReset()
 })
@@ -110,6 +135,29 @@ describe('useGuestConversion', () => {
     expect(readGuest()).toBeNull()
     expect(reconnect).toHaveBeenCalledTimes(1)
     expect(result.current).toBeNull()
+  })
+
+  it('upgrades from a BroadcastChannel announcement — the Google path, with no opener', async () => {
+    const guest = saveGuest('Marcus')
+    lib.attemptSilentRefresh.mockResolvedValue(true)
+    lib.get.mockResolvedValue({ user: { id: 'u1', displayName: 'M', email: 'm@x.com' } })
+    sharingApi.claimGuestSeat.mockResolvedValue({ role: 'EDITOR' })
+    const reconnect = vi.fn()
+    const { result } = renderHook(() => useGuestConversion(BOARD, guest, reconnect))
+
+    await act(async () => {
+      announceAccountCreated()
+      await new Promise(r => setTimeout(r, 0))
+    })
+    expect(sharingApi.claimGuestSeat).toHaveBeenCalledTimes(1)
+    expect(result.current).toBeNull()
+  })
+
+  it('the from-guest mark survives the trip to Google once, and only once', () => {
+    expect(takeSignupFromGuest()).toBe(false)
+    markSignupFromGuest()
+    expect(takeSignupFromGuest()).toBe(true)
+    expect(takeSignupFromGuest()).toBe(false)
   })
 
   it('stays a guest, losing nothing, if the seat cannot be claimed', async () => {

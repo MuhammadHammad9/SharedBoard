@@ -173,6 +173,18 @@ describe('the share modal', () => {
     )
   })
 
+  it('the reset confirmation is a modal of its own: Escape closes it, not the share modal', async () => {
+    api.getShareLink.mockResolvedValue({ link: LINK })
+    open()
+    await userEvent.click(await screen.findByTestId('link-reset'))
+    expect(screen.getByTestId('reset-confirm').getAttribute('role')).toBe('dialog')
+
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByTestId('reset-confirm')).toBeNull()
+    expect(screen.getByTestId('link-url')).toBeTruthy()
+    expect(api.resetShareLink).not.toHaveBeenCalled()
+  })
+
   it('switching to Restricted turns the link off', async () => {
     api.getShareLink.mockResolvedValue({ link: LINK })
     api.disableShareLink.mockResolvedValue({ link: null })

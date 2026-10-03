@@ -11,7 +11,10 @@ import { FormError } from '../components/ui/FormError.js'
 import { Input } from '../components/ui/Input.js'
 import { auth, validation } from '../lib/strings.js'
 import { safeNext } from './nextParam.js'
-import { ACCOUNT_CREATED_MESSAGE } from '../features/auth/guestIdentity.js'
+import {
+  announceAccountCreated,
+  markSignupFromGuest,
+} from '../features/auth/guestIdentity.js'
 
 /**
  * S-02 Signup — FR-AUTH-001, FLOWS §3.
@@ -66,16 +69,7 @@ export default function Signup() {
        * taking them somewhere else. The refresh cookie this signup just set is
        * shared, so that tab can pick up the session itself.
        */
-      if (params.get('from') === 'guest' && window.opener) {
-        try {
-          ;(window.opener as Window).postMessage(
-            { type: ACCOUNT_CREATED_MESSAGE },
-            window.location.origin,
-          )
-        } catch {
-          // The opener went away; the redirect below still lands them.
-        }
-      }
+      if (params.get('from') === 'guest') announceAccountCreated()
       navigate(next, { replace: true })
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
@@ -136,7 +130,12 @@ export default function Signup() {
       <Button
         variant="secondary"
         fullWidth
-        onClick={() => startGoogleOAuth(params.get('next'))}
+        onClick={() => {
+          // The Google path comes back through /auth/callback, which
+          // announces the new account if this tab came from the guest bar.
+          if (params.get('from') === 'guest') markSignupFromGuest()
+          startGoogleOAuth(params.get('next'))
+        }}
         data-testid="google-signup"
       >
         {auth.signup.google}
