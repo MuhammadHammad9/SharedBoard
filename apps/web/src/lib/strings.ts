@@ -21,6 +21,8 @@ export const errors = {
   wrongCredentials: "That email or password didn't match. Try again.",
   rateLimitedLogin: (minutes: number) =>
     `Too many attempts. Try again in ${minutes} minutes.`,
+  // FLOWS §3.1 branch 8d — the server sent no retryAfter.
+  rateLimitedShortly: 'Too many attempts. Try again shortly.',
   emailAlreadyRegistered: 'An account already exists for this email.',
   weakPassword: 'Password needs at least 8 characters, including a letter and a number.',
   noBoardAccess: "You don't have access to this board.",
@@ -214,6 +216,10 @@ export const presence = {
   nowViewer: "You're now a viewer on this board.",
   offlineAWhile:
     "You've been offline a while. Refresh when you're back online to make sure everything is up to date.",
+  // FLOWS §9 — the avatar stack in the board header.
+  othersOnBoard: (count: number) =>
+    `${count} other ${count === 1 ? 'person' : 'people'} on this board`,
+  viewing: 'Viewing',
 } as const
 
 /** FLOWS §6 — board management. */
@@ -237,6 +243,8 @@ export const boards = {
   deleteForeverBody:
     'This cannot be undone. Every stroke, note and shape on this board will be removed permanently.',
   deleteForeverPrompt: 'Type the board name to confirm',
+  // Inline rename input — dashboard card and board header.
+  nameLabel: 'Board name',
 } as const
 
 /** FLOWS §11 — export. Labels follow the §11 S-14 drawing word for word. */
@@ -382,6 +390,163 @@ export const auth = {
     email: 'Email',
     password: 'Password',
     displayName: 'Your name',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
+  },
+} as const
+
+/** Product name — the wordmark in the dashboard header and auth layout. */
+export const brand = {
+  name: 'CoBoard',
+} as const
+
+/** Full-screen spinner labels — route guards and board entry (FLOWS §2.2). */
+export const loading = {
+  boards: 'Loading your boards',
+  session: 'Checking your session',
+  board: 'Opening board',
+} as const
+
+/** FLOWS §6.1–6.4 — dashboard chrome (S-07, S-08): header, sidebar, filters, cards. */
+export const dashboard = {
+  searchPlaceholder: 'Search boards',
+  searchLabel: 'Search boards',
+  account: 'Account',
+  settings: 'Settings',
+  logOut: auth.settings.logOut,
+  loadMore: 'Load more',
+  trashTitle: 'Trash',
+  nav: {
+    label: 'Boards',
+    boards: 'Boards',
+    trash: 'Trash',
+    settings: 'Settings',
+  },
+  filters: {
+    label: 'Filter boards',
+    all: 'All boards',
+    owned: 'Owned by me',
+    shared: 'Shared with me',
+    starred: 'Starred',
+  },
+  sorts: {
+    label: 'Sort boards',
+    lastEdited: 'Last edited',
+    created: 'Date created',
+    name: 'Name',
+  },
+  // FLOWS §6.4 — the card's overflow menu.
+  card: {
+    actionsFor: (name: string) => `Actions for ${name}`,
+    rename: 'Rename',
+    duplicate: 'Duplicate',
+    leave: 'Leave board',
+  },
+} as const
+
+/** FLOWS §14 — board chrome (S-10): toolbar, menus, properties, zoom, history. */
+export const boardChrome = {
+  renameBoard: 'Rename board',
+  // R-A11Y-006 — the canvas text alternative.
+  canvasLabel: (count: number) => `Whiteboard with ${count} objects`,
+  // The DOM textarea over the canvas while editing (TRD §7).
+  stickyTextLabel: 'Sticky note text',
+  textLabel: 'Text',
+  uploading: (fileName: string) => `Uploading ${fileName}`,
+
+  /** FLOWS §14.2 — the left toolbar, in §14.2 order. */
+  tools: {
+    label: 'Tools',
+    select: 'Select',
+    hand: 'Hand',
+    pen: 'Pen',
+    eraser: 'Eraser',
+    rect: 'Rectangle',
+    ellipse: 'Ellipse',
+    line: 'Line',
+    arrow: 'Arrow',
+    sticky: 'Sticky note',
+    text: 'Text',
+    image: 'Image',
+    comingLater: (label: string) => `${label} — coming in a later phase`,
+  },
+
+  /** FR-CANVAS-019, FLOWS §14.2 — the right-click menu. */
+  contextMenu: {
+    label: 'Board actions',
+    duplicate: 'Duplicate',
+    copy: actions.copy,
+    bringToFront: 'Bring to front',
+    bringForward: 'Bring forward',
+    sendBackward: 'Send backward',
+    sendToBack: 'Send to back',
+    delete: 'Delete',
+    paste: 'Paste',
+    selectAll: 'Select all',
+    zoomToFit: 'Zoom to fit',
+  },
+
+  /** FLOWS §14.4 — the properties panel. */
+  properties: {
+    label: 'Properties',
+    mixed: 'Mixed',
+    objectCount: (count: number) => (count === 1 ? '1 object' : `${count} objects`),
+    colour: 'Colour',
+    stroke: 'Stroke',
+    fill: 'Fill',
+    thickness: 'Thickness',
+    style: 'Style',
+    alignment: 'Alignment',
+    custom: 'Custom',
+    penColour: 'Pen colour',
+    customPenColour: 'Custom pen colour',
+    strokeColour: 'Stroke colour',
+    fillColour: 'Fill colour',
+    fillNone: 'Fill none',
+    stickyColour: 'Sticky colour',
+    textColour: 'Text colour',
+    thicknessPresets: 'Thickness presets',
+    thicknessPixels: (width: number) => `Thickness ${width} pixels`,
+    width: 'Width',
+    strokeWidth: 'Stroke width',
+    cornerRadius: 'Corner radius',
+    opacity: 'Opacity',
+    fontSize: 'Font size',
+    textStyle: 'Text style',
+    bold: 'Bold',
+    italic: 'Italic',
+    textAlignment: 'Text alignment',
+    alignLeft: 'Align left',
+    alignCentre: 'Align centre',
+    alignRight: 'Align right',
+    stickyHint: 'Click the board to place a note and start typing.',
+    textHint: 'Click the board to place text.',
+    eraserHint: 'Drag across objects to delete them.',
+    delete: 'Delete',
+  },
+
+  /** FLOWS §14.2 — bottom-right zoom controls. */
+  zoom: {
+    label: 'Zoom controls',
+    zoomOut: 'Zoom out',
+    zoomIn: 'Zoom in',
+    zoomToFit: 'Zoom to fit',
+    percent: (percent: number) =>
+      `Zoom ${percent} percent. Click to reset to 100 percent`,
+  },
+
+  /** FR-CANVAS-018 — bottom-left undo and redo. */
+  history: {
+    label: 'Undo and redo',
+    undo: actions.undo,
+    redo: 'Redo',
+  },
+
+  /** FR-RT-009, FLOWS §15.2 — connection indicator labels not in errors. */
+  connection: {
+    connected: 'Connected',
+    connecting: 'Connecting…',
+    disconnected: 'Disconnected',
   },
 } as const
 
@@ -397,6 +562,10 @@ export const strings = {
   presence,
   boards,
   export: exportStrings,
+  brand,
+  loading,
+  dashboard,
+  boardChrome,
 } as const
 
 export type Strings = typeof strings

@@ -4,7 +4,7 @@ import { CaretLeft } from '@phosphor-icons/react'
 import { RenameInline } from '../../features/boards/RenameInline.js'
 import { useToast } from '../ui/Toast.js'
 import { useRenameBoard } from '../../features/boards/useBoards.js'
-import { actions, boards as boardStrings } from '../../lib/strings.js'
+import { actions, boardChrome, boards as boardStrings } from '../../lib/strings.js'
 import { Button } from '../ui/Button.js'
 import { ShareModal } from '../../features/sharing/ShareModal.js'
 import { ConnectionIndicator } from './ConnectionIndicator.js'
@@ -81,7 +81,7 @@ export function BoardHeader({
     <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-3 px-4 py-3">
       <Link
         to="/dashboard"
-        aria-label="Back to dashboard"
+        aria-label={actions.backToDashboard}
         data-testid="board-back"
         className="pointer-events-auto flex items-center gap-1 rounded-md bg-app/90 px-2 py-1.5 text-sm text-muted shadow-panel outline-none transition-colors duration-fast hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
@@ -116,7 +116,7 @@ export function BoardHeader({
             data-testid="board-title"
             disabled={!canRename}
             onClick={() => canRename && setEditing(true)}
-            title={canRename ? 'Rename board' : displayName}
+            title={canRename ? boardChrome.renameBoard : displayName}
             className="block w-full truncate text-left text-sm font-medium text-primary outline-none disabled:cursor-default enabled:cursor-pointer focus-visible:underline"
           >
             {displayName}

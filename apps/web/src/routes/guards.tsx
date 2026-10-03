@@ -4,6 +4,7 @@ import { getAccessToken, useAuthStore } from '../stores/authStore.js'
 import { api, attemptSilentRefresh } from '../lib/api.js'
 import { FullScreenSpinner } from '../components/ui/Spinner.js'
 import { loginUrlFor } from './nextParam.js'
+import { loading } from '../lib/strings.js'
 import type { PublicUser } from '@coboard/shared'
 
 /**
@@ -101,7 +102,7 @@ export function RequireAuth({ children }: GuardProps) {
 
   // Steps 1–2. A spinner, never the login screen.
   if (status === 'unknown' || status === 'refreshing') {
-    return <FullScreenSpinner label="Loading your boards" />
+    return <FullScreenSpinner label={loading.boards} />
   }
 
   if (status === 'anonymous') {
@@ -124,7 +125,7 @@ export function RedirectIfAuthed({ children }: GuardProps) {
   const status = useAuthStore(s => s.status)
 
   if (status === 'unknown' || status === 'refreshing') {
-    return <FullScreenSpinner label="Checking your session" />
+    return <FullScreenSpinner label={loading.session} />
   }
 
   if (status === 'authenticated') return <Navigate to="/dashboard" replace />

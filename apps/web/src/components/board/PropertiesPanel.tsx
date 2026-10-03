@@ -3,6 +3,7 @@ import { PenProperties } from './properties/PenProperties.js'
 import { SelectionProperties } from './properties/SelectionProperties.js'
 import { ShapeProperties } from './properties/ShapeProperties.js'
 import { StickyProperties, TextProperties } from './properties/StickyTextProperties.js'
+import { boardChrome } from '../../lib/strings.js'
 
 /**
  * Properties panel — FLOWS §14.2 and §14.4. 240 px, floating right, 16 px from
@@ -55,7 +56,7 @@ export function PropertiesPanel() {
     // scope), so the panel states what the tool does instead of inventing a
     // control that changes nothing.
     <p className="text-xs text-muted" data-testid="eraser-properties">
-      Drag across objects to delete them.
+      {boardChrome.properties.eraserHint}
     </p>
   ) : null
 
@@ -72,7 +73,7 @@ export function PropertiesPanel() {
       // instead of restarting.
       data-crossfade=""
       className="pointer-events-auto absolute right-4 top-1/2 z-panel w-60 rounded-md border border-border bg-app p-3 shadow-panel"
-      aria-label="Properties"
+      aria-label={boardChrome.properties.label}
       data-testid="properties-panel"
       data-context={context}
     >

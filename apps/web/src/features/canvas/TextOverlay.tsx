@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useBoardStore } from '../../stores/boardStore.js'
+import { boardChrome } from '../../lib/strings.js'
 import { commitTextEdit, updateEditingText } from './interaction/handlers/textEdit.js'
 import {
   LINE_HEIGHT_RATIO,
@@ -119,7 +120,7 @@ export function TextOverlay({ container }: TextOverlayProps) {
       }}
       // R-A11Y-002: the element is visually invisible, so its accessible name
       // has to come from somewhere.
-      aria-label={isSticky ? 'Sticky note text' : 'Text'}
+      aria-label={isSticky ? boardChrome.stickyTextLabel : boardChrome.textLabel}
       data-testid="text-overlay-input"
       spellCheck
       className="absolute resize-none overflow-hidden border-0 bg-transparent p-0 outline-none"

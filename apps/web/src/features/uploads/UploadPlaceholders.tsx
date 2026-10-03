@@ -1,5 +1,5 @@
 import { useBoardStore } from '../../stores/boardStore.js'
-import { actions, errors } from '../../lib/strings.js'
+import { actions, boardChrome, errors } from '../../lib/strings.js'
 import { Button } from '../../components/ui/Button.js'
 import {
   removeUpload,
@@ -61,7 +61,7 @@ function Placeholder({
       }`}
       style={style}
       role={failed ? 'alert' : 'status'}
-      aria-label={failed ? errors.uploadFailed : `Uploading ${item.file.name}`}
+      aria-label={failed ? errors.uploadFailed : boardChrome.uploading(item.file.name)}
       data-testid="upload-placeholder"
       data-upload-placeholder
       data-status={item.status}

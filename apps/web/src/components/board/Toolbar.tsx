@@ -18,6 +18,7 @@ import { ACTIVE_TOOLS, useBoardStore, type Tool } from '../../stores/boardStore.
 import { Tooltip } from '../ui/Tooltip.js'
 import { ACCEPTED_IMAGE_TYPES } from '@coboard/shared'
 import { startUploads } from '../../features/uploads/uploadEngine.js'
+import { boardChrome } from '../../lib/strings.js'
 
 /**
  * Left toolbar — FLOWS §14.2. 56 px wide, vertically centred, floating with
@@ -51,17 +52,17 @@ interface ToolSpec {
 
 /** Order is FLOWS §14.2, exactly. */
 const TOOLS: readonly ToolSpec[] = [
-  { tool: 'select', icon: Cursor, label: 'Select', shortcut: 'V' },
-  { tool: 'hand', icon: Hand, label: 'Hand', shortcut: 'H' },
-  { tool: 'pen', icon: PencilSimple, label: 'Pen', shortcut: 'P' },
-  { tool: 'eraser', icon: Eraser, label: 'Eraser', shortcut: 'E' },
-  { tool: 'rect', icon: Square, label: 'Rectangle', shortcut: 'R' },
-  { tool: 'ellipse', icon: Circle, label: 'Ellipse', shortcut: 'O' },
-  { tool: 'line', icon: LineSegment, label: 'Line', shortcut: 'L' },
-  { tool: 'arrow', icon: ArrowUpRight, label: 'Arrow', shortcut: 'A' },
-  { tool: 'sticky', icon: Note, label: 'Sticky note', shortcut: 'N' },
-  { tool: 'text', icon: TextT, label: 'Text', shortcut: 'T' },
-  { tool: 'image', icon: ImageIcon, label: 'Image', shortcut: '' },
+  { tool: 'select', icon: Cursor, label: boardChrome.tools.select, shortcut: 'V' },
+  { tool: 'hand', icon: Hand, label: boardChrome.tools.hand, shortcut: 'H' },
+  { tool: 'pen', icon: PencilSimple, label: boardChrome.tools.pen, shortcut: 'P' },
+  { tool: 'eraser', icon: Eraser, label: boardChrome.tools.eraser, shortcut: 'E' },
+  { tool: 'rect', icon: Square, label: boardChrome.tools.rect, shortcut: 'R' },
+  { tool: 'ellipse', icon: Circle, label: boardChrome.tools.ellipse, shortcut: 'O' },
+  { tool: 'line', icon: LineSegment, label: boardChrome.tools.line, shortcut: 'L' },
+  { tool: 'arrow', icon: ArrowUpRight, label: boardChrome.tools.arrow, shortcut: 'A' },
+  { tool: 'sticky', icon: Note, label: boardChrome.tools.sticky, shortcut: 'N' },
+  { tool: 'text', icon: TextT, label: boardChrome.tools.text, shortcut: 'T' },
+  { tool: 'image', icon: ImageIcon, label: boardChrome.tools.image, shortcut: '' },
 ]
 
 export function Toolbar() {
@@ -85,7 +86,7 @@ export function Toolbar() {
       className="pointer-events-auto absolute left-4 top-1/2 z-panel flex -translate-y-1/2 flex-col gap-1 rounded-md border border-border bg-app p-1 shadow-panel"
       role="toolbar"
       aria-orientation="vertical"
-      aria-label="Tools"
+      aria-label={boardChrome.tools.label}
       data-testid="toolbar"
     >
       {TOOLS.map(({ tool, icon: IconComponent, label, shortcut }) => {
@@ -95,7 +96,7 @@ export function Toolbar() {
         return (
           <Tooltip
             key={tool}
-            label={implemented ? label : `${label} — coming in a later phase`}
+            label={implemented ? label : boardChrome.tools.comingLater(label)}
             shortcut={implemented ? shortcut : undefined}
           >
             <button

@@ -5,7 +5,7 @@ import { Dropdown } from '../../components/ui/Dropdown.js'
 import { EmptyBoardGraphic } from './EmptyBoardGraphic.js'
 import { RenameInline } from './RenameInline.js'
 import { absoluteTime, relativeTime } from '../../lib/relativeTime.js'
-import { actions } from '../../lib/strings.js'
+import { actions, dashboard } from '../../lib/strings.js'
 import type { BoardSummary } from './api.js'
 
 /**
@@ -60,8 +60,16 @@ export function BoardCard({
    */
   const items = isOwner
     ? [
-        { label: 'Rename', onSelect: () => setRenaming(true), testId: 'card-rename' },
-        { label: 'Duplicate', onSelect: onDuplicate, testId: 'card-duplicate' },
+        {
+          label: dashboard.card.rename,
+          onSelect: () => setRenaming(true),
+          testId: 'card-rename',
+        },
+        {
+          label: dashboard.card.duplicate,
+          onSelect: onDuplicate,
+          testId: 'card-duplicate',
+        },
         {
           label: actions.moveToTrash,
           onSelect: onTrash,
@@ -70,11 +78,15 @@ export function BoardCard({
         },
       ]
     : [
-        { label: 'Duplicate', onSelect: onDuplicate, testId: 'card-duplicate' },
+        {
+          label: dashboard.card.duplicate,
+          onSelect: onDuplicate,
+          testId: 'card-duplicate',
+        },
         ...(onLeave
           ? [
               {
-                label: 'Leave board',
+                label: dashboard.card.leave,
                 onSelect: onLeave,
                 danger: true,
                 testId: 'card-leave',
@@ -150,14 +162,14 @@ export function BoardCard({
          */}
         <div className="opacity-100 transition-opacity duration-fast sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
           <Dropdown
-            label={`Actions for ${board.name}`}
+            label={dashboard.card.actionsFor(board.name)}
             items={items}
             trigger={props => (
               <button
                 {...props}
                 type="button"
                 data-testid="card-menu"
-                aria-label={`Actions for ${board.name}`}
+                aria-label={dashboard.card.actionsFor(board.name)}
                 className="cursor-pointer rounded-sm p-1 text-muted outline-none transition-colors duration-fast hover:bg-subtle hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
                 <DotsThreeVertical size={18} weight="bold" aria-hidden="true" />

@@ -12,6 +12,9 @@ import {
 import { probe, toCanvas } from '../../features/canvas/interaction/handlers/select.js'
 import { applyAndEmit, deleteOps } from '../../features/canvas/history/apply.js'
 import { LABELS } from '../../features/canvas/history/grouping.js'
+import { boardChrome } from '../../lib/strings.js'
+
+const menuCopy = boardChrome.contextMenu
 
 /**
  * Right-click menu — FR-CANVAS-019 [P1], FLOWS §14.2.
@@ -130,14 +133,14 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
 
   const items: MenuItem[] = menu.onObject
     ? [
-        { label: 'Duplicate', shortcut: '⌘D', onSelect: duplicateSelection },
-        { label: 'Copy', shortcut: '⌘C', onSelect: copySelection },
-        { label: 'Bring to front', onSelect: bringToFront, shortcut: '⌘]' },
-        { label: 'Bring forward', onSelect: bringForward, shortcut: ']' },
-        { label: 'Send backward', onSelect: sendBackward, shortcut: '[' },
-        { label: 'Send to back', onSelect: sendToBack, shortcut: '⌘[' },
+        { label: menuCopy.duplicate, shortcut: '⌘D', onSelect: duplicateSelection },
+        { label: menuCopy.copy, shortcut: '⌘C', onSelect: copySelection },
+        { label: menuCopy.bringToFront, onSelect: bringToFront, shortcut: '⌘]' },
+        { label: menuCopy.bringForward, onSelect: bringForward, shortcut: ']' },
+        { label: menuCopy.sendBackward, onSelect: sendBackward, shortcut: '[' },
+        { label: menuCopy.sendToBack, onSelect: sendToBack, shortcut: '⌘[' },
         {
-          label: 'Delete',
+          label: menuCopy.delete,
           shortcut: '⌫',
           danger: true,
           onSelect: () =>
@@ -146,17 +149,17 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
       ]
     : [
         {
-          label: 'Paste',
+          label: menuCopy.paste,
           shortcut: '⌘V',
           onSelect: () => void pasteAt(menu.canvasX, menu.canvasY),
         },
         {
-          label: 'Select all',
+          label: menuCopy.selectAll,
           shortcut: '⌘A',
           onSelect: () => boardStore.getState().selectAll(),
         },
         {
-          label: 'Zoom to fit',
+          label: menuCopy.zoomToFit,
           shortcut: '⌘1',
           onSelect: () => {
             const { width, height } = getSize()
@@ -174,7 +177,7 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
     <div
       ref={ref}
       role="menu"
-      aria-label="Board actions"
+      aria-label={menuCopy.label}
       tabIndex={-1}
       data-testid="context-menu"
       data-crossfade-menu=""
@@ -205,7 +208,7 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
           type="button"
           role="menuitem"
           data-testid={`menu-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
-          disabled={item.label === 'Delete' && selectionCount === 0}
+          disabled={item.label === menuCopy.delete && selectionCount === 0}
           onClick={() => run(item)}
           onPointerEnter={() => setActiveIndex(i)}
           className={

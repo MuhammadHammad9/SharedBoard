@@ -1,6 +1,7 @@
 import type { PresenceUser } from '@coboard/shared'
 import { Tooltip } from '../../components/ui/Tooltip.js'
 import { useRoster } from './usePresence.js'
+import { presence } from '../../lib/strings.js'
 
 /**
  * Who else is here — `FR-RT-004`, FLOWS §9.1.
@@ -46,7 +47,7 @@ export function AvatarStack({ stale = false }: { stale?: boolean } = {}) {
       // A list, so a screen reader announces "3 items" rather than reading
       // three initials as a run-on word.
       role="list"
-      aria-label={`${unique.length} other ${unique.length === 1 ? 'person' : 'people'} on this board`}
+      aria-label={presence.othersOnBoard(unique.length)}
     >
       {visible.map((user, index) => (
         <div
@@ -120,4 +121,4 @@ function initials(name: string): string {
 }
 
 const roleLabel = (role: string): string | undefined =>
-  role === 'VIEWER' ? 'Viewing' : undefined
+  role === 'VIEWER' ? presence.viewing : undefined

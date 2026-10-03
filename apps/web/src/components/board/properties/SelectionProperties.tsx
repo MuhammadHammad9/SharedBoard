@@ -18,6 +18,9 @@ import { LABELS } from '../../../features/canvas/history/grouping.js'
 import { ColorSwatch } from '../../ui/ColorSwatch.js'
 import { Slider } from '../../ui/Slider.js'
 import { MIXED, MixedValue, commonValue } from './MixedValue.js'
+import { boardChrome } from '../../../lib/strings.js'
+
+const p = boardChrome.properties
 
 /**
  * Properties for the current selection — FLOWS §14.4.
@@ -88,6 +91,7 @@ export function SelectionProperties() {
   /** A colour row, reused by every type that has one. */
   const colourRow = (
     label: string,
+    context: string,
     palette: readonly string[],
     read: (o: BoardObject) => string | undefined,
     write: (o: BoardObject, colour: string) => BoardObject,
@@ -109,7 +113,7 @@ export function SelectionProperties() {
             <ColorSwatch
               key={c}
               color={c}
-              context={label === 'Colour' ? 'Colour' : `${label} colour`}
+              context={context}
               selected={
                 current !== MIXED &&
                 typeof current === 'string' &&
@@ -132,13 +136,14 @@ export function SelectionProperties() {
     <div className="flex flex-col gap-4" data-testid="selection-properties">
       <header className="flex items-baseline justify-between">
         <h3 className="text-xs font-medium text-muted">
-          {selectionCount === 1 ? '1 object' : `${selectionCount} objects`}
+          {p.objectCount(selectionCount)}
         </h3>
       </header>
 
       {kind === 'stroke' &&
         colourRow(
-          'Colour',
+          p.colour,
+          p.colour,
           PEN_COLOURS,
           o => (o.type === 'stroke' ? o.color : undefined),
           (o, c) => (o.type === 'stroke' ? { ...o, color: c } : o),
@@ -146,7 +151,8 @@ export function SelectionProperties() {
 
       {kind === 'shape' &&
         colourRow(
-          'Stroke',
+          p.stroke,
+          p.strokeColour,
           PEN_COLOURS,
           o => ('stroke' in o ? (o as { stroke: string }).stroke : undefined),
           (o, c) => ('stroke' in o ? { ...o, stroke: c } : o),
@@ -154,7 +160,8 @@ export function SelectionProperties() {
 
       {kind === 'sticky' &&
         colourRow(
-          'Colour',
+          p.colour,
+          p.colour,
           Object.values(STICKY_COLOURS),
           o => (o.type === 'sticky' ? o.color : undefined),
           (o, c) => (o.type === 'sticky' ? { ...o, color: c } : o),
@@ -163,7 +170,8 @@ export function SelectionProperties() {
 
       {kind === 'text' &&
         colourRow(
-          'Colour',
+          p.colour,
+          p.colour,
           PEN_COLOURS,
           o => (o.type === 'text' ? o.color : undefined),
           (o, c) => (o.type === 'text' ? { ...o, color: c } : o),
@@ -171,11 +179,11 @@ export function SelectionProperties() {
 
       {(kind === 'stroke' || kind === 'shape') && (
         <Slider
-          label="Stroke width"
+          label={p.strokeWidth}
           value={width === MIXED || width === undefined ? STROKE_WIDTH_MIN : width}
           min={STROKE_WIDTH_MIN}
           max={STROKE_WIDTH_MAX}
-          display={width === MIXED ? 'Mixed' : `${width ?? STROKE_WIDTH_MIN} px`}
+          display={width === MIXED ? p.mixed : `${width ?? STROKE_WIDTH_MIN} px`}
           mixed={width === MIXED}
           testId="selection-width-slider"
           onChange={next =>
@@ -186,11 +194,11 @@ export function SelectionProperties() {
 
       {kind === 'text' && (
         <Slider
-          label="Font size"
+          label={p.fontSize}
           value={fontSize === MIXED || fontSize === undefined ? FONT_SIZE_MIN : fontSize}
           min={FONT_SIZE_MIN}
           max={FONT_SIZE_MAX}
-          display={fontSize === MIXED ? 'Mixed' : `${fontSize ?? FONT_SIZE_MIN} px`}
+          display={fontSize === MIXED ? p.mixed : `${fontSize ?? FONT_SIZE_MIN} px`}
           mixed={fontSize === MIXED}
           testId="selection-fontsize-slider"
           onChange={next =>
@@ -201,14 +209,14 @@ export function SelectionProperties() {
 
       {/* The universally shared property — the whole panel for a mixed selection. */}
       <Slider
-        label="Opacity"
+        label={p.opacity}
         value={Math.round(
           (opacity === MIXED || opacity === undefined ? 1 : opacity) * 100,
         )}
         min={10}
         max={100}
         step={5}
-        display={opacity === MIXED ? 'Mixed' : `${Math.round((opacity ?? 1) * 100)}%`}
+        display={opacity === MIXED ? p.mixed : `${Math.round((opacity ?? 1) * 100)}%`}
         mixed={opacity === MIXED}
         testId="selection-opacity-slider"
         onChange={next => patch(o => ({ ...o, opacity: next / 100 }))}
@@ -231,7 +239,7 @@ export function SelectionProperties() {
         }
       >
         <Trash size={14} weight="light" aria-hidden="true" />
-        Delete
+        {p.delete}
       </button>
     </div>
   )

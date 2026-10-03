@@ -14,7 +14,13 @@ import {
   useTrash,
 } from '../features/boards/useBoards.js'
 import { absoluteTime, relativeTime } from '../lib/relativeTime.js'
-import { actions, boards as boardStrings, emptyStates, errors } from '../lib/strings.js'
+import {
+  actions,
+  boards as boardStrings,
+  dashboard,
+  emptyStates,
+  errors,
+} from '../lib/strings.js'
 import type { BoardSummary } from '../features/boards/api.js'
 import { EmptyBoardGraphic } from '../features/boards/EmptyBoardGraphic.js'
 
@@ -87,7 +93,9 @@ export default function Trash() {
         <DashboardSidebar />
 
         <main className="min-w-0 flex-1">
-          <h1 className="mb-1 text-lg font-semibold text-primary">Trash</h1>
+          <h1 className="mb-1 text-lg font-semibold text-primary">
+            {dashboard.trashTitle}
+          </h1>
           <p className="mb-6 text-sm text-muted">{emptyStates.trashEmpty.body}</p>
 
           {query.isPending ? (

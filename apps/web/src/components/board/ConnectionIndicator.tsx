@@ -1,5 +1,7 @@
 import type { ConnectionState } from '@coboard/shared'
-import { actions, errors } from '../../lib/strings.js'
+import { actions, boardChrome, errors } from '../../lib/strings.js'
+
+const conn = boardChrome.connection
 
 /**
  * The connection state, in the board header — `FR-RT-009`, FLOWS §15.2.
@@ -64,9 +66,9 @@ export function describeConnection(
 ): { tone: Tone; label: string | null; srLabel: string } {
   switch (state) {
     case 'connected':
-      return { tone: 'success', label: null, srLabel: 'Connected' }
+      return { tone: 'success', label: null, srLabel: conn.connected }
     case 'connecting':
-      return { tone: 'warning', label: 'Connecting…', srLabel: 'Connecting…' }
+      return { tone: 'warning', label: conn.connecting, srLabel: conn.connecting }
     case 'syncing':
       return pending > 0
         ? {
@@ -74,7 +76,7 @@ export function describeConnection(
             label: errors.syncing(pending),
             srLabel: errors.syncing(pending),
           }
-        : { tone: 'warning', label: 'Connecting…', srLabel: 'Connecting…' }
+        : { tone: 'warning', label: conn.connecting, srLabel: conn.connecting }
     case 'reconnecting': {
       const label = errors.reconnecting(Math.max(attempt, 1))
       return { tone: 'warning', label, srLabel: label }
@@ -82,7 +84,7 @@ export function describeConnection(
     case 'offline':
       return { tone: 'danger', label: errors.disconnected, srLabel: errors.disconnected }
     case 'disconnected':
-      return { tone: 'muted', label: null, srLabel: 'Disconnected' }
+      return { tone: 'muted', label: null, srLabel: conn.disconnected }
   }
 }
 

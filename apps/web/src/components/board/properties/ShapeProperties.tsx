@@ -2,6 +2,9 @@ import { PEN_COLOURS, STROKE_WIDTH_MAX, STROKE_WIDTH_MIN } from '@coboard/shared
 import { useBoardStore } from '../../../stores/boardStore.js'
 import { ColorSwatch } from '../../ui/ColorSwatch.js'
 import { Slider } from '../../ui/Slider.js'
+import { boardChrome } from '../../../lib/strings.js'
+
+const p = boardChrome.properties
 
 /**
  * Shape tool properties — FLOWS §14.4:
@@ -25,13 +28,13 @@ export function ShapeProperties() {
   return (
     <div className="flex flex-col gap-4" data-testid="shape-properties">
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-muted">Stroke</h3>
-        <div className="grid grid-cols-5 gap-2" role="group" aria-label="Stroke colour">
+        <h3 className="text-xs font-medium text-muted">{p.stroke}</h3>
+        <div className="grid grid-cols-5 gap-2" role="group" aria-label={p.strokeColour}>
           {PEN_COLOURS.map(c => (
             <ColorSwatch
               key={c}
               color={c}
-              context="Stroke colour"
+              context={p.strokeColour}
               selected={shape.stroke.toLowerCase() === c.toLowerCase()}
               onSelect={stroke => setShape({ stroke })}
             />
@@ -41,8 +44,8 @@ export function ShapeProperties() {
 
       {isClosed && (
         <section className="flex flex-col gap-2">
-          <h3 className="text-xs font-medium text-muted">Fill</h3>
-          <div className="grid grid-cols-5 gap-2" role="group" aria-label="Fill colour">
+          <h3 className="text-xs font-medium text-muted">{p.fill}</h3>
+          <div className="grid grid-cols-5 gap-2" role="group" aria-label={p.fillColour}>
             {/*
               "None" is a first-class fill value, not the absence of one — an
               outlined rectangle is a different object from a filled one, and
@@ -50,7 +53,7 @@ export function ShapeProperties() {
             */}
             <button
               type="button"
-              aria-label="Fill none"
+              aria-label={p.fillNone}
               aria-pressed={shape.fill === 'none'}
               data-testid="fill-none"
               onClick={() => setShape({ fill: 'none' })}
@@ -74,7 +77,7 @@ export function ShapeProperties() {
               <ColorSwatch
                 key={c}
                 color={c}
-                context="Fill colour"
+                context={p.fillColour}
                 selected={shape.fill.toLowerCase() === c.toLowerCase()}
                 onSelect={fill => setShape({ fill })}
               />
@@ -84,7 +87,7 @@ export function ShapeProperties() {
       )}
 
       <Slider
-        label="Stroke width"
+        label={p.strokeWidth}
         value={shape.strokeWidth}
         min={STROKE_WIDTH_MIN}
         max={STROKE_WIDTH_MAX}
@@ -95,7 +98,7 @@ export function ShapeProperties() {
 
       {isRect && (
         <Slider
-          label="Corner radius"
+          label={p.cornerRadius}
           value={shape.cornerRadius}
           min={0}
           max={64}
@@ -106,7 +109,7 @@ export function ShapeProperties() {
       )}
 
       <Slider
-        label="Opacity"
+        label={p.opacity}
         value={Math.round(shape.opacity * 100)}
         min={10}
         max={100}

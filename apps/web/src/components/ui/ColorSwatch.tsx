@@ -1,4 +1,5 @@
 import { Check } from '@phosphor-icons/react'
+import { boardChrome } from '../../lib/strings.js'
 
 /**
  * A single selectable colour.
@@ -61,7 +62,7 @@ export function ColorSwatch({
   name,
   context,
 }: ColorSwatchProps) {
-  const label = `${context ?? 'Colour'} ${name ?? color}`
+  const label = `${context ?? boardChrome.properties.colour} ${name ?? color}`
   return (
     <button
       type="button"

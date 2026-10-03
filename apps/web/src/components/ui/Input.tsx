@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 import { Eye, EyeSlash } from '@phosphor-icons/react'
+import { auth } from '../../lib/strings.js'
 
 /**
  * The text input every form in the product uses — FLOWS §3.2.
@@ -77,7 +78,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             // password field should reach the submit button, not a toggle.
             tabIndex={-1}
             onClick={() => setRevealed(v => !v)}
-            aria-label={revealed ? 'Hide password' : 'Show password'}
+            aria-label={revealed ? auth.fields.hidePassword : auth.fields.showPassword}
             aria-pressed={revealed}
             data-testid="reveal-password"
             className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-sm p-1 text-muted transition-colors duration-fast ease-standard hover:text-primary"

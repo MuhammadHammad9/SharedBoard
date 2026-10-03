@@ -22,7 +22,13 @@ import {
   type BoardSort,
 } from '../features/boards/useBoards.js'
 import { useAuthStore } from '../stores/authStore.js'
-import { actions, boards as boardStrings, emptyStates, errors } from '../lib/strings.js'
+import {
+  actions,
+  boards as boardStrings,
+  dashboard,
+  emptyStates,
+  errors,
+} from '../lib/strings.js'
 
 /**
  * S-07 Dashboard — FLOWS §6.
@@ -269,7 +275,7 @@ export default function Dashboard() {
                 onClick={() => void query.fetchNextPage()}
                 data-testid="load-more"
               >
-                Load more
+                {dashboard.loadMore}
               </Button>
             </div>
           ) : null}

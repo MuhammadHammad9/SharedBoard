@@ -26,6 +26,7 @@ import { ContextMenu } from '../../components/board/ContextMenu.js'
 import { resizeCanvas } from './renderer/resizeCanvas.js'
 import { getViewRect, isVisible } from './geometry/culling.js'
 import { useKeyboard } from './interaction/useKeyboard.js'
+import { boardChrome } from '../../lib/strings.js'
 import { getLastPointer, usePointer } from './interaction/usePointer.js'
 import { useWheel } from './interaction/useWheel.js'
 import { devFlags, loadStressFixture } from './devFixture.js'
@@ -502,7 +503,7 @@ export function Canvas() {
         tabIndex={0}
         // R-A11Y-006: text alternative. The count updates as objects change.
         role="img"
-        aria-label={`Whiteboard with ${objectCount} objects`}
+        aria-label={boardChrome.canvasLabel(objectCount)}
       >
         {/* Layer 0 (grid) is [P2] and intentionally absent. */}
         <canvas ref={objectsRef} id="objects" className="absolute inset-0" />

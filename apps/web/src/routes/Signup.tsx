@@ -9,7 +9,7 @@ import { ApiError, NETWORK_ERROR_CODE } from '../lib/api.js'
 import { Button } from '../components/ui/Button.js'
 import { FormError } from '../components/ui/FormError.js'
 import { Input } from '../components/ui/Input.js'
-import { auth, validation } from '../lib/strings.js'
+import { actions, auth, errors, validation } from '../lib/strings.js'
 import { safeNext } from './nextParam.js'
 import {
   announceAccountCreated,
@@ -91,8 +91,8 @@ export default function Signup() {
         retryAfterRef.current = err.retryAfter ?? null
         form.setFormError(
           err.retryAfter
-            ? `Too many attempts. Try again in ${Math.ceil(err.retryAfter / 60)} minutes.`
-            : 'Too many attempts. Try again shortly.',
+            ? errors.rateLimitedLogin(Math.ceil(err.retryAfter / 60))
+            : errors.rateLimitedShortly,
         )
         return
       }
@@ -203,7 +203,7 @@ export default function Signup() {
                   className="cursor-pointer font-medium underline"
                   data-testid="retry"
                 >
-                  Retry
+                  {actions.retry}
                 </button>
               ) : null
             }

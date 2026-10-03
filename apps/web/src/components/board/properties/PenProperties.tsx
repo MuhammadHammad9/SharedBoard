@@ -2,6 +2,9 @@ import { PEN_COLOURS, STROKE_WIDTH_MAX, STROKE_WIDTH_MIN } from '@coboard/shared
 import { useBoardStore } from '../../../stores/boardStore.js'
 import { ColorSwatch } from '../../ui/ColorSwatch.js'
 import { Slider } from '../../ui/Slider.js'
+import { boardChrome } from '../../../lib/strings.js'
+
+const p = boardChrome.properties
 
 /**
  * Pen context for the properties panel — FLOWS §14.4:
@@ -24,8 +27,8 @@ export function PenProperties() {
   return (
     <div className="flex flex-col gap-4" data-testid="pen-properties">
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-muted">Colour</h3>
-        <div className="grid grid-cols-5 gap-2" role="group" aria-label="Pen colour">
+        <h3 className="text-xs font-medium text-muted">{p.colour}</h3>
+        <div className="grid grid-cols-5 gap-2" role="group" aria-label={p.penColour}>
           {PEN_COLOURS.map(c => (
             <ColorSwatch
               key={c}
@@ -44,27 +47,27 @@ export function PenProperties() {
           <input
             type="color"
             value={pen.color}
-            aria-label="Custom pen colour"
+            aria-label={p.customPenColour}
             data-testid="pen-custom-colour"
             onChange={e => setPen({ color: e.target.value })}
             className="h-6 w-6 cursor-pointer rounded-sm border border-border bg-app p-0"
           />
-          Custom
+          {p.custom}
         </label>
       </section>
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-muted">Thickness</h3>
+        <h3 className="text-xs font-medium text-muted">{p.thickness}</h3>
         <div
           className="flex items-center gap-1"
           role="group"
-          aria-label="Thickness presets"
+          aria-label={p.thicknessPresets}
         >
           {WIDTH_PRESETS.map(w => (
             <button
               key={w}
               type="button"
-              aria-label={`Thickness ${w} pixels`}
+              aria-label={p.thicknessPixels(w)}
               aria-pressed={pen.strokeWidth === w}
               data-testid={`pen-width-${w}`}
               onClick={() => setPen({ strokeWidth: w })}
@@ -87,7 +90,7 @@ export function PenProperties() {
           ))}
         </div>
         <Slider
-          label="Width"
+          label={p.width}
           value={pen.strokeWidth}
           min={STROKE_WIDTH_MIN}
           max={STROKE_WIDTH_MAX}
@@ -98,7 +101,7 @@ export function PenProperties() {
       </section>
 
       <Slider
-        label="Opacity"
+        label={p.opacity}
         // FLOWS §14.4 gives opacity a 10–100% range: a 0% pen draws an
         // invisible object the user cannot then find to delete.
         value={Math.round(pen.opacity * 100)}

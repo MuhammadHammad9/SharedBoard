@@ -2,6 +2,7 @@ import { useBoardStore } from '../../stores/boardStore.js'
 import { useSyncExternalStore } from 'react'
 import { ArrowArcLeft, ArrowArcRight } from '@phosphor-icons/react'
 import { history } from '../../features/canvas/history/history.js'
+import { boardChrome } from '../../lib/strings.js'
 
 /**
  * Undo / redo — FR-CANVAS-018, FLOWS §14.2.
@@ -62,7 +63,7 @@ export function UndoRedoControls() {
     <div
       className="pointer-events-auto absolute bottom-4 left-4 z-panel flex items-center gap-1 rounded-md border border-border bg-app p-1 shadow-panel"
       role="group"
-      aria-label="Undo and redo"
+      aria-label={boardChrome.history.label}
       data-testid="undo-redo-controls"
     >
       <button
@@ -77,7 +78,7 @@ export function UndoRedoControls() {
          */
         aria-disabled={!canUndo}
         aria-keyshortcuts="Control+Z Meta+Z"
-        aria-label="Undo"
+        aria-label={boardChrome.history.undo}
         data-testid="undo-button"
         onClick={() => {
           if (canUndo) history.undo()
@@ -91,7 +92,7 @@ export function UndoRedoControls() {
         className={BUTTON}
         aria-disabled={!canRedo}
         aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"
-        aria-label="Redo"
+        aria-label={boardChrome.history.redo}
         data-testid="redo-button"
         onClick={() => {
           if (canRedo) history.redo()

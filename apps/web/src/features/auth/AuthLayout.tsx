@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
+import { brand } from '../../lib/strings.js'
 
 /**
  * The shell every auth screen sits in — S-02 … S-06.
@@ -38,7 +39,7 @@ export function AuthLayout({
             aria-hidden="true"
             className="inline-block h-6 w-6 rounded-md bg-accent"
           />
-          CoBoard
+          {brand.name}
         </Link>
 
         <div className="rounded-lg border border-border bg-app p-6 shadow-panel">

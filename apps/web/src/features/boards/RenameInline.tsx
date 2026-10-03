@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { BOARD_NAME_MAX } from '@coboard/shared'
+import { boards } from '../../lib/strings.js'
 
 /**
  * Inline rename — FLOWS §6.6, used by the board card and the board header.
@@ -51,7 +52,7 @@ export function RenameInline({
       ref={input}
       value={draft}
       maxLength={BOARD_NAME_MAX}
-      aria-label="Board name"
+      aria-label={boards.nameLabel}
       data-testid={testId}
       onChange={event => setDraft(event.target.value)}
       onClick={event => event.stopPropagation()}
