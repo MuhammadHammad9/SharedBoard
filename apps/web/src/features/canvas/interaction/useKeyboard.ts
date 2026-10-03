@@ -23,6 +23,7 @@ import {
 import { applyAndEmit, deleteOps } from '../history/apply.js'
 import { LABELS } from '../history/grouping.js'
 import { history } from '../history/history.js'
+import { openExport } from '../../export/exportStore.js'
 
 /** Arrow key → unit direction. FR-CANVAS-011. */
 const ARROW_DELTAS: Record<string, { x: number; y: number } | undefined> = {
@@ -138,6 +139,17 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
        * (select all, which copy needs). Everything else is ignored here, so
        * no shortcut can start an edit the server would refuse.
        */
+      /*
+       * Cmd+Shift+E — S-14 export (FLOWS §11). Read-only, so viewers too.
+       * Before the viewer gate and before the mod switch, where a bare `e`
+       * would be read as the eraser.
+       */
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault()
+        openExport()
+        return
+      }
+
       if (store.readOnly) {
         const viewSafe =
           e.code === 'Space' ||

@@ -463,4 +463,21 @@
   [data-upload-placeholder][data-status='done'] {
     opacity: 0;
   }
+
+  /*
+   * Export modal — features/export/ExportModal.tsx. The preview crossfades in
+   * 150 ms `ease` when an option changes; the progress bar is a linear
+   * scaleX (a progress bar with easing misrepresents progress).
+   */
+  [data-export-preview] {
+    transition: opacity 150ms ease;
+  }
+  @starting-style {
+    [data-export-preview] {
+      opacity: 0;
+    }
+  }
+  [data-export-progress] {
+    transition: transform 120ms linear;
+  }
 }

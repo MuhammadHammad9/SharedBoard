@@ -231,11 +231,30 @@ export const boards = {
   clipboardFallback: 'Press Cmd+C to copy',
 } as const
 
-/** FLOWS §11 — export. */
+/** FLOWS §11 — export. Labels follow the §11 S-14 drawing word for word. */
 export const exportStrings = {
   nothingToExport: "There's nothing to export yet.",
   exported: 'Exported',
   scaledDown: 'Scaled down to fit the maximum export size.',
+  title: 'Export board',
+  scope: 'Scope',
+  wholeBoard: 'Whole board',
+  currentSelection: 'Current selection',
+  visibleArea: 'Visible area',
+  format: 'Format',
+  png: 'PNG',
+  svg: 'SVG',
+  // SVG is FR-EXPORT-002 [P2]: shown, disabled, as the drawing marks it.
+  // Copy gap: the drawing gives no tooltip text. Interim.
+  svgLater: 'SVG export is coming later',
+  scale: 'Scale',
+  background: 'Background',
+  transparent: 'Transparent',
+  padding: 'Padding',
+  preview: 'Preview',
+  export: 'Export',
+  // Copy gap: FLOWS §11 asks for a progress indicator, not its words. Interim.
+  rendering: (percent: number) => `Rendering… ${percent}%`,
 } as const
 
 /**

@@ -11,7 +11,11 @@
  */
 
 export type AnalyticsEvent =
-  'board_opened' | 'board_joined_as_guest' | 'share_link_created' | 'share_link_copied'
+  | 'board_opened'
+  | 'board_joined_as_guest'
+  | 'share_link_created'
+  | 'share_link_copied'
+  | 'export_completed'
 
 type Props = Record<string, string | number | boolean>
 

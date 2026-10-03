@@ -10,6 +10,11 @@ import { ShareModal } from '../../features/sharing/ShareModal.js'
 import { ConnectionIndicator } from './ConnectionIndicator.js'
 import { AvatarStack } from '../../features/presence/AvatarStack.js'
 import type { ConnectionState, Role } from '@coboard/shared'
+import { ExportModal } from '../../features/export/ExportModal.js'
+import { openExport } from '../../features/export/exportStore.js'
+
+/** The canvas fills the window on the board route, so the window is the view. */
+const windowSize = () => ({ width: window.innerWidth, height: window.innerHeight })
 
 /**
  * S-10 board header — the title, and the way back out.
@@ -128,6 +133,14 @@ export function BoardHeader({
         pending={pending}
         {...(onRetry ? { onRetry } : {})}
       />
+
+      {/* FR-EXPORT-001: anyone who can see the board can export it. */}
+      <span className="pointer-events-auto">
+        <Button variant="secondary" onClick={openExport} data-testid="export-button">
+          {actions.exportLabel}
+        </Button>
+      </span>
+      <ExportModal boardName={displayName} getSize={windowSize} />
 
       {/* FR-SHARE-001: inviting is the owner's alone, so the button is too. */}
       {role === 'OWNER' && (

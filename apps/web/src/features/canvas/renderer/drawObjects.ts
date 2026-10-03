@@ -57,6 +57,12 @@ export interface DrawObjectsArgs {
   eraseCandidate?: string | null
   /** Decoded bitmaps for image objects. The shared LRU cache by default. */
   images?: ImageSource
+  /**
+   * False to draw on top of what is already there — the chunked export draws
+   * a large board in several calls onto one canvas. The live canvas always
+   * clears.
+   */
+  clear?: boolean
 }
 
 /** PRD §15 --color-danger. The eraser's "this is what you are about to lose". */
@@ -68,7 +74,7 @@ export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs
 
   ctx.save()
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  ctx.clearRect(0, 0, width, height)
+  if (args.clear !== false) ctx.clearRect(0, 0, width, height)
 
   const visible = collectVisible(objects, getViewRect(viewport, width, height), scratch)
   if (visible.length === 0) {
