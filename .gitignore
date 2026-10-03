@@ -39,3 +39,4 @@ pnpm-debug.log*
 # Prisma generated client
 packages/**/generated/
 apps/server/src/generated/
+dump.rdb
