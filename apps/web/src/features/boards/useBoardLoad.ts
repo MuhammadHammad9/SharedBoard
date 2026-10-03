@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ConnectionState, Role } from '@coboard/shared'
 import { ApiError } from '../../lib/api.js'
 import { useToast } from '../../components/ui/Toast.js'
 import { errors, presence } from '../../lib/strings.js'
 import { BoardSession } from '../sync/session.js'
 import { abandonPersistence } from '../sync/persistence.js'
+import { track } from '../../lib/analytics.js'
 
 /**
  * A board id the server could never own — anything that is not a uuid.
@@ -56,6 +57,8 @@ export interface BoardLoad {
   pending: number
   /** "Retry now" — restarts the backoff. */
   retryConnection: () => void
+  /** Reconnect under a new identity — guest → account (FLOWS §7.4). */
+  reconnect: () => void
   /** Server sequence the loaded document is current as of. */
   seq: number
   objectCount: number
@@ -73,7 +76,10 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
   const [attemptN, setAttemptN] = useState(0)
   const [pending, setPending] = useState(0)
   const sessionRef = useRef<BoardSession | null>(null)
+  const roleRef = useRef<Role | null>(null)
   const toast = useToast()
+  // Stable, so effects that depend on it (useGuestConversion) subscribe once.
+  const reconnect = useCallback(() => sessionRef.current?.socket.restart(), [])
 
   useEffect(() => {
     if (!boardId) return
@@ -93,14 +99,16 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
      */
     const session = new BoardSession(boardId, {
       onState: next => setConnection(next),
-      onRole: next =>
-        setRole(previous => {
-          // FLOWS §9.5: demoted to viewer live — do not eject; say so once.
-          if (previous && previous !== 'VIEWER' && next === 'VIEWER') {
-            toast.show({ message: presence.nowViewer })
-          }
-          return next
-        }),
+      onRole: next => {
+        // FLOWS §9.5: demoted to viewer live — do not eject; say so once.
+        // Outside the state updater, which StrictMode runs twice.
+        const previous = roleRef.current
+        if (previous && previous !== 'VIEWER' && next === 'VIEWER') {
+          toast.show({ message: presence.nowViewer })
+        }
+        roleRef.current = next
+        setRole(next)
+      },
       onNack: () => toast.show({ message: errors.opRejected, variant: 'danger' }),
       onFatal: kind => {
         /*
@@ -124,16 +132,20 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
     sessionRef.current = session
 
     setStatus('loading')
+    const startedAt = performance.now()
 
     void (async () => {
       try {
         const result = await session.start()
         if (sessionRef.current !== session) return
+        roleRef.current = result.role
         setRole(result.role)
         setName(result.name)
         setSeq(result.seq)
         setObjectCount(result.objects)
         setStatus('ready')
+        // FLOWS §2.3 STEP 6 — with the measured load time (PRD §9).
+        track('board_opened', { load_ms: Math.round(performance.now() - startedAt) })
       } catch (error) {
         if (sessionRef.current !== session) return
         if (!(error instanceof ApiError)) {
@@ -172,6 +184,7 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
     attempt: attemptN,
     pending,
     retryConnection: () => sessionRef.current?.resume(),
+    reconnect,
     retry: () => setAttempt(n => n + 1),
   }
 }

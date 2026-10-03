@@ -115,3 +115,9 @@ export function shareTokenFor(boardId: string): string | null {
     return shareMemory.get(boardId) ?? null
   }
 }
+
+/**
+ * The message a signup tab opened from the guest bar posts back to the board
+ * tab — FLOWS §7.4. Same-origin only, checked on both ends.
+ */
+export const ACCOUNT_CREATED_MESSAGE = 'coboard:account-created'

@@ -11,6 +11,7 @@ import { FormError } from '../components/ui/FormError.js'
 import { Input } from '../components/ui/Input.js'
 import { auth, validation } from '../lib/strings.js'
 import { safeNext } from './nextParam.js'
+import { ACCOUNT_CREATED_MESSAGE } from '../features/auth/guestIdentity.js'
 
 /**
  * S-02 Signup — FR-AUTH-001, FLOWS §3.
@@ -58,6 +59,23 @@ export default function Signup() {
         password: values.password,
         displayName: values.displayName.trim(),
       })
+      /*
+       * Guest → account (FLOWS §7.4). This tab was opened from a board by its
+       * guest bar; the board tab is still open with the person's work on it.
+       * Tell it — same origin only — and let it upgrade in place, rather than
+       * taking them somewhere else. The refresh cookie this signup just set is
+       * shared, so that tab can pick up the session itself.
+       */
+      if (params.get('from') === 'guest' && window.opener) {
+        try {
+          ;(window.opener as Window).postMessage(
+            { type: ACCOUNT_CREATED_MESSAGE },
+            window.location.origin,
+          )
+        } catch {
+          // The opener went away; the redirect below still lands them.
+        }
+      }
       navigate(next, { replace: true })
     } catch (err) {
       if (!(err instanceof ApiError)) throw err

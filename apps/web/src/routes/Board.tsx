@@ -16,6 +16,8 @@ import { useToast } from '../components/ui/Toast.js'
 import { boardStore } from '../stores/boardStore.js'
 import { clearGuest } from '../features/auth/guestIdentity.js'
 import { useBoardEntry } from './RequireBoardAccess.js'
+import { GuestBar } from '../components/board/GuestBar.js'
+import { useGuestConversion } from '../features/sharing/useGuestConversion.js'
 
 /**
  * S-10 Board shell.
@@ -39,6 +41,8 @@ export default function Board() {
   const location = useLocation()
   const navigate = useNavigate()
   const toast = useToast()
+  // FLOWS §7.4 — null once the guest has become an account, in place.
+  const actingGuest = useGuestConversion(boardId ?? '', entry.guest, load.reconnect)
 
   // Viewer mode — FR-SHARE-006. Follows the role live, so a role:changed to
   // viewer disables the canvas on the spot (FLOWS §9.5).
@@ -140,9 +144,10 @@ export default function Board() {
       />
       <OfflineBanner state={load.connection} pending={load.pending} />
       <SessionExpiredBanner />
-      {entry.guest && entry.returning && (
+      {actingGuest && <GuestBar boardId={boardId ?? ''} />}
+      {actingGuest && entry.returning && (
         <ReturningGuestChip
-          name={entry.guest.name}
+          name={actingGuest.name}
           {...(entry.shareToken
             ? {
                 onNotYou: () => {

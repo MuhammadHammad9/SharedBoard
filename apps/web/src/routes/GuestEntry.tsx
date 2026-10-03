@@ -13,6 +13,7 @@ import {
   saveGuest,
 } from '../features/auth/guestIdentity.js'
 import { useSessionBootstrap } from './guards.js'
+import { track } from '../lib/analytics.js'
 
 /**
  * S-11 — the guest join card, `/join/:token`. FLOWS §7, FR-AUTH-006.
@@ -73,7 +74,11 @@ export default function GuestEntry() {
   )
 
   const join = useCallback(
-    async (card: ShareCard, rawName: string) => {
+    /**
+     * `returning` is the §7.2 path: no "You're in as" toast (that is for a
+     * first join from the card); the board shows the "Not you?" chip instead.
+     */
+    async (card: ShareCard, rawName: string, returning = false) => {
       const trimmed = rawName.trim()
       if (!trimmed) {
         setNameError(guest.nameRequired)
@@ -85,7 +90,8 @@ export default function GuestEntry() {
       setGuestCredential(identity.id)
       try {
         await joinAsGuest(token, identity.id, identity.name)
-        enterBoard(card.boardId, identity.name)
+        if (!returning) track('board_joined_as_guest', { board_id: card.boardId })
+        enterBoard(card.boardId, returning ? undefined : identity.name)
       } catch (error) {
         setJoining(false)
         if (error instanceof ApiError && error.status === 403) {
@@ -127,7 +133,7 @@ export default function GuestEntry() {
     const returning = readGuest()
     if (returning) {
       autoJoined.current = true
-      void join(phase.card, returning.name)
+      void join(phase.card, returning.name, true)
     }
   }, [phase, authStatus, enterBoard, join])
 

@@ -275,10 +275,7 @@ test('AT-04: A deletes while B moves — gone on both, no zombie', async ({
   await a.keyboard.press('Control+a')
 
   // Both act at once; the delete must win on both screens.
-  await Promise.all([
-    a.keyboard.press('Delete'),
-    b.keyboard.press('ArrowRight'),
-  ])
+  await Promise.all([a.keyboard.press('Delete'), b.keyboard.press('ArrowRight')])
 
   await expect.poll(async () => (await objects(a)).length).toBe(0)
   await expect.poll(async () => (await objects(b)).length).toBe(0)
@@ -299,10 +296,7 @@ test('AT-05: simultaneous writes to one field converge', async ({ browser, page 
 
   // Both nudge the same object within a few milliseconds. One of the two
   // values wins by seq; what matters is that BOTH clients pick the same one.
-  await Promise.all([
-    a.keyboard.press('ArrowRight'),
-    b.keyboard.press('ArrowDown'),
-  ])
+  await Promise.all([a.keyboard.press('ArrowRight'), b.keyboard.press('ArrowDown')])
 
   await expectConverged(a, b)
   await contextB.close()
@@ -310,7 +304,7 @@ test('AT-05: simultaneous writes to one field converge', async ({ browser, page 
 
 /* ── AT-40, AT-41 — undo is per-user, and now testable ────────────────────── */
 
-test('AT-40: undo does NOT revert the other person\'s work — R-UNDO-001', async ({
+test("AT-40: undo does NOT revert the other person's work — R-UNDO-001", async ({
   browser,
   page,
 }) => {
@@ -386,12 +380,10 @@ test('work drawn while disconnected syncs when the socket returns', async ({
 })
 
 /*
- * NOTE on the viewer case. `AT-20` over the socket — a viewer's op nacked with
- * FORBIDDEN and nothing written — is covered by the server's socket suite,
- * which can create a VIEWER membership directly. There is no way to invite one
- * from the browser until Phase 12 ships sharing, and inventing an endpoint so
- * a test can exercise a path the product does not have yet would be testing
- * the test.
+ * NOTE on the viewer case. `AT-20` in the browser — the View only badge, and a
+ * drag that changes nothing — is in sharing.spec.ts, through a real view-only
+ * share link (Phase 12). The forged-socket half is in the server's socket
+ * suite.
  */
 
 /* ── Presence, two contexts — AT-06, AT-07 ────────────────────────────────── */
@@ -542,9 +534,9 @@ test('AT-08: five people draw at once, converge, and hold frame rate', async ({
 
   const expected = pages.length * 3
   for (const p of pages) {
-    await expect.poll(async () => (await objects(p)).length, { timeout: 30_000 }).toBe(
-      expected,
-    )
+    await expect
+      .poll(async () => (await objects(p)).length, { timeout: 30_000 })
+      .toBe(expected)
   }
 
   // Convergence, pairwise against the first.
@@ -556,13 +548,12 @@ test('AT-08: five people draw at once, converge, and hold frame rate', async ({
    * Chromium contexts and a Node server is not where a 55 fps budget gets
    * judged — but a hard ceiling still catches a genuine collapse.
    */
-  const m = await pages[1]!.evaluate(
-    () =>
-      (
-        window as unknown as {
-          __coboardMetrics: () => { p50: number; p95: number; objectPaints: number }
-        }
-      ).__coboardMetrics(),
+  const m = await pages[1]!.evaluate(() =>
+    (
+      window as unknown as {
+        __coboardMetrics: () => { p50: number; p95: number; objectPaints: number }
+      }
+    ).__coboardMetrics(),
   )
   console.log(
     `[perf] AT-08 five users — frame p50 ${m.p50.toFixed(1)}ms, p95 ${m.p95.toFixed(1)}ms`,

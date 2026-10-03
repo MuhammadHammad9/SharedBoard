@@ -384,6 +384,31 @@ export class SocketClient {
     this.onClose(CLOSE_CODES.ABNORMAL)
   }
 
+  /**
+   * Reconnect now, under whatever credential is current — guest → account
+   * conversion (FLOWS §7.4). The canvas, the outbox and the applied seq all
+   * stay; only the socket's identity changes, so the rejoin replays nothing
+   * the document does not already have.
+   */
+  restart(): void {
+    if (this.closedByUs) return
+    const socket = this.socket
+    this.stopTimers()
+    this.socket = null
+    if (socket) {
+      socket.onclose = null
+      socket.onmessage = null
+      try {
+        socket.close(CLOSE_CODES.NORMAL)
+      } catch {
+        // Already gone.
+      }
+    }
+    this.attempt = 0
+    this.fire('drop')
+    void this.connect()
+  }
+
   /** Put arbitrary bytes on the wire — AT-35's forged console message. */
   sendRaw(data: string): boolean {
     if (!this.isOpen) return false
