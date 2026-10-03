@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { boardStore } from '../../../stores/boardStore.js'
+import { boardStore, type Tool } from '../../../stores/boardStore.js'
+import { track } from '../../../lib/analytics.js'
 import { canChangeTool } from './machine.js'
 import { endPan } from './handlers/pan.js'
 import { cancelDraw } from './handlers/draw.js'
@@ -26,6 +27,20 @@ import { history } from '../history/history.js'
 import { openExport } from '../../export/exportStore.js'
 import { isModalOpen } from '../../../components/ui/Modal.js'
 import { openShortcuts } from '../../../components/board/shortcutsStore.js'
+
+/** Tool shortcuts — PRD Appendix A. Lower-cased `KeyboardEvent.key`. */
+const SHORTCUT_TOOLS: Record<string, Tool | undefined> = {
+  v: 'select',
+  h: 'hand',
+  p: 'pen',
+  e: 'eraser',
+  r: 'rect',
+  o: 'ellipse',
+  l: 'line',
+  a: 'arrow',
+  n: 'sticky',
+  t: 'text',
+}
 
 /** Arrow key → unit direction. FR-CANVAS-011. */
 const ARROW_DELTAS: Record<string, { x: number; y: number } | undefined> = {
@@ -313,40 +328,14 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
       // Tool shortcuts. R-CANVAS-055 / FLOWS E-08: a tool change during an
       // interaction is ignored, not queued into a half-finished stroke.
       if (!canChangeTool(store.interaction.type)) return
-      switch (e.key.toLowerCase()) {
-        case 'v':
-          store.setActiveTool('select')
-          break
-        case 'h':
-          store.setActiveTool('hand')
-          break
-        case 'p':
-          store.setActiveTool('pen')
-          break
-        case 'e':
-          store.setActiveTool('eraser')
-          break
-        case 'r':
-          store.setActiveTool('rect')
-          break
-        case 'o':
-          store.setActiveTool('ellipse')
-          break
-        case 'l':
-          store.setActiveTool('line')
-          break
-        case 'a':
-          store.setActiveTool('arrow')
-          break
-        case 'n':
-          store.setActiveTool('sticky')
-          break
-        case 't':
-          store.setActiveTool('text')
-          break
-        default:
-          break
-      }
+      const tool = SHORTCUT_TOOLS[e.key.toLowerCase()]
+      if (!tool) return
+      // PRD §9 tool_selected — only when the tool really changes. Pressing P
+      // while already on Pen is not a selection. The implicit returns to
+      // Select (Escape above, and after creating an object) are not tracked:
+      // the user did not choose a tool, the machine reset one.
+      if (store.activeTool !== tool) track('tool_selected', { tool, via: 'shortcut' })
+      store.setActiveTool(tool)
     }
 
     const onKeyUp = (e: KeyboardEvent) => {

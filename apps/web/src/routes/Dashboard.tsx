@@ -29,6 +29,7 @@ import {
   emptyStates,
 } from '../lib/strings.js'
 import { serverErrorMessage } from '../lib/errorCopy.js'
+import { track } from '../lib/analytics.js'
 
 /**
  * S-07 Dashboard — FLOWS §6.
@@ -119,13 +120,16 @@ export default function Dashboard() {
    */
   const creatingRef = useRef(false)
 
-  const onCreate = () => {
+  const onCreate = (from: 'dashboard' | 'empty_state') => {
     if (creatingRef.current) return
     creatingRef.current = true
     create.mutate(undefined, {
       // No optimistic navigation: routing to a board that then fails to be
       // created strands the user on a 404 they cannot explain (FLOWS §6.5).
-      onSuccess: ({ board }) => navigate(`/board/${board.id}?new=1`),
+      onSuccess: ({ board }) => {
+        track('board_created', { template: 'blank', from })
+        navigate(`/board/${board.id}?new=1`)
+      },
       onError: () => {
         creatingRef.current = false
         toast.show({ message: boardStrings.createFailed, variant: 'danger' })
@@ -162,7 +166,7 @@ export default function Dashboard() {
       <DashboardHeader
         search={typed}
         onSearch={setTyped}
-        onCreate={onCreate}
+        onCreate={() => onCreate('dashboard')}
         creating={create.isPending}
       />
 
@@ -222,7 +226,10 @@ export default function Dashboard() {
                 headline={emptyStates.dashboardNoBoards.headline}
                 body={emptyStates.dashboardNoBoards.body}
                 action={
-                  <Button onClick={onCreate} loading={create.isPending}>
+                  <Button
+                    onClick={() => onCreate('empty_state')}
+                    loading={create.isPending}
+                  >
                     {emptyStates.dashboardNoBoards.cta}
                   </Button>
                 }
@@ -255,6 +262,11 @@ export default function Dashboard() {
                   onTrash={() => onTrash(board.id)}
                   onDuplicate={() =>
                     duplicate.mutate(board.id, {
+                      onSuccess: () =>
+                        track('board_created', {
+                          template: 'duplicate',
+                          from: 'dashboard',
+                        }),
                       onError: error =>
                         toast.show({
                           message: serverErrorMessage(error),

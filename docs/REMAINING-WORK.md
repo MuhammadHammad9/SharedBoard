@@ -343,6 +343,76 @@ Exit gate:
 - The motion review is done and its findings fixed.
 - Copy matches PRD §8.
 
+#### Phase 14 outcome
+
+All six slices landed, and P14-1 to P14-7 are fixed. Spec conflicts found on the way are in the defect register:
+
+- **D-16:** mobile properties appear as a sheet, and only for a selection.
+- **D-17:** the 768–1279 px popover also opens for a tool's settings, or pen colour would have no home at those widths.
+- **D-18:** the frozen muted/subtle token pair is 4.39:1, under WCAG AA. The tokens stay; the failing pairings are gone.
+
+Other findings:
+
+| #    | Finding                                                                                                                                                    | Fix                                                                                                                                                                           |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I-13 | The responsive e2e caught the trash row collapsing at 390 px: the name was squeezed to zero width                                                          | Below 768 px the actions wrap onto their own line                                                                                                                             |
+| I-14 | The `xform` presence message was in the protocol and relayed by the server, but the client never sent or drew it, so a remote drag appeared only on commit | Sent at 20 Hz (10 Hz above 100 selected, E-07). The sender's selection outline is drawn offset on the overlay layer, so layer 1 is never touched                              |
+| I-15 | Internet Explorer cannot run the module bundle, so a React "unsupported" screen could never render there                                                   | A static `nomodule` screen in `index.html`, pinned to `errors.unsupportedBrowser` by a unit test. A feature check in `main.tsx` covers module-capable browsers missing an API |
+| I-16 | `pnpm audit` reports one high advisory: `braces` through tailwindcss → chokidar. It predates this phase and has no patched version                         | Not fixable here. Recorded for Phase 15's dependency pass                                                                                                                     |
+
+**Motion review (`emil-design-eng`, R-SKILL-072).**
+
+| Before                                                                | After                                                                         | Why                                                                                                           |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Share modal on mobile entered as a centred modal (`translate: 0 8px`) | `translate: 0 100%` → 0 on `--ease-drawer`, 320 ms, for `[data-sheet='true']` | A sheet attached to the bottom edge should rise from that edge. A percentage fits any content height          |
+| `[data-presence-stale]` `filter 300ms`                                | `filter var(--duration-base)`                                                 | A state indication, not decoration: inside the 200 ms standard band                                           |
+| Member-row flash at 400 ms (transition and keyframe)                  | `var(--duration-slow)` (320 ms)                                               | Feedback stays near the 300 ms ceiling. Each flash is a fresh row, so a keyframe restarting does no harm here |
+| Button spinner crossfade `duration-200`                               | `duration-base`                                                               | Use the token, not an arbitrary value (R-UI token contract)                                                   |
+| Join card at 400 ms                                                   | Kept                                                                          | The one "rare" band flourish, once per person per board (Phase 12 table)                                      |
+| Dashboard card hover animates `box-shadow`                            | Kept, hover-gated (`hoverOnlyWhenSupported`)                                  | Tens a day, 150 ms, on an isolated card. A pseudo-element opacity trick is not worth the markup               |
+
+Already compliant: no `transition: all`, no `ease-in`, no `scale(0)`. Popovers scale from their trigger; modals stay centred. Toolbar and tool switching have no animation. Reduced motion keeps opacity and colour and drops transforms (asserted in e2e).
+
+**Edge cases E-01 to E-22.**
+
+| ID   | Verified by                                                                                                 |
+| ---- | ----------------------------------------------------------------------------------------------------------- |
+| E-01 | `presence.spec.ts`, `presence.test.ts` (avatar dedupe)                                                      |
+| E-02 | `ConnectionMachine.test.ts` (visibility → reconnect check)                                                  |
+| E-03 | `SyncEngine.test.ts` "E-03: a wrong client clock cannot reorder"                                            |
+| E-04 | `viewport.test.ts` (±1,000,000 clamp); server Zod bounds                                                    |
+| E-05 | `images.spec.ts`, `uploadEngine.test.ts`, `uploads.integration.test.ts`                                     |
+| E-06 | `phase5.test.ts` (plain-text paste)                                                                         |
+| E-07 | `canvas-performance.spec.ts` (one op for 500), `presence.test.ts` "drag presence — FLOWS E-07" (20 / 10 Hz) |
+| E-08 | `selection.test.ts`, `viewport.test.ts`                                                                     |
+| E-09 | `canvas-draw.spec.ts`, `draw.test.ts`                                                                       |
+| E-10 | `canvas-viewport.spec.ts` "a resize mid-drag keeps the centre and the drag"                                 |
+| E-11 | `canvas-selection.spec.ts`, `hitTest.test.ts`, `transformSelection.test.ts`                                 |
+| E-12 | `canvas-performance.spec.ts` (culling), `stroke.test.ts` (straight segments below 25%)                      |
+| E-13 | `SyncEngine.test.ts` (snapshot after three unknown objects)                                                 |
+| E-14 | `SyncEngine.test.ts` "is IDEMPOTENT" and "DROPS buffered ops the snapshot already contains"                 |
+| E-15 | `SyncEngine.test.ts` "buffers a gap and drains contiguously" and "asks the server for the missing ops"      |
+| E-16 | `dashboard.test.tsx`                                                                                        |
+| E-17 | `SessionExpiredBanner.test.tsx`                                                                             |
+| E-18 | `guestIdentity.test.ts` (in-memory fallback)                                                                |
+| E-19 | `socket.integration.test.ts` "E-19: two simultaneous renames"                                               |
+| E-20 | `presence.test.ts` (`truncateName`); the avatar tooltip carries the full name                               |
+| E-21 | `states.spec.ts`                                                                                            |
+| E-22 | `export.spec.ts`, `export.test.ts`, `ExportModal.test.tsx`                                                  |
+
+**Analytics.** `track()` is typed against PRD §9: an event cannot be sent without its listed properties, and none of them is personal data. All 14 events fire:
+
+- `account_created` and `logged_in` fire after a successful password sign-up or log-in. Google sign-ins send `method: 'google'`; the server adds `?created=1` to the callback for a new account.
+- `board_created` comes from the header button (`from: dashboard`), the empty state (`empty_state`) and Duplicate (`template: duplicate`).
+- `tool_selected` fires on click or shortcut, only when the tool actually changes.
+- `object_created` fires once per local CREATE in `applyAndEmit`, never for undo, redo or remote ops.
+- `socket_disconnected` and `socket_reconnected` carry the close reason, session duration, attempt count, downtime and outbox size.
+- `op_rejected` carries the server's refusal code, over both the socket and REST.
+
+Tests: `socketAnalytics.test.ts`, `opAnalytics.test.ts`, `authAnalytics.test.ts`, plus the Toolbar and keyboard suites. There is still no provider (D-5): the sink records in development only, and pointing it at a service is a Phase 15 configuration change.
+
+**Exit gate.** Every item in the gate above is met. Evidence is the axe, keyboard, responsive and reduced-motion e2e specs, the E-01 to E-22 table, the motion table, and `noInlineCopy.test.ts` for copy.
+
 ### Phase 15 — Performance, e2e, deployment, monitoring (M5)
 
 **(a)** Profiling at 5k/10k objects, style batching, code splitting, bundle budgets; **(b)** 30-minute memory test and leak fixes; **(c)** complete Playwright `AT-01`–`AT-44`, five must-write tests, Lighthouse CI, p95 input-to-remote instrumentation; **(d)** load test (50 users, 100 ops/s); **(e)** deployment, backups with a tested restore, monitoring for the eight signals, structured logging; **(f)** manual QA checklist and cross-browser stroke check. S-01 landing slots here if §6-A is answered "yes".

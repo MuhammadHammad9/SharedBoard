@@ -151,7 +151,7 @@ describe('failures', () => {
     // that has already made up its mind.
     expect(send).toHaveBeenCalledOnce()
     expect(outbox.pending).toBe(0)
-    expect(onNack).toHaveBeenCalledWith([refused])
+    expect(onNack).toHaveBeenCalledWith([refused], undefined)
   })
 
   it('keeps ops enqueued DURING a request rather than splicing them away', async () => {

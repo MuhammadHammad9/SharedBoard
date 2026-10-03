@@ -301,6 +301,10 @@ export function createAuthRouter(): Router {
         // alike: an invite sent to this address is theirs either way.
         await memberService.claimInvites(user.id, user.emailLower)
         const session = await authService.issueSession(user, req.headers['user-agent'])
+        // `?created=1` only tells the client which PRD §9 event to send
+        // (account_created vs logged_in). Nothing personal in the URL.
+        const callback = new URL('/auth/callback', env().CLIENT_ORIGIN)
+        if (user.created) callback.searchParams.set('created', '1')
 
         res
           .cookie(
@@ -308,7 +312,7 @@ export function createAuthRouter(): Router {
             session.refreshToken,
             refreshCookieOptions(session.refreshExpiresAt),
           )
-          .redirect(new URL('/auth/callback', env().CLIENT_ORIGIN).toString())
+          .redirect(callback.toString())
       } catch {
         // Never put the underlying reason in a redirect parameter — it lands
         // in browser history and in referrer headers.

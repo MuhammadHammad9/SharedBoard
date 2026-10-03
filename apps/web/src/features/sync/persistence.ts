@@ -6,6 +6,7 @@ import { syncEvent } from './probe.js'
 import { invertOp } from '../canvas/history/inverseOps.js'
 import { boardStore } from '../../stores/boardStore.js'
 import type { ClientOp, ObjectId, ServerMessage, ServerOp } from '@coboard/shared'
+import { track } from '../../lib/analytics.js'
 
 /**
  * The bridge between the local write path and the server — Phase 8's half of
@@ -83,7 +84,7 @@ export class PersistenceSession {
       onAck: (ids, seqs) => {
         ids.forEach((id, i) => this.settle(id, seqs?.[i]))
       },
-      onNack: ops => this.onNacked(ops),
+      onNack: (ops, reasons) => this.onNacked(ops, reasons),
       // Never sent, so never ordered: the document goes back to what the
       // server has, and the fields they held are released.
       onDrop: ops => {
@@ -192,8 +193,17 @@ export class PersistenceSession {
    * The server refused these — R-SYNC-011. Never retried. The board goes back
    * to the confirmed state and the undo entries go with it.
    */
-  private onNacked(ops: readonly ClientOp[]): void {
+  private onNacked(
+    ops: readonly ClientOp[],
+    reasons: Readonly<Record<string, string>> = {},
+  ): void {
     syncEvent(`nack ${ops.map(o => `${o.type} ${o.id.slice(0, 8)}`).join(', ')}`)
+    // PRD §9 — one event per refused op, including those refused while
+    // SYNCING that the board does not toast about: the metric is refusals,
+    // not refusals the user was told of.
+    for (const op of ops) {
+      track('op_rejected', { op_type: op.type, reason: reasons[op.id] ?? 'UNKNOWN' })
+    }
     applyLocal(ops.flatMap(op => this.pending.revert(op.id)))
     this.callbacks.discardHistory?.(new Set(ops.map(op => op.id)))
     this.callbacks.onNack?.(ops)
@@ -294,7 +304,12 @@ function restTransport(boardId: string) {
 
       // Everything else — 403 view-only, 404 board gone, 422 invalid — is a
       // decision. Nack the whole batch.
-      return { acked: [], nacked: ops.map(op => op.id) }
+      const reason = error.code || `HTTP_${error.status}`
+      return {
+        acked: [],
+        nacked: ops.map(op => op.id),
+        reasons: Object.fromEntries(ops.map(op => [op.id, reason])),
+      }
     }
   }
 }
@@ -378,9 +393,12 @@ export const SOCKET_ACK_TIMEOUT_MS = 10_000
 
 export interface SocketTransportBinding {
   ready: () => boolean
-  send: (
-    ops: readonly ClientOp[],
-  ) => Promise<{ acked: string[]; nacked: string[]; seqs: Array<number | undefined> }>
+  send: (ops: readonly ClientOp[]) => Promise<{
+    acked: string[]
+    nacked: string[]
+    seqs: Array<number | undefined>
+    reasons: Record<string, string>
+  }>
   /** Route an incoming ack/nack into the pending batches. */
   settle: (message: ServerMessage) => void
   /**
@@ -402,10 +420,12 @@ export function createSocketTransport(
     acked: string[]
     seqs: Array<number | undefined>
     nacked: string[]
+    reasons: Record<string, string>
     resolve: (value: {
       acked: string[]
       nacked: string[]
       seqs: Array<number | undefined>
+      reasons: Record<string, string>
     }) => void
     reject: (error: Error) => void
     timer: ReturnType<typeof setTimeout>
@@ -417,15 +437,26 @@ export function createSocketTransport(
     clearTimeout(batch.timer)
     const index = waiting.indexOf(batch)
     if (index >= 0) waiting.splice(index, 1)
-    batch.resolve({ acked: batch.acked, nacked: batch.nacked, seqs: batch.seqs })
+    batch.resolve({
+      acked: batch.acked,
+      nacked: batch.nacked,
+      seqs: batch.seqs,
+      reasons: batch.reasons,
+    })
   }
 
-  const record = (id: string, kind: 'acked' | 'nacked', seq?: number) => {
+  const record = (
+    id: string,
+    kind: 'acked' | 'nacked',
+    seq?: number,
+    reason?: string,
+  ) => {
     const batch = waiting.find(w => w.remaining.has(id))
     if (!batch) return
     batch.remaining.delete(id)
     batch[kind].push(id)
     if (kind === 'acked') batch.seqs.push(seq)
+    if (reason !== undefined) batch.reasons[id] = reason
     if (batch.remaining.size === 0) finish(batch)
   }
 
@@ -443,6 +474,7 @@ export function createSocketTransport(
           acked: [],
           seqs: [],
           nacked: [],
+          reasons: {},
           resolve,
           reject,
           timer: setTimeout(() => {
@@ -470,7 +502,9 @@ export function createSocketTransport(
     settle: message => {
       if (message.t === 'ack') {
         message.ids.forEach((id, i) => record(id, 'acked', message.seqs[i]))
-      } else if (message.t === 'nack') record(message.id, 'nacked')
+      } else if (message.t === 'nack') {
+        record(message.id, 'nacked', undefined, message.code)
+      }
     },
   }
 }

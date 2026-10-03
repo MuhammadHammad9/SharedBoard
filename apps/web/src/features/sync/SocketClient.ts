@@ -9,6 +9,7 @@ import {
   type ServerMessage,
 } from '@coboard/shared'
 import { api } from '../../lib/api.js'
+import { track } from '../../lib/analytics.js'
 import { backoffFor } from './backoff.js'
 import { transition, type ConnectionEvent } from './ConnectionMachine.js'
 
@@ -54,6 +55,8 @@ export interface SocketHandlers {
    * from `onState` because the state stays RECONNECTING across attempts.
    */
   onAttempt?: (attempt: number) => void
+  /** Unsent ops right now — reported with PRD §9 `socket_reconnected`. */
+  outboxSize?: () => number
 }
 
 /** Injected in tests so nothing has to wait out a real backoff. */
@@ -62,6 +65,31 @@ export interface SocketDeps {
   now?: () => number
   setTimer?: (fn: () => void, ms: number) => unknown
   clearTimer?: (handle: unknown) => void
+}
+
+/**
+ * A close code as a short PRD §9 `socket_disconnected` reason. A code we have
+ * no name for is reported as the number, which is still groupable.
+ */
+export function disconnectReason(code: number): string {
+  switch (code) {
+    case CLOSE_CODES.NORMAL:
+      return 'normal'
+    case CLOSE_CODES.GOING_AWAY:
+      return 'going_away'
+    case CLOSE_CODES.ABNORMAL:
+      return 'abnormal'
+    case CLOSE_CODES.UNAUTHORIZED:
+      return 'unauthorized'
+    case CLOSE_CODES.FORBIDDEN:
+      return 'forbidden'
+    case CLOSE_CODES.NOT_FOUND:
+      return 'not_found'
+    case CLOSE_CODES.RATE_LIMITED:
+      return 'rate_limited'
+    default:
+      return `code_${code}`
+  }
 }
 
 /**
@@ -95,6 +123,16 @@ export class SocketClient {
   private closedByUs = false
   private refreshedOnce = false
 
+  /*
+   * PRD §9 socket_disconnected / socket_reconnected bookkeeping. `openedAt`
+   * is set while a socket is open; `droppedAt` from an unplanned close until
+   * the next successful open, and `reconnectAttempts` counts the connects
+   * made in between (separate from `attempt`, which `resume()` resets).
+   */
+  private openedAt: number | null = null
+  private droppedAt: number | null = null
+  private reconnectAttempts = 0
+
   private pingTimer: unknown = null
   private pongTimer: unknown = null
   private retryTimer: unknown = null
@@ -102,6 +140,7 @@ export class SocketClient {
   private readonly open: (url: string) => WebSocket
   private readonly setTimer: (fn: () => void, ms: number) => unknown
   private readonly clearTimer: (handle: unknown) => void
+  private readonly now: () => number
 
   constructor(
     private readonly boardId: string,
@@ -111,6 +150,7 @@ export class SocketClient {
     this.open = deps.connect ?? (url => new WebSocket(url))
     this.setTimer = deps.setTimer ?? ((fn, ms) => globalThis.setTimeout(fn, ms))
     this.clearTimer = deps.clearTimer ?? (h => globalThis.clearTimeout(h as number))
+    this.now = deps.now ?? (() => Date.now())
   }
 
   get connectionState(): ConnectionState {
@@ -156,6 +196,7 @@ export class SocketClient {
     // From DISCONNECTED this is the first connect; from OFFLINE it is a
     // retry. From RECONNECTING it is the next attempt and nothing changes.
     this.fire('connect')
+    if (this.droppedAt !== null) this.reconnectAttempts += 1
 
     let ticket: string
     try {
@@ -191,6 +232,16 @@ export class SocketClient {
       }
       this.attempt = 0
       this.refreshedOnce = false
+      this.openedAt = this.now()
+      if (this.droppedAt !== null) {
+        track('socket_reconnected', {
+          attempts: this.reconnectAttempts,
+          downtime_ms: this.openedAt - this.droppedAt,
+          outbox_size: this.handlers.outboxSize?.() ?? 0,
+        })
+        this.droppedAt = null
+        this.reconnectAttempts = 0
+      }
       this.fire('open')
       this.startHeartbeat()
       this.handlers.onOpen()
@@ -238,6 +289,8 @@ export class SocketClient {
   /** A deliberate close. No reconnect follows. */
   close(): void {
     this.closedByUs = true
+    // Leaving the board is not a disconnect — nothing is tracked.
+    this.openedAt = null
     this.stopTimers()
     this.fire('close')
     try {
@@ -248,10 +301,23 @@ export class SocketClient {
     this.socket = null
   }
 
-  private onClose(code: number): void {
+  private onClose(code: number, reason?: string): void {
     this.stopTimers()
     this.socket = null
     if (this.closedByUs) return
+
+    // PRD §9: only a connection that was actually open can be "lost". A
+    // reconnect attempt that never opened is not a second disconnect.
+    if (this.openedAt !== null) {
+      const at = this.now()
+      track('socket_disconnected', {
+        reason: reason ?? disconnectReason(code),
+        session_duration_ms: at - this.openedAt,
+      })
+      this.openedAt = null
+      this.droppedAt = at
+      this.reconnectAttempts = 0
+    }
 
     const reaction = reactionTo(code)
 
@@ -395,6 +461,8 @@ export class SocketClient {
     const socket = this.socket
     this.stopTimers()
     this.socket = null
+    // A planned swap of identity, not a drop: nothing is tracked for it.
+    this.openedAt = null
     if (socket) {
       socket.onclose = null
       socket.onmessage = null
@@ -437,7 +505,7 @@ export class SocketClient {
       } catch {
         // Nothing to close.
       }
-      this.onClose(CLOSE_CODES.ABNORMAL)
+      this.onClose(CLOSE_CODES.ABNORMAL, 'heartbeat_timeout')
     }, PONG_TIMEOUT_MS)
 
     this.pingTimer = this.setTimer(() => this.ping(), PING_INTERVAL_MS)

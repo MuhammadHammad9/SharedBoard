@@ -23,6 +23,7 @@ import { PEN_COLOURS } from '@coboard/shared'
 import { boardStore } from '../../../stores/boardStore.js'
 import { PREFS_KEY } from '../../../lib/persist.js'
 import { Toolbar } from '../Toolbar.js'
+import { recordedEvents } from '../../../lib/analytics.js'
 import { PropertiesPanel } from '../PropertiesPanel.js'
 
 function Board() {
@@ -241,5 +242,21 @@ describe('R-STATE-005 — the tool choice survives a refresh', () => {
     const stored = JSON.parse(localStorage.getItem(PREFS_KEY)!)
     expect(stored.activeTool).toBe('pen')
     expect(stored.pen.strokeWidth).toBe(6)
+  })
+})
+
+describe('PRD §9 tool_selected', () => {
+  it('fires via click when the tool changes, and not when re-clicking the active tool', async () => {
+    const user = userEvent.setup()
+    render(<Board />)
+    const start = recordedEvents().length
+
+    await user.click(screen.getByRole('button', { name: 'Pen' }))
+    await user.click(screen.getByRole('button', { name: 'Pen' }))
+
+    const events = recordedEvents()
+      .slice(start)
+      .filter(e => e.event === 'tool_selected')
+    expect(events.map(e => e.props)).toEqual([{ tool: 'pen', via: 'click' }])
   })
 })

@@ -22,6 +22,7 @@ import { startUploads } from '../../features/uploads/uploadEngine.js'
 import { boardChrome } from '../../lib/strings.js'
 import { useBreakpoint } from '../../lib/breakpoints.js'
 import { UndoRedoControls } from './UndoRedoControls.js'
+import { track } from '../../lib/analytics.js'
 
 /**
  * Left toolbar — FLOWS §14.2. 56 px wide, vertically centred, floating with
@@ -113,6 +114,11 @@ export function Toolbar() {
           data-testid={`tool-${tool}`}
           onClick={() => {
             setSheetOpen(false)
+            // PRD §9 tool_selected — only on a real change; re-clicking the
+            // active tool selects nothing. Image is always a selection: it
+            // opens the picker rather than becoming the active tool.
+            if (isImage || tool !== activeTool)
+              track('tool_selected', { tool, via: 'click' })
             if (isImage) fileInput.current?.click()
             else setActiveTool(tool)
           }}

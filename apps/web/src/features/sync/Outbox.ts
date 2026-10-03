@@ -53,6 +53,8 @@ export interface OutboxTransport {
     nacked: string[]
     /** The seq the server gave each acked op, aligned with `acked`, when known. */
     seqs?: ReadonlyArray<number | undefined>
+    /** The server's refusal code per nacked op id, when known (PRD §9 op_rejected). */
+    reasons?: Readonly<Record<string, string>>
   }>
 }
 
@@ -63,8 +65,11 @@ export interface OutboxOptions {
   onAck?: (ids: readonly string[], seqs?: ReadonlyArray<number | undefined>) => void
   /** Ops trimmed off the front of an over-long queue. They will never be sent. */
   onDrop?: (ops: readonly ClientOp[]) => void
-  /** Ops the server refused. The caller rolls them back locally. */
-  onNack?: (ops: readonly ClientOp[]) => void
+  /**
+   * Ops the server refused. The caller rolls them back locally. `reasons` maps
+   * op id → the server's refusal code where the transport knows it.
+   */
+  onNack?: (ops: readonly ClientOp[], reasons?: Readonly<Record<string, string>>) => void
   onStatus?: (status: OutboxStatus, pending: number) => void
   /** The queue length changed — "Syncing {N} changes…", and the drain check. */
   onPending?: (pending: number) => void
@@ -172,7 +177,7 @@ export class Outbox {
         const batch = this.queue.slice(0, BATCH)
         await this.pace(batch.length)
         if (this.closed) break
-        const { acked, nacked, seqs } = await this.options.send(batch)
+        const { acked, nacked, seqs, reasons } = await this.options.send(batch)
 
         const settled = new Set([...acked, ...nacked])
         const refused = batch.filter(op => nacked.includes(op.id))
@@ -189,7 +194,7 @@ export class Outbox {
 
         // A nack is a DECISION, not a network error, so it is never retried —
         // R-SYNC-011. The caller undoes it locally and tells the user.
-        if (refused.length > 0) this.options.onNack?.(refused)
+        if (refused.length > 0) this.options.onNack?.(refused, reasons)
 
         // Neither acked nor nacked: the server answered without settling
         // anything. Treat it as a failure rather than looping forever.

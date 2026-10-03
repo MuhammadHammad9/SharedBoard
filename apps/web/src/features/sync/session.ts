@@ -85,6 +85,7 @@ export class BoardSession {
       onState: state => this.onSocketState(state),
       onFatal: code => this.onFatalClose(code),
       onAttempt: attempt => this.callbacks.onAttempt?.(attempt),
+      outboxSize: () => this.persistence?.outbox.pending ?? 0,
     })
 
     this.sync = new SyncEngine(

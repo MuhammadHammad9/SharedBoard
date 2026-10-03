@@ -7,6 +7,7 @@ import { OAUTH_NEXT_KEY } from '../features/auth/api.js'
 import { FullScreenSpinner } from '../components/ui/Spinner.js'
 import { auth } from '../lib/strings.js'
 import { safeNext } from './nextParam.js'
+import { track } from '../lib/analytics.js'
 import {
   announceAccountCreated,
   takeSignupFromGuest,
@@ -65,6 +66,10 @@ export default function OAuthCallback() {
         if (done) return
         done = true
         setSession(user, getAccessToken() ?? '')
+        // PRD §9: the server appends `?created=1` when this Google sign-in
+        // made a new account; otherwise it was a log-in.
+        const created = new URLSearchParams(window.location.search).get('created') === '1'
+        track(created ? 'account_created' : 'logged_in', { method: 'google' })
         // Guest → account through Google (FLOWS §7.4): tell the board tab.
         if (takeSignupFromGuest()) announceAccountCreated()
 

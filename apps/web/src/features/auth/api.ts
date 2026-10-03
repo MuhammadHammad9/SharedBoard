@@ -1,6 +1,7 @@
 import type { AuthResponse, PublicUser } from '@coboard/shared'
 import { api } from '../../lib/api.js'
 import { authStore } from '../../stores/authStore.js'
+import { track } from '../../lib/analytics.js'
 
 /**
  * Auth API calls — the thin layer between the screens and `api.ts`.
@@ -17,6 +18,7 @@ export async function register(input: {
 }): Promise<PublicUser> {
   const result = await api.post<AuthResponse>('/auth/register', input)
   authStore.getState().setSession(result.user, result.accessToken)
+  track('account_created', { method: 'password' })
   return result.user
 }
 
@@ -26,6 +28,7 @@ export async function login(input: {
 }): Promise<PublicUser> {
   const result = await api.post<AuthResponse>('/auth/login', input)
   authStore.getState().setSession(result.user, result.accessToken)
+  track('logged_in', { method: 'password' })
   return result.user
 }
 

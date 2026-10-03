@@ -675,6 +675,8 @@ describe('Google OAuth account linking', () => {
     const response = await callback()
     expect(response.status).toBe(302)
     expect(refreshCookie(response)).toBeTruthy()
+    // PRD §9: the client sends account_created rather than logged_in.
+    expect(response.headers.location).toContain('/auth/callback?created=1')
 
     const user = await prisma.user.findUnique({
       where: { emailLower: email.toLowerCase() },
@@ -722,7 +724,9 @@ describe('Google OAuth account linking', () => {
     withProfile({ googleId: 'google-repeat', email })
 
     await callback()
-    await callback()
+    const second = await callback()
+    // A returning sign-in is a log-in, not a new account (PRD §9).
+    expect(second.headers.location).not.toContain('created=')
 
     expect(await prisma.user.count({ where: { emailLower: email.toLowerCase() } })).toBe(
       1,

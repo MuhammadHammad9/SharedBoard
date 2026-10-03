@@ -153,7 +153,12 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
         setObjectCount(result.objects)
         setStatus('ready')
         // FLOWS §2.3 STEP 6 — with the measured load time (PRD §9).
-        track('board_opened', { load_ms: Math.round(performance.now() - startedAt) })
+        track('board_opened', {
+          board_id: boardId,
+          role: result.role,
+          object_count: result.objects,
+          load_ms: Math.round(performance.now() - startedAt),
+        })
       } catch (error) {
         if (sessionRef.current !== session) return
         if (error instanceof LoadTimeout) {

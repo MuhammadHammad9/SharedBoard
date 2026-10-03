@@ -344,7 +344,7 @@ function LinkSection({ data }: { data: ReturnType<typeof useSharing> }) {
               const link = await data.setAccess(
                 e.target.value === 'anyone' ? 'EDITOR' : null,
               )
-              if (link) track('share_link_created')
+              if (link) track('share_link_created', { access_level: link.role })
             })
           }
           className="h-8 cursor-pointer rounded-md border border-border bg-app px-2 text-sm text-primary"

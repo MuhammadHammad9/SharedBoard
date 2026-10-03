@@ -449,7 +449,7 @@ export class AuthService {
     emailVerified: boolean
     displayName: string
     avatarUrl?: string | null
-  }): Promise<User> {
+  }): Promise<User & { created?: true }> {
     const byGoogle = await this.db.user.findUnique({
       where: { googleId: profile.googleId },
     })
@@ -478,7 +478,9 @@ export class AuthService {
       })
     }
 
-    return this.db.user.create({
+    // `created` lets the callback tell the client this was a sign-up, for
+    // the PRD §9 `account_created` event. Not a column; never persisted.
+    const created = await this.db.user.create({
       data: {
         email: profile.email,
         emailLower,
@@ -490,6 +492,7 @@ export class AuthService {
         // the user sets one in Settings.
       },
     })
+    return { ...created, created: true }
   }
 }
 

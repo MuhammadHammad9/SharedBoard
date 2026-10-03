@@ -11,6 +11,7 @@ import { boardStore } from '../../../stores/boardStore.js'
 import { useKeyboard } from '../interaction/useKeyboard.js'
 import { Modal } from '../../../components/ui/Modal.js'
 import { useShortcutsStore } from '../../../components/board/shortcutsStore.js'
+import { recordedEvents } from '../../../lib/analytics.js'
 
 const press = (key: string, target: EventTarget = window, init: KeyboardEventInit = {}) =>
   target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...init }))
@@ -53,5 +54,29 @@ describe('shortcut suppression', () => {
   it('`?` opens the shortcuts reference (S-15)', () => {
     press('?', window, { shiftKey: true })
     expect(useShortcutsStore.getState().open).toBe(true)
+  })
+})
+
+describe('PRD §9 tool_selected via shortcut', () => {
+  it('fires when a shortcut changes the tool, not when it repeats the current one', () => {
+    const start = recordedEvents().length
+    press('r')
+    press('r')
+    const events = recordedEvents()
+      .slice(start)
+      .filter(e => e.event === 'tool_selected')
+    expect(events.map(e => e.props)).toEqual([{ tool: 'rect', via: 'shortcut' }])
+  })
+
+  it('does not fire for the implicit return to Select on Escape', () => {
+    press('r')
+    const start = recordedEvents().length
+    press('Escape')
+    expect(boardStore.getState().activeTool).toBe('select')
+    expect(
+      recordedEvents()
+        .slice(start)
+        .filter(e => e.event === 'tool_selected'),
+    ).toEqual([])
   })
 })
