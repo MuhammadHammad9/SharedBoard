@@ -293,9 +293,55 @@ Still open, and not fixable in code:
 - `braces` (through Tailwind 3) has no patched release.
 - The trash restore "collapse" stays opacity-only, because the motion rules forbid animating height.
 
-### Phase 14 — States, responsive, accessibility, polish (M5)
+### Phase 14 — States, responsive, accessibility, polish (M5) · Whole team
 
-Split into roughly six PRs: **(a)** `strings.ts` completion and inlined-string sweep + five empty states; **(b)** S-19/20/21, two error boundaries, correlation IDs; **(c)** toast + modal system completion, focus management, shortcut suppression, S-15 shortcuts modal; **(d)** breakpoints 1024/768 + mobile layout; **(e)** a11y pass, reduced-motion verification, unsupported-browser screen; **(f)** the `E-01`–`E-22` verification checklist, `emil-design-eng` motion review (table format, `R-SKILL-072`) and analytics for all 14 PRD §9 events.
+**Detailed plan, written after a full survey of the code (supersedes the first-pass line).**
+
+#### What exists
+
+- Four of the five empty states.
+- S-20.
+- The 3-toast cap with "+N more".
+- The modal focus trap and stack.
+- The canvas `role="img"` summary.
+- `prefers-reduced-motion` handling.
+- No `transition: all`, `ease-in` or `scale(0)` anywhere; `tokens.test.ts` enforces this.
+- 17 of the 22 edge cases already behave as specified: E-01–E-05, E-08, E-09, E-11–E-19 and E-22.
+
+#### Defects found in the survey
+
+| #     | Defect                                                                                                                                                                                   | Rule                    |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| P14-1 | **Canvas shortcuts fire while a modal is open.** `isTextEntryTarget` checks only inputs, so with focus on a modal's button, `R`, Delete or the arrow keys act on the board behind it     | FLOWS §13.3, R-A11Y-009 |
+| P14-2 | **There is no error boundary at all.** One render error blanks the whole app, the header included. Nothing reports client errors                                                         | FLOWS §12.4, S-21       |
+| P14-3 | **E-21: a slow board load spins forever.** There is no snapshot timeout                                                                                                                  | E-21                    |
+| P14-4 | **Errors are announced politely and on a generic timer.** Toasts are always `aria-live="polite"` and 5 s; FLOWS §13.1 wants assertive errors and 3 / 6 / 8 s                             | FLOWS §13.1             |
+| P14-5 | **A modal closes mid-delete.** Escape and the backdrop close it even while a destructive action is in flight. The body still scrolls behind it, and confirmations open focused on Cancel | FLOWS §13.2             |
+| P14-6 | **E-07: presence does not drop to 10 Hz above 100 selected objects.** E-10: a resize mid-drag does not keep the view centred                                                             | E-07, E-10              |
+| P14-7 | **Copy is inlined.** Toolbar, context menu, properties panels, dashboard chrome, zoom and undo controls, spinners and the toast's "Dismiss" are inline literals                          | R-UI-052                |
+
+#### Slices
+
+| PR  | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                     | Tasks           | Proves                                                                                                        |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------- |
+| 14a | **Copy and empty states.** Every inlined string moves into `strings.ts` (P14-7), plus a lint guard that fails on new JSX prose in board and dashboard chrome. The board hint: "Pick a tool and start drawing" with an arrow to the toolbar, shown only while the board has never had an op (seq 0). Once anything is created it never returns, for anyone                                                                                 | 1, 2            | Component: every empty state renders the exact PRD §8.3 copy; the hint disappears for good                    |
+| 14b | **Errors.** An app-wide `ErrorBoundary`, and a separate `CanvasErrorBoundary` so the header survives (S-21). An 8-character `Ref:` correlation id. `client_error` reports to `POST /api/client-errors` (validated, rate limited, logged). `window.onerror` and `unhandledrejection` are reported too. S-19 as an overlay on the frozen canvas. E-21: a 30 s snapshot timeout, then an inline retry. The generic server error shows `Ref:` | 3, 4, 5         | Component: both boundaries, the Ref shown; integration for the endpoint; e2e for E-21 with a delayed snapshot |
+| 14c | **Toasts, modals and the keyboard.** Toasts: board bottom-left, 3 / 6 / 8 s, assertive errors (P14-4). Modals: scroll lock, an `initialFocus` prop, `dismissible={false}` while busy (P14-5). Shortcuts suppressed while any modal is open (P14-1). The S-15 `?` shortcuts modal from PRD Appendix A. Cmd/Ctrl+Enter submits forms. The board tab order                                                                                   | 7, 8, 9, 10, 11 | Component: toast aria-live, durations and the collapse; modal focus rules; shortcut suppression               |
+| 14d | **Responsive.** `useBreakpoint`. At 1024–1279 the properties panel becomes a popover on selection. At 768–1023 the toolbar becomes a bottom bar. Below 768: 5 tools plus a `⋯` sheet, a bottom-sheet properties panel, a full-screen share sheet, no marquee, 44 px targets, and a single-column dashboard list. Tailwind `hoverOnlyWhenSupported` (R-MOTION-061)                                                                         | 12, 13          | e2e at 1440 / 1100 / 900 / 390 px: no horizontal scroll, and the right toolbar each time                      |
+| 14e | **Accessibility.** axe on every route, at zero violations. A keyboard-only e2e pass. Avatar accessible names; E-20 truncates names at 20 characters with the full name on hover. The unsupported-browser screen. Reduced motion checked on every screen                                                                                                                                                                                   | 14, 15, 16      | e2e axe scan; keyboard pass                                                                                   |
+| 14f | **Edge cases, motion and analytics.** E-07 and E-10 (P14-6). An explicit E-01–E-22 checklist with a test reference each. The `emil-design-eng` review table, with its fixes. All 14 PRD §9 events wired with their properties                                                                                                                                                                                                             | 6, 17, 18       | e2e or unit per edge case; analytics unit tests                                                               |
+
+**Ownership heads-up (`R-ARCH-006`):** 14c and 14f touch `features/canvas/interaction` (shortcut suppression, E-07); 14b touches `features/sync` (E-21 timeout).
+
+Exit gate:
+
+- Every P0/P1 requirement has a passing test.
+- All 22 edge cases are verified.
+- Zero axe violations.
+- Keyboard-only navigation works.
+- Every breakpoint renders without horizontal scroll.
+- The motion review is done and its findings fixed.
+- Copy matches PRD §8.
 
 ### Phase 15 — Performance, e2e, deployment, monitoring (M5)
 
