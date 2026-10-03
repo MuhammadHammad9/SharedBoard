@@ -2,7 +2,7 @@
 
 **A real-time collaborative whiteboard.** Multiple people open the same board URL and simultaneously draw freehand strokes, place shapes, write text and drop sticky notes. Every action appears on every other screen within a few hundred milliseconds, with live labelled cursors.
 
-> **Status: Phase 12 complete — boards can be shared.** M1 shipped the canvas, M2 made boards persist, M3 made them sync and gave them presence, and M4 made them survive the network. Phase 12 adds sharing. An owner turns on a link (can edit or can view), invites people by email, and changes or removes members from the share modal. A guest opens the link, types a name and is drawing within seconds, with no account. The server re-checks the role on every op batch, so a viewer cannot write even with a forged socket message. Demotion, revocation and deletion reach connected users live. See [`docs/REMAINING-WORK.md`](./docs/REMAINING-WORK.md).
+> **Status: Phase 13 complete — every P0/P1 feature exists.** M1–M4 built the canvas, persistence, live sync and offline survival; Phase 12 added sharing and guests. Phase 13 completes the feature set. Images drop, paste or pick onto the board and upload straight to storage; the server checks the bytes and sanitizes SVG. Boards export to PNG (whole board, selection or visible area, 1× or 2×). Dashboard cards show real thumbnails, and Trash purges after 30 days. Local development runs an in-memory S3 stand-in (`pnpm dev` starts it). See [`docs/REMAINING-WORK.md`](./docs/REMAINING-WORK.md).
 >
 > Try it: `pnpm dev`, then `http://localhost:5173/?debug=1`. `V` select · `P` pen · `E` eraser · `R O L A` shapes · `N` sticky · `T` text. Add `&stress=1` for the 10,000-object stress board with the frame-timing overlay.
 

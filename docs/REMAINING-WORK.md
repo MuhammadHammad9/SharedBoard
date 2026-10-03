@@ -231,6 +231,50 @@ Each caveat above was checked against the specs and fixed rather than left as an
 
 Exit gate: export produces a correct PNG at both scales for all three scopes; uploads work end to end with sanitization; thumbnails appear on dashboard cards; trash restore and permanent delete work; every P0/P1 feature exists.
 
+#### Phase 13 outcome
+
+All five slices landed. Defects and gaps found on the way:
+
+| #   | Finding                                                                                                                                                                                    | Fix                                                                                                          |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| I-1 | **The Redis token bucket expired every key after 60 s.** An expired key reads as a full bucket, so a 20-per-hour upload limit would have handed back all 20 tokens after a minute of quiet | The key's TTL follows the bucket's own full-refill time                                                      |
+| I-2 | **`purgeExpiredTrash` existed but nothing called it**: boards stayed in Trash forever, against FR-BOARD-005/006                                                                            | Runs on the hourly maintenance timer, with each purged board's thumbnail deleted                             |
+| I-3 | `.env.example` lists optional keys with empty values; `S3_ENDPOINT=` would have failed URL validation and stopped the server starting                                                      | `loadEnv` treats an empty value as unset                                                                     |
+| I-4 | Cmd+V called `preventDefault`, which suppresses the browser's `paste` event, the only place an image copied from the OS arrives                                                            | Cmd+V lets the event through; an image in it claims the keystroke and the object paste stands down           |
+| I-5 | Deleting a board's uploaded images on permanent delete would break other boards: paste and Duplicate share images by URL                                                                   | Images are never deleted with a board. Thumbnails, which no op refers to, are deleted; Duplicate copies them |
+
+**Evidence.**
+
+- Unit and integration: 1084/1084.
+- Uploads (`uploads.integration.test.ts`, 17 tests, against an HTTP S3 stand-in through the real AWS SDK):
+  - type and size refused before any URL is issued;
+  - viewer and stranger refused;
+  - 20 per hour, then 429;
+  - a renamed executable rejected by its bytes and deleted;
+  - real bytes of the wrong type rejected;
+  - SVG stripped of script, handlers, `<style>`, `foreignObject` and external refs, while keeping `url(#g)`;
+  - a key on another board refused;
+  - thumbnail auth, magic bytes and replacement;
+  - Duplicate's own copy of the thumbnail;
+  - permanent-delete cleanup;
+  - the purge removes only boards over 30 days.
+- e2e:
+  - `images.spec.ts`: a picked PNG reaches the other window as a storage URL that loads cross-origin; an 11 MB file is refused with no request made.
+  - `export.spec.ts`: real downloads, with sizes read from the PNG header for all three scopes at 1× and 2×, on a board that includes an uploaded image (so the canvas is untainted). E-22 blocks an empty export. 2,500 objects export in chunks with a progress bar; the longest main-thread task was 0–70 ms over the runs.
+  - `thumbnails.spec.ts`: leaving a board you drew on puts a 640×400 picture on its dashboard card; an empty board keeps the placeholder graphic.
+  - The three specs passed 21/21 over three repeats. The full suite: 154/154.
+
+**Interpretations and caveats.**
+
+- D13-1 … D13-6 above stand: presign takes `boardId`; objects are public-read under unguessable keys; development storage is a fake S3; thumbnails go through the server; placement and scopes as stated.
+- **The fake S3 does not verify signatures.** Presign enforcement (expiry, content type, length) is proven only against real S3 or MinIO, which this container cannot reach: the network policy blocks the MinIO download. Production needs the bucket's CORS (GET and PUT from `CLIENT_ORIGIN`) and public-read objects.
+- **Uploaded images are never garbage-collected.** Deleting them safely needs a reference scan across every board's objects; that is storage-lifecycle work for Phase 15.
+- **No object type renders `rotation` yet**, images included. This predates Phase 13 and is unchanged.
+- The trash restore animation is opacity only. The motion table's "collapse" would animate height, which R-MOTION rules out.
+- The 8192² clamp limits the AREA, as FLOWS §11 words it ("pixel count"). A very long, thin board can still produce one side longer than 8192 px.
+- Copy gaps, marked interim in `strings.ts`: the SVG `[P2]` tooltip, and the export progress wording.
+- `pnpm audit` still reports one high: `braces`, through Tailwind 3's file watcher. It was already present before this phase and has no patched release. js-yaml, undici and brace-expansion are now forced to patched versions; s3rver was not adopted because of its unpatched `dicer`.
+
 ### Phase 14 — States, responsive, accessibility, polish (M5)
 
 Split into roughly six PRs: **(a)** `strings.ts` completion and inlined-string sweep + five empty states; **(b)** S-19/20/21, two error boundaries, correlation IDs; **(c)** toast + modal system completion, focus management, shortcut suppression, S-15 shortcuts modal; **(d)** breakpoints 1024/768 + mobile layout; **(e)** a11y pass, reduced-motion verification, unsupported-browser screen; **(f)** the `E-01`–`E-22` verification checklist, `emil-design-eng` motion review (table format, `R-SKILL-072`) and analytics for all 14 PRD §9 events.
