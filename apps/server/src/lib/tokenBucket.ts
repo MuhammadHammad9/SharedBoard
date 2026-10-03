@@ -1,4 +1,4 @@
-import { RATE_LIMIT_OPS_PER_SEC } from '@coboard/shared'
+import { RATE_LIMIT_OPS_PER_SEC, RATE_LIMIT_UPLOADS_PER_HOUR } from '@coboard/shared'
 import { redis } from './redis.js'
 import { logger } from './logger.js'
 
@@ -32,6 +32,7 @@ local rate = tonumber(ARGV[1])
 local capacity = tonumber(ARGV[2])
 local now = tonumber(ARGV[3])
 local cost = tonumber(ARGV[4])
+local ttl = tonumber(ARGV[5])
 
 local bucket = redis.call('HMGET', key, 'tokens', 'ts')
 local tokens = tonumber(bucket[1])
@@ -53,8 +54,10 @@ if tokens >= cost then
 end
 
 redis.call('HSET', key, 'tokens', tokens, 'ts', now)
--- Expire well after a full refill, so an idle session's key does not linger.
-redis.call('PEXPIRE', key, 60000)
+-- Expire once a full refill has certainly happened, so an idle key does not
+-- linger. Never sooner: an expired key reads as a FULL bucket, so expiring a
+-- 20-per-hour bucket after a minute would hand back all 20 tokens.
+redis.call('PEXPIRE', key, ttl)
 return allowed
 `
 
@@ -70,6 +73,16 @@ export const OPS_BUCKET: Bucket = {
   capacity: RATE_LIMIT_OPS_PER_SEC,
 }
 
+/** 20 uploads an hour per user — PRD §7.4, R-SEC-013. */
+export const UPLOADS_BUCKET: Bucket = {
+  rate: RATE_LIMIT_UPLOADS_PER_HOUR / 3_600,
+  capacity: RATE_LIMIT_UPLOADS_PER_HOUR,
+}
+
+/** Time for an empty bucket to refill completely, plus a margin; at least 60 s. */
+const ttlFor = (bucket: Bucket): number =>
+  Math.max(60_000, Math.ceil((bucket.capacity / bucket.rate) * 1_000) + 60_000)
+
 export async function consume(
   key: string,
   cost = 1,
@@ -84,6 +97,7 @@ export async function consume(
       String(bucket.capacity),
       String(Date.now()),
       String(cost),
+      String(ttlFor(bucket)),
     )
     return allowed === 1
   } catch (error) {

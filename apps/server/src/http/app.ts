@@ -8,6 +8,7 @@ import { createBoardsRouter } from './routes/boards.js'
 import { createWsRouter } from './routes/ws.js'
 import { createShareRouter } from './routes/share.js'
 import { createMembersRouter } from './routes/members.js'
+import { createUploadsRouter } from './routes/uploads.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 
 /**
@@ -69,6 +70,7 @@ export function createApp(): Express {
   app.use('/api/boards', createBoardsRouter())
   app.use('/api/ws', createWsRouter())
   app.use('/api/share', createShareRouter())
+  app.use('/api/uploads', createUploadsRouter())
 
   // Order matters: 404 for unmatched routes, then the error handler last, so
   // everything thrown anywhere above lands in one envelope (TRD §4).

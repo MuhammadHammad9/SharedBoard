@@ -206,6 +206,7 @@ export const ACCEPTED_IMAGE_TYPES = [
   'image/webp',
   'image/svg+xml',
 ] as const
+export type AcceptedImageType = (typeof ACCEPTED_IMAGE_TYPES)[number]
 
 export const PASSWORD_MIN_LENGTH = 8
 export const PASSWORD_MAX_LENGTH = 128

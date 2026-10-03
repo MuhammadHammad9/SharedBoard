@@ -55,6 +55,13 @@ export default defineConfig({
     ? undefined
     : [
         {
+          // Image uploads and thumbnails need storage (Phase 13, D13-3).
+          command: 'pnpm --filter @coboard/server dev:s3',
+          url: 'http://127.0.0.1:4569/',
+          reuseExistingServer: !process.env.CI,
+          timeout: 60_000,
+        },
+        {
           command: 'pnpm --filter @coboard/server dev',
           url: 'http://localhost:3000/health',
           reuseExistingServer: !process.env.CI,

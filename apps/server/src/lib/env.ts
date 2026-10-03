@@ -32,6 +32,16 @@ const EnvSchema = z.object({
 
   // FR-AUTH-004. Absent in development; the Mailer falls back to logging.
   SMTP_URL: z.string().optional(),
+
+  // FR-CANVAS-010 / FR-BOARD-003 — S3-compatible object storage (TRD §4.4).
+  // Absent → uploads answer 503 rather than issuing a URL to nowhere.
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_REGION: z.string().min(1).default('us-east-1'),
+  S3_BUCKET: z.string().min(1).default('coboard'),
+  S3_ACCESS_KEY: z.string().optional(),
+  S3_SECRET_KEY: z.string().optional(),
+  // Where objects are READ from, if not `${S3_ENDPOINT}/${S3_BUCKET}` — a CDN.
+  S3_PUBLIC_URL: z.string().url().optional(),
 })
 
 export type Env = z.infer<typeof EnvSchema>
@@ -39,7 +49,12 @@ export type Env = z.infer<typeof EnvSchema>
 let cached: Env | null = null
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const parsed = EnvSchema.safeParse(source)
+  // `.env.example` lists optional keys with empty values (`S3_ENDPOINT=`).
+  // An empty string means "not set", not "an invalid URL".
+  const present = Object.fromEntries(
+    Object.entries(source).filter(([, value]) => value !== ''),
+  )
+  const parsed = EnvSchema.safeParse(present)
   if (!parsed.success) {
     const missing = parsed.error.issues.map(i => i.path.join('.')).join(', ')
     throw new Error(
@@ -64,6 +79,9 @@ export function env(): Env {
 export function resetEnvCache(): void {
   cached = null
 }
+
+export const storageConfigured = (): boolean =>
+  Boolean(env().S3_ENDPOINT && env().S3_ACCESS_KEY && env().S3_SECRET_KEY)
 
 export const googleConfigured = (): boolean =>
   Boolean(env().GOOGLE_CLIENT_ID && env().GOOGLE_CLIENT_SECRET)
