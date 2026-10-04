@@ -1,4 +1,5 @@
 import { logger } from '../lib/logger.js'
+import { jobFailures } from '../lib/metrics.js'
 import { boardService } from '../services/BoardService.js'
 import { imageCollector } from '../services/ImageCollector.js'
 import { memberService } from '../services/MemberService.js'
@@ -25,6 +26,7 @@ export async function runMaintenance(now = Date.now()): Promise<void> {
     const guests = await memberService.sweepIdleGuests(isLive, now)
     if (guests > 0) logger.info({ guests }, 'swept idle guests')
   } catch (error) {
+    jobFailures.inc({ job: 'guest_sweep' })
     logger.warn({ err: error }, 'guest sweep failed')
   }
 
@@ -35,6 +37,7 @@ export async function runMaintenance(now = Date.now()): Promise<void> {
     })
     if (purged > 0) logger.info({ purged }, 'purged expired trash')
   } catch (error) {
+    jobFailures.inc({ job: 'trash_purge' })
     logger.warn({ err: error }, 'trash purge failed')
   }
 
@@ -43,6 +46,7 @@ export async function runMaintenance(now = Date.now()): Promise<void> {
     const images = await imageCollector.collect(now)
     if (images > 0) logger.info({ images }, 'collected unreferenced images')
   } catch (error) {
+    jobFailures.inc({ job: 'image_collect' })
     logger.warn({ err: error }, 'image collection failed')
   }
 }

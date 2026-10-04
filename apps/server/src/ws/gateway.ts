@@ -10,6 +10,7 @@ import { permissionService } from '../services/PermissionService.js'
 import { presenceService } from '../services/PresenceService.js'
 import { prisma } from '../lib/prisma.js'
 import { logger } from '../lib/logger.js'
+import { wsAttempts, wsConnected, wsFailures } from '../lib/metrics.js'
 import { redeemTicket } from '../http/routes/ws.js'
 import { Fanout } from './fanout.js'
 import { liveRooms, RoomManager, roomManager, setActiveRooms } from './RoomManager.js'
@@ -87,7 +88,7 @@ export function attachGateway(server: Server, options: GatewayOptions = {}): Gat
   const sweep = setInterval(() => {
     for (const session of rooms.allSessions()) {
       if (!session.idle) continue
-      logger.info({ sessionId: session.id }, 'terminating idle socket')
+      session.log.info('terminating idle socket')
       leave(rooms, session)
       session.close(CLOSE_CODES.GOING_AWAY, 'idle')
     }
@@ -134,7 +135,13 @@ async function handleUpgrade(
   socket: Duplex,
   head: Buffer,
 ): Promise<void> {
+  // Every upgrade to any path counts as an attempt, and every refusal as a
+  // failure labelled by status — the TRD §15.4 failure-rate signal. A spike in
+  // 401s is expired tickets; in 500s, a dependency.
+  wsAttempts.inc()
+
   const reject = (status: number, reason: string) => {
+    wsFailures.inc({ reason: String(status) })
     // A plain HTTP response, because the upgrade never completed — there is no
     // WebSocket yet to close with a code.
     socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`)
@@ -188,6 +195,8 @@ async function handleUpgrade(
       const session = new Session(ws, payload.boardId, identity, displayName, role)
 
       if (rooms.isFull(payload.boardId)) {
+        wsFailures.inc({ reason: 'board_full' })
+        session.log.warn('board full: connection refused')
         // 4029, not 4003: the client should retry in 30 s, not give up.
         session.close(CLOSE_CODES.RATE_LIMITED, 'Board is full')
         return
@@ -204,14 +213,23 @@ async function handleUpgrade(
 function wire(session: Session, rooms: RoomManager): void {
   const socket: WebSocket = session.socket
 
+  // `close` fires exactly once per socket, unlike `error`, so the gauge is
+  // decremented there and only there.
+  wsConnected.inc()
+  session.log.info({ role: session.role }, 'socket opened')
+
   socket.on('message', data => {
     session.touch()
     void dispatch(session, rooms, data)
   })
 
-  socket.on('close', () => leave(rooms, session))
+  socket.on('close', code => {
+    wsConnected.dec()
+    session.log.info({ code }, 'socket closed')
+    leave(rooms, session)
+  })
   socket.on('error', error => {
-    logger.debug({ err: error, sessionId: session.id }, 'socket error')
+    session.log.debug({ err: error }, 'socket error')
     leave(rooms, session)
   })
 }

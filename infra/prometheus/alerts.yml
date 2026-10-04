@@ -1,0 +1,161 @@
+# CoBoard alert rules — TRD §15.4, Phase 15e.
+#
+# The eight monitored signals at the TRD thresholds. Every series comes from
+# the server's GET /metrics (apps/server/src/lib/metrics.ts, which documents
+# each one). Scrape it with `Authorization: Bearer $METRICS_TOKEN`; without a
+# token the endpoint is disabled in production.
+#
+# Counters are per process; each expression sums across instances, except the
+# Postgres pool, which is per instance because each process owns its own pool.
+#
+# Validate: promtool check rules infra/prometheus/alerts.yml
+
+groups:
+  - name: coboard
+    rules:
+      # 1. Error rate > 1% of requests over 5 min. "Error" means 5xx: a 4xx
+      #    is the server correctly refusing a request (a wrong password, a
+      #    viewer's write) and alerting on it would page for normal use.
+      - alert: CoBoardHighErrorRate
+        expr: |
+          sum(rate(coboard_http_requests_total{status_class="5xx"}[5m]))
+            /
+          sum(rate(coboard_http_requests_total[5m]))
+            > 0.01
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: 'HTTP 5xx rate is {{ $value | humanizePercentage }} (threshold 1%)'
+          description: >-
+            More than 1% of requests failed with a 5xx over the last 5 minutes.
+            Search the logs for "unhandled error"; each line carries the
+            requestId that users see as "Ref:".
+
+      # 2. Op persist latency p95 > 100 ms. Times the whole append
+      #    transaction, including the wait for the board's row lock.
+      - alert: CoBoardSlowOpPersist
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(coboard_op_persist_duration_seconds_bucket[5m]))
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: 'Op persist p95 is {{ $value | humanizeDuration }} (threshold 100ms)'
+          description: >-
+            The op-append transaction is slow. Check Postgres load and the
+            pool (coboard_pg_pool_connections, coboard_pg_queries_waiting); a
+            single hot board serialises on its row lock.
+
+      # 3. WebSocket connection failure rate > 5%. Failures are labelled by
+      #    reason: 401 (bad or expired ticket), 403, 404, 500, board_full.
+      - alert: CoBoardWebSocketFailures
+        expr: |
+          sum(rate(coboard_ws_connection_failures_total[5m]))
+            /
+          sum(rate(coboard_ws_connection_attempts_total[5m]))
+            > 0.05
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: 'WebSocket upgrade failure rate is {{ $value | humanizePercentage }} (threshold 5%)'
+          description: >-
+            Break down by reason with
+            sum by (reason) (rate(coboard_ws_connection_failures_total[5m])).
+
+      # 4. Connected sockets: sudden drop > 50% against five minutes ago.
+      #    The floor of 10 keeps two people closing their laptops at night
+      #    from paging anyone.
+      - alert: CoBoardConnectedSocketsDropped
+        expr: |
+          sum(coboard_ws_connected_sockets)
+            < 0.5 * sum(coboard_ws_connected_sockets offset 5m)
+          and
+          sum(coboard_ws_connected_sockets offset 5m) >= 10
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: 'Connected sockets fell by more than 50% in 5 minutes'
+          description: >-
+            Now {{ $value }} sockets. Usually an instance restart, a proxy
+            dropping upgrades, or Redis fan-out failing. Check the WebSocket
+            failure alert and the proxy logs.
+
+      # 5. Postgres connection pool utilisation > 80%, per instance.
+      #    `_max` is DATABASE_URL's connection_limit; without one it is an
+      #    estimate of Prisma's default, which can read low (see metrics.ts).
+      - alert: CoBoardPostgresPoolSaturated
+        expr: |
+          coboard_pg_pool_connections{state="busy"}
+            / ignoring(state)
+          coboard_pg_pool_connections_max
+            > 0.8
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'Postgres pool on {{ $labels.instance }} is {{ $value | humanizePercentage }} busy (threshold 80%)'
+          description: >-
+            Queries will start queueing for a connection
+            (coboard_pg_queries_waiting). Raise connection_limit or find the
+            slow queries.
+
+      # 6. Redis memory > 80% of maxmemory. Every instance reports the same
+      #    Redis, hence max(). With no maxmemory set (0) there is no ratio to
+      #    alert on; production must set one.
+      - alert: CoBoardRedisMemoryHigh
+        expr: |
+          max(coboard_redis_memory_used_bytes)
+            /
+          max(coboard_redis_maxmemory_bytes > 0)
+            > 0.8
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'Redis memory is {{ $value | humanizePercentage }} of maxmemory (threshold 80%)'
+          description: >-
+            Presence, rate-limit buckets and permission caches live in Redis.
+            Near maxmemory, evictions reset rate limits and drop presence.
+
+      # 7. op_rejected rate > 0.1% of ops, socket and REST together. The logs
+      #    carry one "op rejected" line per op with code, board, actor and
+      #    correlation id.
+      - alert: CoBoardOpRejectionsHigh
+        expr: |
+          sum(rate(coboard_ops_rejected_total[5m]))
+            /
+          (
+            sum(rate(coboard_ops_accepted_total[5m]))
+            + sum(rate(coboard_ops_rejected_total[5m]))
+          )
+            > 0.001
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'Op rejection rate is {{ $value | humanizePercentage }} (threshold 0.1%)'
+          description: >-
+            The earliest signal of a permissions or validation regression
+            (TRD §15.4). Break down by code with
+            sum by (code) (rate(coboard_ops_rejected_total[5m])).
+
+      # 8. Snapshot job failures: any. Also covers the hourly maintenance
+      #    sweeps (guest_sweep, trash_purge, image_collect), labelled by job.
+      - alert: CoBoardJobFailed
+        expr: |
+          sum by (job) (increase(coboard_job_failures_total[15m])) > 0
+        labels:
+          severity: warn
+        annotations:
+          summary: 'Background job {{ $labels.job }} failed'
+          description: >-
+            A snapshot or maintenance job threw in the last 15 minutes. Search
+            the logs for "snapshot failed" or "<job> failed". A failing
+            snapshot does not lose data (the op log is the source of truth) but
+            board loads get slower as the replay tail grows.

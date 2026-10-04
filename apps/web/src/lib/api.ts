@@ -1,4 +1,9 @@
-import { ERROR_CODES, type ErrorEnvelope } from '@coboard/shared'
+import {
+  ERROR_CODES,
+  newCorrelationId,
+  type ErrorEnvelope,
+  type PublicUser,
+} from '@coboard/shared'
 import { authStore, getAccessToken, setAccessToken } from '../stores/authStore.js'
 
 /**
@@ -32,6 +37,13 @@ export class ApiError extends Error {
 }
 
 export const NETWORK_ERROR_CODE = 'NETWORK'
+
+/**
+ * Sent on every call so the server's log lines for it carry an id minted here
+ * (Phase 15e). One id per call, kept across the 401 replay, so both attempts
+ * are found together. The server echoes it back, or its own if it refused ours.
+ */
+export const REQUEST_ID_HEADER = 'x-request-id'
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -70,6 +82,18 @@ function acrossTabs<T>(task: () => Promise<T>): Promise<T> {
 }
 
 let refreshInFlight: Promise<boolean> | null = null
+/** The user named by the last refresh response, until the bootstrap takes it. */
+let refreshedUser: PublicUser | null = null
+
+/**
+ * The user the last successful refresh returned, once. Lets the session
+ * bootstrap skip a `/auth/me` round trip on every cold load.
+ */
+export function takeRefreshedUser(): PublicUser | null {
+  const user = refreshedUser
+  refreshedUser = null
+  return user
+}
 
 async function refreshSession(): Promise<boolean> {
   refreshInFlight ??= (async () => {
@@ -79,8 +103,9 @@ async function refreshSession(): Promise<boolean> {
       )
       if (!response.ok) return false
 
-      const body = (await response.json()) as { accessToken: string; user?: never }
+      const body = (await response.json()) as { accessToken: string; user?: PublicUser }
       setAccessToken(body.accessToken)
+      refreshedUser = body.user ?? null
       return true
     } catch {
       // Network failure, not a rejected session. The caller decides.
@@ -122,7 +147,9 @@ async function toApiError(response: Response): Promise<ApiError> {
     response.status,
     error?.details,
     error?.retryAfter,
-    error?.correlationId,
+    // The envelope's id is the server's request id (Phase 15e). The echoed
+    // header covers a body that is not our envelope.
+    error?.correlationId ?? response.headers.get(REQUEST_ID_HEADER) ?? undefined,
   )
 }
 
@@ -147,6 +174,7 @@ export async function apiRequest<T>(
   // A Blob goes as itself, with its own type (a thumbnail JPEG); anything
   // else is JSON.
   const raw = body instanceof Blob
+  const requestId = newCorrelationId()
 
   const send = async (): Promise<Response> => {
     const token = getAccessToken()
@@ -155,6 +183,7 @@ export async function apiRequest<T>(
       // Always, so the refresh cookie rides along on the auth routes.
       credentials: 'include',
       headers: {
+        [REQUEST_ID_HEADER]: requestId,
         ...(body === undefined
           ? {}
           : { 'content-type': raw ? (body as Blob).type : 'application/json' }),

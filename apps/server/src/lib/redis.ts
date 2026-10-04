@@ -12,13 +12,17 @@ import { logger } from './logger.js'
 let client: Redis | null = null
 
 export function redis(): Redis {
-  client ??= new Redis(env().REDIS_URL, {
+  if (client) return client
+  client = new Redis(env().REDIS_URL, {
     maxRetriesPerRequest: 2,
     // Without this a dropped Redis makes every request hang until the socket
     // timeout rather than failing fast into the degraded path below.
     enableOfflineQueue: false,
     lazyConnect: false,
   })
+  // Once, at construction. It used to be attached on EVERY call, so each op's
+  // rate-limit check added a listener: a leak of one closure per op, found in
+  // Phase 15 by the MaxListenersExceededWarning under the load test.
   client.on('error', err => logger.warn({ err: err.message }, 'redis error'))
   return client
 }

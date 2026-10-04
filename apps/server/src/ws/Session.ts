@@ -8,7 +8,7 @@ import {
   type Role,
   type ServerMessage,
 } from '@coboard/shared'
-import { logger } from '../lib/logger.js'
+import { logger, type Logger } from '../lib/logger.js'
 import { identityKey, type Identity } from '../lib/identity.js'
 
 /**
@@ -29,6 +29,14 @@ export class Session {
   /** Set by `join`; a socket that has not joined may not send ops. */
   joined = false
 
+  /**
+   * Every log line about this socket goes through here, so each one carries
+   * `sessionId`, `boardId` and `actor` (Phase 15e). `actor` is the user id, or
+   * the literal "guest": a guest id is a bearer credential (D-1) and never
+   * reaches a log.
+   */
+  readonly log: Logger
+
   private lastSeen = Date.now()
   private closed = false
 
@@ -40,6 +48,12 @@ export class Session {
     role: Role,
   ) {
     this.role = role
+    this.log = logger.child({ sessionId: this.id, boardId, actor: this.actor })
+  }
+
+  /** The actor as logged and labelled: a user id, or "guest". */
+  get actor(): string {
+    return this.identity.kind === 'user' ? this.identity.userId : 'guest'
   }
 
   /** The account behind this session; null for a guest. */
@@ -84,7 +98,7 @@ export class Session {
     try {
       this.socket.send(JSON.stringify(message))
     } catch (error) {
-      logger.debug({ err: error, sessionId: this.id }, 'socket send failed')
+      this.log.debug({ err: error }, 'socket send failed')
     }
   }
 

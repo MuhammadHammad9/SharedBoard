@@ -1,10 +1,11 @@
 import express, { Router } from 'express'
-import { z } from 'zod'
+import { z, ZodError } from 'zod'
 import {
   ClientOpSchema,
   CreateBoardSchema,
   ERROR_CODES,
   ListBoardsQuerySchema,
+  NACK_CODES,
   PermanentDeleteSchema,
   UpdateBoardSchema,
   type ServerOp,
@@ -31,6 +32,10 @@ import {
 } from '../../ws/live.js'
 import type { AccessChange } from '../../services/ShareService.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
+import { requestId, requestLog } from '../middleware/requestContext.js'
+import { AuthError } from '../../services/AuthService.js'
+import { opsAccepted } from '../../lib/metrics.js'
+import { recordOpRejection } from '../../lib/opRejection.js'
 import { validateBody, validatedQuery, validateQuery } from '../middleware/validate.js'
 
 /**
@@ -52,6 +57,53 @@ const SinceQuerySchema = z.object({
 })
 
 const BoardIdSchema = z.string().uuid()
+
+/** A refusal's HTTP status, in the socket path's nack vocabulary. */
+function rejectionCode(error: unknown): string | null {
+  if (error instanceof ZodError) return NACK_CODES.INVALID_OP
+  const status =
+    error instanceof HttpError || error instanceof AuthError ? error.status : null
+  if (status === null || status >= 500) return null // a failure, not a refusal
+  if (status === 403) return NACK_CODES.FORBIDDEN
+  if (status === 404) return NACK_CODES.BOARD_GONE
+  if (status === 422) return NACK_CODES.INVALID_OP
+  if (status === 429) return NACK_CODES.RATE_LIMITED
+  return (error as HttpError | AuthError).code
+}
+
+/**
+ * Log and count every op in a refused REST batch — TRD §15.4. The ids are
+ * read from the RAW body, because a batch refused for being malformed never
+ * produced a parsed one; anything that is not a short string is logged as
+ * "unknown" rather than echoed into the logs.
+ */
+function logRestOpRejection(req: express.Request, error: unknown): void {
+  const code = rejectionCode(error)
+  if (code === null) return
+  const identity = identityOf(req)
+  const actor =
+    identity?.kind === 'user' ? identity.userId : identity ? 'guest' : 'anonymous'
+  const rawOps = (req.body as { ops?: unknown } | null)?.ops
+  const ids = Array.isArray(rawOps)
+    ? rawOps.slice(0, 200).map(op => {
+        const opId = (op as { id?: unknown } | null)?.id
+        return typeof opId === 'string' && opId.length <= 64 ? opId : 'unknown'
+      })
+    : []
+  const boardIdParam = req.params.id ?? ''
+  const board = BoardIdSchema.safeParse(boardIdParam).success ? boardIdParam : 'invalid'
+  for (const opId of ids.length > 0 ? ids : ['unknown']) {
+    recordOpRejection(requestLog(req), {
+      transport: 'rest',
+      code,
+      opId,
+      correlationId: requestId(req),
+      boardId: board,
+      actor,
+      reason: error instanceof Error ? error.message.slice(0, 200) : 'rejected',
+    })
+  }
+}
 
 const AccessQuerySchema = z.object({
   share: z.string().regex(SHARE_TOKEN).optional(),
@@ -345,11 +397,9 @@ export function createBoardsRouter(): Router {
       )
       // The copy looks like its source on the dashboard straight away.
       await thumbnailService.copy(id, board.id)
-      res
-        .status(201)
-        .json({
-          board: { ...board, thumbnailUrl: await boardService.thumbnailOf(board.id) },
-        })
+      res.status(201).json({
+        board: { ...board, thumbnailUrl: await boardService.thumbnailOf(board.id) },
+      })
     }),
   )
 
@@ -438,22 +488,37 @@ export function createBoardsRouter(): Router {
    */
   router.post(
     '/:id/operations',
-    validateBody(AppendOpsSchema),
     ah(async (req, res) => {
-      const identity = assertIdentified(req)
-      const id = boardId(req.params.id)
-      // Step 1 of §5.4: AUTHORIZE. A viewer is refused here, before a single
-      // row is written — test AT-20. The same cached check as the socket path.
-      await permissionService.assertCanEdit(id, identity)
+      /*
+       * Validation is done here rather than by `validateBody` so that a
+       * malformed batch is logged as an op rejection like every other refusal
+       * (TRD §15.4). Same order as before: body first, then identity, then
+       * the permission check.
+       */
+      let result: Awaited<ReturnType<typeof opService.append>>
+      let identity: ReturnType<typeof assertIdentified>
+      let id: string
+      try {
+        req.body = AppendOpsSchema.parse(req.body)
+        identity = assertIdentified(req)
+        id = boardId(req.params.id)
+        // Step 1 of §5.4: AUTHORIZE. A viewer is refused here, before a single
+        // row is written — test AT-20. The same cached check as the socket path.
+        await permissionService.assertCanEdit(id, identity)
 
-      const { ops } = req.body as z.infer<typeof AppendOpsSchema>
-      const result = await opService.append(
-        id,
-        ops,
-        identity.kind === 'user'
-          ? { userId: identity.userId }
-          : { guestId: identity.guestId },
-      )
+        const { ops } = req.body as z.infer<typeof AppendOpsSchema>
+        result = await opService.append(
+          id,
+          ops,
+          identity.kind === 'user'
+            ? { userId: identity.userId }
+            : { guestId: identity.guestId },
+        )
+      } catch (error) {
+        logRestOpRejection(req, error)
+        throw error
+      }
+      opsAccepted.inc({ transport: 'rest' }, result.applied.length)
       const actorTag = identity.kind === 'user' ? identity.userId : 'guest'
 
       // Persisted, so it is safe to acknowledge — R-SYNC-012.
@@ -487,7 +552,7 @@ export function createBoardsRouter(): Router {
        * refresh, not part of the write, and making the 500th op wait tens of
        * milliseconds for it would be a visible stutter for one unlucky user.
        */
-      void snapshotService.maybeSnapshot(id)
+      void snapshotService.maybeSnapshot(id, result.currentSeq)
     }),
   )
 

@@ -12,6 +12,10 @@
 
 generator client {
   provider = "prisma-client-js"
+  // Phase 15e: `prisma.$metrics` exposes the connection-pool gauges that the
+  // TRD §15.4 "Postgres pool utilization" signal is computed from. Preview in
+  // Prisma 5; it reads counters the engine already keeps, and changes no query.
+  previewFeatures = ["metrics"]
 }
 
 datasource db {

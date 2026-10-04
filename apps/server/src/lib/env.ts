@@ -42,6 +42,15 @@ const EnvSchema = z.object({
   S3_SECRET_KEY: z.string().optional(),
   // Where objects are READ from, if not `${S3_ENDPOINT}/${S3_BUCKET}` — a CDN.
   S3_PUBLIC_URL: z.string().url().optional(),
+
+  /*
+   * Phase 15e — the bearer token Prometheus presents to `GET /metrics`.
+   * Set: the endpoint requires `Authorization: Bearer <token>`. Unset: open in
+   * development and test, and DISABLED in production, because the metrics name
+   * routes, error rates and pool sizes — a reconnaissance map nobody should get
+   * for free. 16 characters minimum, like the JWT secrets.
+   */
+  METRICS_TOKEN: z.string().min(16).optional(),
 })
 
 export type Env = z.infer<typeof EnvSchema>

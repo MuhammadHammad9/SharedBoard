@@ -4,7 +4,8 @@ import { opService } from '../../services/OpService.js'
 import { permissionService } from '../../services/PermissionService.js'
 import { snapshotService } from '../../services/SnapshotService.js'
 import { consume } from '../../lib/tokenBucket.js'
-import { logger } from '../../lib/logger.js'
+import { opsAccepted } from '../../lib/metrics.js'
+import { recordOpRejection } from '../../lib/opRejection.js'
 import type { RoomManager } from '../RoomManager.js'
 import type { Session } from '../Session.js'
 
@@ -39,6 +40,16 @@ import type { Session } from '../Session.js'
  */
 
 const nack = (session: Session, id: string, code: string, message: string): void => {
+  // Logged and counted first — TRD §15.4. The session's child logger already
+  // carries sessionId, boardId and actor; the correlation id is the session
+  // plus the op, which is unique and names both halves of the conversation.
+  recordOpRejection(session.log, {
+    transport: 'ws',
+    code,
+    opId: id,
+    correlationId: `${session.id}:${id}`,
+    reason: message,
+  })
   // Never batched — R-SYNC-016. An error is a decision the sender is blocked
   // on, and delaying it 16 ms to travel with unrelated ops helps nobody.
   session.send({ t: 'nack', id, code, message })
@@ -108,7 +119,7 @@ export async function handleOps(
      * work is durable when it is not, and that is the one lie the whole
      * zero-loss guarantee rests on never telling (R-SYNC-012).
      */
-    logger.error({ err: error, boardId: session.boardId }, 'op persist failed')
+    session.log.error({ err: error, opIds: valid.map(op => op.id) }, 'op persist failed')
     /*
      * And NOT nacked either. A nack is a decision the client never retries
      * (R-SYNC-011), so nacking a transient database failure would make the
@@ -121,6 +132,7 @@ export async function handleOps(
   }
 
   // STEP 6 — ACK THE SENDER FIRST.
+  opsAccepted.inc({ transport: 'ws' }, result.applied.length)
   session.send({
     t: 'ack',
     ids: result.applied.map(op => op.id),
@@ -152,7 +164,9 @@ export async function handleOps(
    * the 500th would make one unlucky user's stroke visibly slower than the 499
    * before it, against a 16 ms input-to-pixel budget.
    */
-  if (fresh.length > 0) void snapshotService.maybeSnapshot(session.boardId)
+  if (fresh.length > 0) {
+    void snapshotService.maybeSnapshot(session.boardId, result.currentSeq)
+  }
 }
 
 /** Best-effort id extraction, so even a malformed op can be nacked by name. */

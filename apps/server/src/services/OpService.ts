@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import { ERROR_CODES, MAX_OBJECTS_PER_BOARD, type ClientOp } from '@coboard/shared'
 import { AuthError } from './AuthService.js'
 import { prisma as defaultPrisma } from '../lib/prisma.js'
+import { opPersistSeconds } from '../lib/metrics.js'
 
 /**
  * The op log — TRD §3.2 and §5.4, decision D-3.
@@ -67,6 +68,23 @@ export class OpService {
       return { applied: [], currentSeq: board?.currentSeq ?? 0 }
     }
 
+    // TRD §15.4 "op persist latency": the whole transaction, including the
+    // wait for the board's row lock, because that wait is what grows when one
+    // board is hot. Failed transactions are timed too; a slow rollback is
+    // still a slow persist.
+    const endTimer = opPersistSeconds.startTimer()
+    try {
+      return await this.persist(boardId, ops, actor)
+    } finally {
+      endTimer()
+    }
+  }
+
+  private persist(
+    boardId: string,
+    ops: readonly ClientOp[],
+    actor: Actor,
+  ): Promise<{ applied: AppendedOp[]; currentSeq: number }> {
     return this.db.$transaction(async tx => {
       const board = await tx.board.findUnique({
         where: { id: boardId },
@@ -116,7 +134,9 @@ export class OpService {
           fresh.filter(op => op.type === 'CREATE').length -
           fresh.filter(op => op.type === 'DELETE').length
 
-        const [updated] = await tx.$queryRaw<{ currentSeq: number; objectCount: number }[]>`
+        const [updated] = await tx.$queryRaw<
+          { currentSeq: number; objectCount: number }[]
+        >`
           UPDATE "Board"
           SET "currentSeq" = "currentSeq" + ${fresh.length},
               "objectCount" = GREATEST(0, "objectCount" + ${delta}),
