@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { SNAPSHOT_TIMEOUT_MS, type ConnectionState, type Role } from '@coboard/shared'
 import { ApiError } from '../../lib/api.js'
 import { useToast } from '../../components/ui/Toast.js'
-import { boards as boardStrings, errors, presence } from '../../lib/strings.js'
+import { boards as boardStrings, demo as demoStrings, errors, presence } from '../../lib/strings.js'
 import { BoardSession } from '../sync/session.js'
 import { abandonPersistence } from '../sync/persistence.js'
 import { track } from '../../lib/analytics.js'
@@ -21,6 +21,14 @@ import { track } from '../../lib/analytics.js'
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isScratchBoard = (id: string): boolean => import.meta.env.DEV && !UUID.test(id)
+
+/**
+ * `/demo` — "Try it now" from S-01 (FLOWS §1.2). The scratch-board path, but
+ * in EVERY build: a local document, no fetch, no socket, nothing persisted,
+ * so there is nothing for the server to authorize. Not a uuid, so it can never
+ * collide with a real board.
+ */
+export const DEMO_BOARD_ID = 'demo'
 
 /**
  * Load a board's content and start persisting changes back — FLOWS §2.3 step 5.
@@ -83,6 +91,14 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
 
   useEffect(() => {
     if (!boardId) return
+
+    if (boardId === DEMO_BOARD_ID) {
+      // An editor, not an owner: no share, no rename — both need a server.
+      setRole('EDITOR')
+      setName(demoStrings.boardName)
+      setStatus('ready')
+      return
+    }
 
     if (isScratchBoard(boardId)) {
       setRole('OWNER')

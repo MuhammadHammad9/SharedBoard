@@ -2,7 +2,11 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToastProvider } from './components/ui/Toast.js'
-import { RedirectIfAuthed, RequireAuth } from './routes/guards.js'
+import {
+  RedirectIfAuthed,
+  RedirectIfAuthedOptimistic,
+  RequireAuth,
+} from './routes/guards.js'
 import { RequireBoardAccess } from './routes/RequireBoardAccess.js'
 import { FullScreenSpinner } from './components/ui/Spinner.js'
 import Login from './routes/Login.js'
@@ -26,12 +30,12 @@ import { loading } from './lib/strings.js'
  * transition — None", and it is right: a fade between pages makes an app that
  * navigates instantly feel like one that does not.
  *
- * S-01 Landing, S-08 Trash, S-11 GuestEntry and S-10's chrome are later
- * phases. The routes that do not exist yet are absent rather than stubbed,
- * so nothing renders a screen that pretends to work.
+ * S-01 Landing is lazy too: the marketing page must not carry app code.
  */
 
 const Board = lazy(() => import('./routes/Board.js'))
+// S-01 — its own chunk, so the marketing page carries no app code (TRD §12.2).
+const Landing = lazy(() => import('./routes/Landing.js'))
 const GuestEntry = lazy(() => import('./routes/GuestEntry.js'))
 
 /*
@@ -67,13 +71,26 @@ export default function App() {
       <ToastProvider>
         <BrowserRouter>
           <Routes>
-            {/* MARKETING — S-01 is Phase 15. Until then `/` is a signpost. */}
+            {/* MARKETING — S-01. */}
             <Route
               path="/"
               element={
-                <RedirectIfAuthed>
-                  <Navigate to="/login" replace />
-                </RedirectIfAuthed>
+                <RedirectIfAuthedOptimistic>
+                  {/* No spinner fallback: a blank frame for one chunk fetch
+                      beats a spinner flash on the page whose LCP is budgeted. */}
+                  <Suspense fallback={null}>
+                    <Landing />
+                  </Suspense>
+                </RedirectIfAuthedOptimistic>
+              }
+            />
+            {/* "Try it now" — S-10 in demo mode: no account, nothing saved. */}
+            <Route
+              path="/demo"
+              element={
+                <Suspense fallback={<FullScreenSpinner label={loading.board} />}>
+                  <Board demo />
+                </Suspense>
               }
             />
 

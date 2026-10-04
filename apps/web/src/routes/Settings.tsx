@@ -37,7 +37,8 @@ export default function Settings() {
         <Button
           variant="secondary"
           onClick={() => {
-            void logout().then(() => navigate('/login', { replace: true }))
+            // PRD FR-AUTH-007: logout returns to the landing page.
+            void logout().then(() => navigate('/', { replace: true }))
           }}
           data-testid="logout"
         >

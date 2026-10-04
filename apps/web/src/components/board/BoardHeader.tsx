@@ -8,6 +8,7 @@ import {
   actions,
   boardChrome,
   boards as boardStrings,
+  demo as demoStrings,
   shortcuts,
 } from '../../lib/strings.js'
 import { Button } from '../ui/Button.js'
@@ -53,6 +54,7 @@ export function BoardHeader({
   attempt = 0,
   pending = 0,
   onRetry,
+  demo = false,
 }: {
   boardId: string
   name: string
@@ -64,6 +66,8 @@ export function BoardHeader({
   pending?: number
   /** "Retry now". */
   onRetry?: () => void
+  /** `/demo`: no server, so no connection to report and no dashboard to go back to. */
+  demo?: boolean
 }) {
   const mobile = useBreakpoint() === 'mobile'
   const [params, setParams] = useSearchParams()
@@ -89,8 +93,8 @@ export function BoardHeader({
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-header flex items-center gap-3 px-4 py-3">
       <Link
-        to="/dashboard"
-        aria-label={actions.backToDashboard}
+        to={demo ? '/' : '/dashboard'}
+        aria-label={demo ? demoStrings.back : actions.backToDashboard}
         data-testid="board-back"
         className="pointer-events-auto flex items-center gap-1 rounded-md bg-app/90 px-2 py-1.5 text-sm text-muted shadow-panel outline-none transition-colors duration-fast hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
@@ -136,12 +140,14 @@ export function BoardHeader({
       {/* FLOWS §9.4: while we cannot hear anyone, the faces we last saw go
           grey — they are a memory, not a live roster. */}
       <AvatarStack stale={connection === 'reconnecting' || connection === 'offline'} />
-      <ConnectionIndicator
-        state={connection}
-        attempt={attempt}
-        pending={pending}
-        {...(onRetry ? { onRetry } : {})}
-      />
+      {!demo && (
+        <ConnectionIndicator
+          state={connection}
+          attempt={attempt}
+          pending={pending}
+          {...(onRetry ? { onRetry } : {})}
+        />
+      )}
 
       {mobile ? (
         /* FLOWS §14.5: the 48 px mobile header keeps the name, presence and

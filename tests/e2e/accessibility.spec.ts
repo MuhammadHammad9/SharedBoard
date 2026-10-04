@@ -62,7 +62,8 @@ async function expectNoViolations(page: Page) {
 }
 
 const PUBLIC = [
-  { path: '/', ready: 'main' },
+  { path: '/', ready: 'h1' },
+  { path: '/demo', ready: '[data-testid="demo-bar"]' },
   { path: '/login', ready: 'form' },
   { path: '/signup', ready: 'form' },
   { path: '/forgot-password', ready: 'form' },

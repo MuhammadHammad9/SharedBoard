@@ -132,3 +132,19 @@ export function RedirectIfAuthed({ children }: GuardProps) {
 
   return <>{children}</>
 }
+
+/**
+ * S-01's guard — FLOWS §1.2 "Load with valid session → S-07".
+ *
+ * OPTIMISTIC, unlike `RedirectIfAuthed`: the page renders while the silent
+ * refresh is in flight and redirects only if it comes back authenticated.
+ * Blocking on a spinner would put a network round trip in front of the
+ * landing page's LCP (PRD §7.1, ≤ 1.5 s on 4G) for every anonymous visitor —
+ * the people the page is for — to spare a returning user a brief glimpse.
+ */
+export function RedirectIfAuthedOptimistic({ children }: GuardProps) {
+  useSessionBootstrap()
+  const status = useAuthStore(s => s.status)
+  if (status === 'authenticated') return <Navigate to="/dashboard" replace />
+  return <>{children}</>
+}

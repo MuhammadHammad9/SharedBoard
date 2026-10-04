@@ -70,7 +70,15 @@ test('the shortcuts button is reachable by Tab, and its dialog traps focus', asy
 })
 
 test.describe('with reduced motion', () => {
-  test.use({ reducedMotion: 'reduce' })
+  /*
+   * `page.emulateMedia`, not `test.use({ reducedMotion })`: with the
+   * preinstalled Chromium the fixture option silently does not apply
+   * (matchMedia still reports false), and a reduced-motion test that runs
+   * without reduced motion passes for the wrong reason.
+   */
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+  })
 
   test('modals keep the fade and drop the movement', async ({ page }) => {
     await stubSession(page)

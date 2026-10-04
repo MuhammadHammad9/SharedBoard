@@ -88,7 +88,8 @@ export function DashboardHeader({
               onSelect: () => {
                 void logout().finally(() => {
                   clear()
-                  window.location.assign('/login')
+                  // PRD FR-AUTH-007: logout returns to the landing page.
+                  window.location.assign('/')
                 })
               },
               testId: 'log-out',

@@ -633,3 +633,78 @@ export const strings = {
 } as const
 
 export type Strings = typeof strings
+
+/**
+ * S-01 landing — FLOWS §1.2, §3.1. The three CTA labels are FLOWS verbatim
+ * ("Log in", "Sign up free", "Try it now"; D-19). PRD §8 specifies no other
+ * landing copy, so the rest is written to PRD §1 and flagged in
+ * docs/REMAINING-WORK.md Phase 15 as a reversible decision.
+ */
+export const landing = {
+  nav: { label: 'Main', logIn: 'Log in', signUp: 'Sign up free' },
+  eyebrow: 'Real-time collaborative whiteboard',
+  headline: 'Draw together, in real time, from anywhere.',
+  sub: 'One infinite board, every cursor live. Sketch, plan and sort ideas with your team, and watch every stroke appear the moment it is drawn.',
+  ctaPrimary: 'Sign up free',
+  ctaSecondary: 'Try it now',
+  demoLabel: 'Two people drawing on the same board',
+  marquee: [
+    'Live cursors',
+    'Freehand strokes',
+    'Sticky notes',
+    'Shapes and arrows',
+    'Undo that is yours alone',
+    'Works offline',
+    'Share with a link',
+    'Export to PNG',
+  ],
+  bento: {
+    heading: 'Everything a whiteboard needs, and nothing in the way',
+    canvas: {
+      title: 'An infinite canvas',
+      body: 'Pan and zoom from 10% to 500%. Pen, shapes, arrows, text, sticky notes and images, all on one surface.',
+    },
+    presence: {
+      title: 'See who is here',
+      body: 'Named cursors move live, and so do the selections and strokes in progress.',
+    },
+    offline: {
+      title: 'Lose the wifi, keep the work',
+      body: 'Draw offline. Your changes merge the moment you are back.',
+    },
+    share: {
+      title: 'Invite anyone',
+      body: 'Share a link and a guest can be drawing in seconds, no account needed. Owners decide who can edit and who can only view.',
+    },
+  },
+  guarantees: {
+    heading: 'Built so nobody loses work',
+    items: [
+      {
+        title: 'Every change lands everywhere',
+        body: 'Each edit is ordered by the server and applied in the same order on every screen, so every collaborator ends up looking at exactly the same board.',
+      },
+      {
+        title: 'Your undo is yours',
+        body: 'Undo reverts what you did and never what a teammate did, even when you were both working on the same object a moment ago.',
+      },
+      {
+        title: 'Saved before it is confirmed',
+        body: 'A change is written to the database before anyone is told it succeeded, so a refresh, a crash or a restart never takes it away.',
+      },
+    ],
+  },
+  cta: {
+    heading: 'Start a board in ten seconds',
+    body: 'No credit card. No setup. Open a board and send the link.',
+  },
+  footer: { rights: 'CoBoard' },
+} as const
+
+/** `/demo` — the board UI on a local-only document (Phase 15 decision). */
+export const demo = {
+  bar: 'You are trying CoBoard. Nothing on this board is saved.',
+  signUp: 'Sign up free',
+  boardName: 'Demo board',
+  back: 'Back to home',
+} as const

@@ -525,4 +525,88 @@
   [data-trash-row][data-leaving='true'] {
     opacity: 0;
   }
+
+  /*
+   * S-01 landing — routes/Landing.tsx. MARKETING zone, dials 7/6/4; the one
+   * zone where decoration is allowed, and still only transform and opacity
+   * (plus a colour scrub — see below).
+   */
+
+  /* The board's dot grid, faint. A background image, so it costs no DOM. */
+  .landing-dots {
+    background-image: radial-gradient(theme('colors.border') 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  /* First paint: a staggered rise. Marketing timing, so longer than UI. */
+  [data-rise] {
+    opacity: 1;
+    translate: 0 0;
+    transition:
+      opacity 500ms var(--ease-out),
+      translate 500ms var(--ease-out);
+    transition-delay: calc(var(--i, 0) * 70ms);
+  }
+  @starting-style {
+    [data-rise] {
+      opacity: 0;
+      translate: 0 12px;
+    }
+  }
+
+  /* Capabilities marquee — constant motion, so linear (emil-design-eng). */
+  .landing-marquee {
+    animation: landing-marquee 40s linear infinite;
+  }
+  @keyframes landing-marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .landing-marquee:hover {
+      animation-play-state: paused;
+    }
+  }
+
+  /*
+   * Scrubbed word reveal — gpt-taste's paradigm without GSAP (C-3). A CSS
+   * scroll-driven animation per word, staggered across the sentence by --w.
+   *
+   * It scrubs COLOUR, muted → primary, not opacity. Faded text below 4.5:1
+   * would fail WCAG AA (D-18) at every scroll position but the last; the
+   * muted token already passes on white, so every frame of this is legible.
+   * Browsers without scroll timelines simply show primary text.
+   */
+  .landing-scrub span {
+    color: theme('colors.primary');
+  }
+  @supports (animation-timeline: view()) {
+    .landing-scrub span {
+      color: theme('colors.muted');
+      animation: landing-scrub linear both;
+      animation-timeline: view();
+      animation-range: entry calc(20% + var(--w) * 40%) cover calc(35% + var(--w) * 40%);
+    }
+  }
+  @keyframes landing-scrub {
+    to {
+      color: theme('colors.primary');
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .landing-marquee {
+      animation: none;
+      flex-wrap: wrap;
+      width: auto;
+    }
+    .landing-marquee > ul[aria-hidden] {
+      display: none;
+    }
+    .landing-scrub span {
+      animation: none !important;
+      color: theme('colors.primary') !important;
+    }
+  }
 }

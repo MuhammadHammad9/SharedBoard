@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from '@phosphor-icons/react'
-import { useLocation, useNavigate, useParams } from 'react-router'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { Canvas } from '../features/canvas/Canvas.js'
 import { ErrorBoundary } from '../components/states/ErrorBoundary.js'
 import { BoardEmptyHint } from '../components/board/BoardEmptyHint.js'
@@ -11,9 +11,9 @@ import { OfflineBanner } from '../components/board/OfflineBanner.js'
 import { FullScreenSpinner } from '../components/ui/Spinner.js'
 import { BackToDashboard, FullScreenState } from '../components/ui/FullScreenState.js'
 import { Button } from '../components/ui/Button.js'
-import { useBoardLoad } from '../features/boards/useBoardLoad.js'
+import { DEMO_BOARD_ID, useBoardLoad } from '../features/boards/useBoardLoad.js'
 import { useJoinLeaveToasts } from '../features/presence/useJoinLeaveToasts.js'
-import { actions, guest, loading, states } from '../lib/strings.js'
+import { actions, demo as demoStrings, guest, loading, states } from '../lib/strings.js'
 import { setGuestCredential } from '../lib/api.js'
 import { useBoardToastPlacement, useToast } from '../components/ui/Toast.js'
 import { boardStore } from '../stores/boardStore.js'
@@ -36,16 +36,18 @@ import { useGuestConversion } from '../features/sharing/useGuestConversion.js'
  * Lazy-loaded from App.tsx (TRD §12.2) so the auth screens never pull in the
  * canvas engine.
  */
-export default function Board() {
-  const { boardId } = useParams<{ boardId: string }>()
+export default function Board({ demo = false }: { demo?: boolean } = {}) {
+  const params = useParams<{ boardId: string }>()
+  const boardId = demo ? DEMO_BOARD_ID : params.boardId
   const load = useBoardLoad(boardId)
-  useImageUploads(boardId)
+  // `/demo` has no server to upload to, so no upload context (nothing to presign).
+  useImageUploads(demo ? undefined : boardId)
   // FLOWS §13.1: toasts bottom-left here, clear of the properties panel.
   useBoardToastPlacement()
   // FR-BOARD-003: the dashboard thumbnail, kept current by an editor's client.
   useThumbnailUpkeep(
     boardId,
-    load.status === 'ready' && (load.role === 'OWNER' || load.role === 'EDITOR'),
+    !demo && load.status === 'ready' && (load.role === 'OWNER' || load.role === 'EDITOR'),
   )
   // "Marcus joined" / "Marcus left" — FR-RT-008. Derived from roster diffs,
   // so a second tab from the same person does not announce itself.
@@ -135,7 +137,9 @@ export default function Board() {
         attempt={load.attempt}
         pending={load.pending}
         onRetry={load.retryConnection}
+        demo={demo}
       />
+      {demo && <DemoBar />}
       {/* S-21, the inner boundary: a canvas crash leaves the header and the
           way back to the dashboard working (FLOWS §12.4). */}
       <ErrorBoundary variant="canvas">
@@ -216,6 +220,30 @@ function ReturningGuestChip({ name, onNotYou }: { name: string; onNotYou?: () =>
       >
         <X size={12} weight="bold" aria-hidden="true" />
       </button>
+    </div>
+  )
+}
+
+/**
+ * `/demo` — FLOWS §1.2 "Try it now". Says plainly that nothing is kept, and
+ * offers the one way to keep it. Bottom-centre, clear of the toolbar and the
+ * properties panel; below desktop it sits above the bottom tool bar.
+ */
+function DemoBar() {
+  return (
+    <div
+      className="pointer-events-auto absolute bottom-20 left-1/2 z-guestbar flex -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-md border border-border bg-app px-4 py-2 text-sm text-primary shadow-panel lg:bottom-4"
+      role="status"
+      data-testid="demo-bar"
+    >
+      <span className="hidden sm:inline">{demoStrings.bar}</span>
+      <Link
+        to="/signup"
+        className="cursor-pointer rounded-md bg-accent px-3 py-1.5 font-medium text-white outline-none transition-[background-color,transform] duration-fast hover:bg-accent/90 active:scale-[0.97] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        data-testid="demo-signup"
+      >
+        {demoStrings.signUp}
+      </Link>
     </div>
   )
 }
