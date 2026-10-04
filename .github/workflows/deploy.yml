@@ -154,11 +154,25 @@ jobs:
       # Ships the compose file, nginx/prometheus config and deploy script.
       # infra/env/*.env and infra/secrets/ live only on the host and are
       # never in the checkout, so this cannot overwrite them.
+      # inputs.tag is spliced into a remote shell command below. Only a commit
+      # SHA is a valid image tag here, so anything else is refused outright.
+      - name: Validate tag
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          if ! [[ "$TAG" =~ ^[0-9a-f]{7,40}$ ]]; then
+            echo "::error::tag must be a commit SHA (7-40 hex chars), got: $TAG"
+            exit 1
+          fi
+
       - name: Sync deploy files
         if: steps.gate.outputs.configured == 'true'
         run: |
-          tar -czf - infra scripts/deploy.sh \
-            | ssh deploy "mkdir -p '$DEPLOY_PATH' && tar -xzf - -C '$DEPLOY_PATH'"
+          # --overwrite rewrites existing files in place (same inode), so the
+          # single-file bind mounts (lb.conf, prometheus.yml, alerts.yml) see
+          # the change; a default extract would swap the inode under them.
+          # backup.sh/restore.sh/lib ship too: the host's backup cron runs them.
+          tar -czf - infra scripts/deploy.sh scripts/backup.sh scripts/restore.sh scripts/lib \
+            | ssh deploy "mkdir -p '$DEPLOY_PATH' && tar --overwrite -xzf - -C '$DEPLOY_PATH'"
 
       # The job's own short-lived token, piped over stdin — never on a command line.
       - name: Log the host in to GHCR

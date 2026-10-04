@@ -65,12 +65,20 @@ rollout() {
     log "rolling $svc -> $TAG"
     compose up -d --no-deps "$svc"
     wait_healthy "$svc"
+    # nginx resolves upstream hostnames when it loads its config, and a
+    # recreated container usually gets a new IP. Reload now, before the next
+    # instance goes down, or nginx keeps sending to the dead address and both
+    # upstreams end up stale (Phase 15 audit).
+    compose exec -T lb nginx -s reload || true
   done
   log "rolling web -> $TAG"
   compose up -d --no-deps web
   wait_healthy web
   compose up -d --no-deps lb
-  # Picks up lb.conf changes (e.g. a new upstream line) without dropping sockets.
+  # Picks up lb.conf changes (e.g. a new upstream line) without dropping
+  # sockets. This works because the deploy extracts with `tar --overwrite`,
+  # which rewrites the bind-mounted file in place (same inode); a plain
+  # extract replaces the inode and the container would keep the old file.
   compose exec -T lb nginx -s reload
   wait_healthy lb
   printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TAG" >>.deploy-history

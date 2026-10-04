@@ -20,7 +20,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test --project=chromium && playwright test --project=perf --workers=1",
+    "test:e2e": "bash scripts/e2e.sh",
     "analyze": "pnpm --filter @coboard/web build && tsx scripts/check-bundle-size.ts",
     "check:board-chunk": "tsx scripts/check-board-chunk-imports.ts",
     "load-test": "tsx scripts/load-test.ts",

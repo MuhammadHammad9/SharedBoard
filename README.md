@@ -4,7 +4,7 @@
 
 > **Status: all 15 phases complete.** Every P0/P1 feature is built and tested. Every PRD §7.1 budget is measured on the production build and enforced in CI. The server exports `/metrics` with eight alert rules, the load test sustains 50 users at 100 ops/s, backups have a tested restore, and deployment is in `infra/` with `docs/RUNBOOK.md`. The live deploy and real-device checks are the remaining manual steps. See [`docs/REMAINING-WORK.md`](./docs/REMAINING-WORK.md).
 >
-> Try it: `pnpm dev`, then `http://localhost:5173/?debug=1`. `V` select · `P` pen · `E` eraser · `R O L A` shapes · `N` sticky · `T` text. Add `&stress=1` for the 10,000-object stress board with the frame-timing overlay.
+> Try it: `pnpm dev`, then `http://localhost:5173/demo?debug=1` (no account needed; `/` is the landing page). `V` select · `P` pen · `E` eraser · `R O L A` shapes · `N` sticky · `T` text. Add `&stress=1` for the 10,000-object stress board with the frame-timing overlay.
 
 ---
 
@@ -65,6 +65,9 @@ React 18.3 · TypeScript 5.4 strict · Vite 6 (see **D-4**) · Zustand 4 · Canv
 
 ```bash
 cp .env.example .env
+# The server refuses to start without two DIFFERENT 16+ character JWT secrets:
+sed -i "s|^JWT_ACCESS_SECRET=.*|JWT_ACCESS_SECRET=$(openssl rand -base64 48 | tr -d '\n')|" .env
+sed -i "s|^JWT_REFRESH_SECRET=.*|JWT_REFRESH_SECRET=$(openssl rand -base64 48 | tr -d '\n')|" .env
 docker compose up -d           # postgres + redis
 pnpm install
 pnpm db:migrate
@@ -92,7 +95,7 @@ Both paths produce the same `DATABASE_URL` and `REDIS_URL`, so `.env` is identic
 | `pnpm typecheck`         | `tsc --build` across the workspace                  |
 | `pnpm lint`              | ESLint, zero warnings tolerated                     |
 | `pnpm test`              | Vitest unit and integration suite                   |
-| `pnpm test:e2e`          | Playwright                                          |
+| `pnpm test:e2e`          | Playwright, in two stages (main suite, then perf)   |
 | `pnpm build`             | Build all three packages                            |
 | `pnpm analyze`           | Build, then enforce the PRD §7.1 bundle budgets     |
 | `pnpm check:board-chunk` | Assert no animation library reaches the board chunk |
@@ -110,9 +113,9 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium pnpm test:e2e
 
 ## A note on the specifications
 
-The three documents in `docs/01`–`03` are preserved **exactly as delivered** and must not be edited. Their integrity is verifiable.
+The four documents in `docs/01`–`04` are preserved **exactly as delivered** and must not be edited. Their integrity is verifiable.
 
-Six defects have been found in them so far. Rather than patching the sources, they are resolved in the defect register at [`RULES.md`](./RULES.md) §2.4:
+Defects and conflicts found in them are never patched in the sources; each is resolved in the defect register at [`RULES.md`](./RULES.md) §2.4, which is the complete list (D-1 onward). The first five, for flavour:
 
 | #       | Defect                                                                                                | Resolution                                                                                                                                           |
 | ------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |

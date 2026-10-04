@@ -1,6 +1,7 @@
 # CoBoard — Remaining Work Plan
 
-> Snapshot as of `7c55116` (Phase 10 merged). This is a working plan derived from
+> Started at `7c55116` (Phase 10 merged) and kept current through Phase 15 and the
+> post-Phase-15 audit (see §7). This is a working plan derived from
 > [`04-IMPLEMENTATION-PLAN.md`](./04-IMPLEMENTATION-PLAN.md), cross-checked against
 > what is actually in the tree. It does not replace that plan — task numbers below
 > (`P11-T6` = Phase 11, task 6) point back to it. The four specification documents
@@ -8,15 +9,17 @@
 
 ## 1. Where we are
 
-| Milestone          | Phases | State                                                        |
-| ------------------ | ------ | ------------------------------------------------------------ |
-| M1 — It draws      | 1–6    | ✅ Done                                                      |
-| M2 — It persists   | 7–8    | ✅ Done                                                      |
-| M3 — It syncs      | 9–10   | ✅ Done (`AT-01`–`AT-08`)                                    |
-| M4 — It survives   | 11     | ✅ Done — see the Phase 11 outcome below                     |
-| M5 — It's finished | 12–15  | ⬜ Not started (a few seams stubbed with "Phase N" comments) |
+| Milestone          | Phases | State                                                     |
+| ------------------ | ------ | --------------------------------------------------------- |
+| M1 — It draws      | 1–6    | ✅ Done                                                   |
+| M2 — It persists   | 7–8    | ✅ Done                                                   |
+| M3 — It syncs      | 9–10   | ✅ Done (`AT-01`–`AT-08`)                                 |
+| M4 — It survives   | 11     | ✅ Done — see the Phase 11 outcome below                  |
+| M5 — It's finished | 12–15  | ✅ Done — see each phase's outcome below and the §7 audit |
 
-## 2. Already in the tree that Phase 11 builds on
+## 2. Already in the tree that Phase 11 builds on (historical)
+
+> Kept as written at the Phase 11 start. Everything below has since been extended as planned.
 
 Do not rebuild these — extend them.
 
@@ -28,7 +31,9 @@ Do not rebuild these — extend them.
 - `components/board/ConnectionIndicator.tsx` — placeholder; its header comment says the full state set lands in Phase 11.
 - `components/dev/CanvasDebugOverlay.tsx` — FPS overlay only; no state hash yet.
 
-## 3. Known stubs to retire (grep `Phase 1[1-5]`)
+## 3. Known stubs to retire (grep `Phase 1[1-5]`) — all retired
+
+> Each row was retired by the phase named in its last column; the outcomes below record how. The `starred` filter has no Star model by design (stars are P2); see §7.
 
 | Where                                                               | Stub                                                   | Retired by    |
 | ------------------------------------------------------------------- | ------------------------------------------------------ | ------------- |
@@ -208,14 +213,14 @@ Each caveat above was checked against the specs and fixed rather than left as an
 
 #### Decisions taken (flagged per the ambiguity rule; reversible)
 
-| #     | Decision                                                                                                                                                                                                                                                                                                                                                                                            |
-| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D13-1 | **`POST /uploads/presign` also takes `boardId`.** TRD §4.4's body is `{filename, contentType, size}`. Without a board, the server cannot authorize the upload (R-SEC-001 on every request). With one, it requires edit rights on that board and keys the object under `boards/{boardId}/`. `confirm` re-checks the key prefix against the caller's rights                                           |
-| D13-2 | **Objects are public-read under unguessable keys** (`boards/{boardId}/{uuid}.{ext}`). The op stores a plain URL (FR-CANVAS-010), so the URL must load for every member, guest and later viewer without a signed-URL refresh path. The bucket needs CORS for `GET` and `PUT` from `CLIENT_ORIGIN`, and images load with `crossOrigin="anonymous"`, or export and thumbnails would taint their canvas |
-| D13-3 | **Dev and test storage is s3rver.** It speaks the S3 API the real client uses, but it **does not verify presigned signatures**. The tests therefore prove our validation, not S3's signature enforcement. Production points `S3_ENDPOINT` at real S3 or MinIO                                                                                                                                       |
-| D13-4 | **Thumbnails are PUT through the server**, not presigned. A 640×400 JPEG at 0.7 is about 30 KB; the body is capped at 512 KB and checked for JPEG magic bytes. D-12 exists to keep large uploads off the event loop, and this is not one. An empty board **clears** its thumbnail, so the dashboard shows the static placeholder graphic                                                            |
-| D13-5 | **Image placement**: at the drop point for drag-and-drop; at the viewport centre for paste and the toolbar. Natural size, scaled down to fit 60% of the viewport at the current zoom                                                                                                                                                                                                                |
-| D13-6 | **Export scopes**: whole board, selection and visible area, as the plan and FLOWS §11 list. The PRD names only the first two. SVG appears as a disabled `[P2]` option, as the FLOWS §11 drawing shows                                                                                                                                                                                               |
+| #     | Decision                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D13-1 | **`POST /uploads/presign` also takes `boardId`.** TRD §4.4's body is `{filename, contentType, size}`. Without a board, the server cannot authorize the upload (R-SEC-001 on every request). With one, it requires edit rights on that board and keys the object under `boards/{boardId}/`. `confirm` re-checks the key prefix against the caller's rights                                                             |
+| D13-2 | **Objects are public-read under unguessable keys** (`boards/{boardId}/{uuid}.{ext}`). The op stores a plain URL (FR-CANVAS-010), so the URL must load for every member, guest and later viewer without a signed-URL refresh path. The bucket needs CORS for `GET` and `PUT` from `CLIENT_ORIGIN`, and images load with `crossOrigin="anonymous"`, or export and thumbnails would taint their canvas                   |
+| D13-3 | _(Superseded in Phase 13: s3rver was not adopted; dev and e2e use the in-process `apps/server/src/dev/fakeS3.ts`, which does verify SigV4 signatures.)_ **Dev and test storage is s3rver.** It speaks the S3 API the real client uses, but it **does not verify presigned signatures**. The tests therefore prove our validation, not S3's signature enforcement. Production points `S3_ENDPOINT` at real S3 or MinIO |
+| D13-4 | **Thumbnails are PUT through the server**, not presigned. A 640×400 JPEG at 0.7 is about 30 KB; the body is capped at 512 KB and checked for JPEG magic bytes. D-12 exists to keep large uploads off the event loop, and this is not one. An empty board **clears** its thumbnail, so the dashboard shows the static placeholder graphic                                                                              |
+| D13-5 | **Image placement**: at the drop point for drag-and-drop; at the viewport centre for paste and the toolbar. Natural size, scaled down to fit 60% of the viewport at the current zoom                                                                                                                                                                                                                                  |
+| D13-6 | **Export scopes**: whole board, selection and visible area, as the plan and FLOWS §11 list. The PRD names only the first two. SVG appears as a disabled `[P2]` option, as the FLOWS §11 drawing shows                                                                                                                                                                                                                 |
 
 #### Slices
 
@@ -445,7 +450,7 @@ Plan written before any code, after a survey of the branch at `3c36f6c`.
 - **Landing copy.** PRD §8 fixes only the CTA labels ("Log in", "Sign up free", "Try it now"). The headline, sub-copy and feature lines are written to the product description in PRD §1 and kept in `strings.ts`. Each is a one-line change.
 - **D-19.** FLOWS labels the demo edge both "Try it now" (§1.2 table) and "Try a demo board" (§1.1 map). The table wins: it is the authoritative edge list.
 - **Demo mode** is `/demo`: the real board UI on a local-only document, with no account, no sync and nothing persisted. A bar offers "Sign up free". No server writes, so nothing needs authorizing.
-- **`braces` advisory.** Build-time only: tailwindcss → chokidar watches files during development and nothing ships to the browser. With no fix to take, CI gets a narrowly scoped, dated exception (`pnpm audit --ignore <GHSA>`) recorded as defect **D-20**, rather than a disabled gate. It is to be removed when a patch ships.
+- **`braces` advisory.** Build-time only: tailwindcss → chokidar watches files during development and nothing ships to the browser. With no fix to take, CI gets a narrowly scoped exception (`pnpm.auditConfig.ignoreGhsas` naming that one advisory id) recorded as defect **D-20**, rather than a disabled gate. It is to be removed when a patch ships.
 - **What this container cannot do.** Push to Cloudflare, run Docker images (no daemon), or drive Safari and real devices. Those steps are written as config plus a runbook and marked **manual** in the outcome, not claimed as done.
 
 #### Slices
@@ -540,11 +545,11 @@ All seven slices landed, and P15-1 to P15-9 are closed. New defect-register entr
 
 ## 6. Decisions needed before work starts (per the ambiguity rule, `A-80`)
 
-| #   | Question                                                                                                                                                                                             | Blocks   |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| A   | **S-01 landing page** has no task in any phase list (only the `App.tsx:67` comment says "Phase 15"). Confirm it is in scope and which phase owns it. **Resolved:** P1 in PRD §6, built in Phase 15a. | Phase 15 |
-| B   | **Image upload**: code comments say Phase 12, plan tasks say Phase 13. Confirm Phase 13.                                                                                                             | 13b/13c  |
-| C   | **`Q-2` object cap** is due at Phase 11. Proceed on the interim position (soft 10k, hard 50k)?                                                                                                       | 11d      |
-| D   | **`Q-1` guest persistence** was due at Phase 10 and is still unratified. Proceed on the interim (rows kept, swept after 24 h idle)?                                                                  | 12b, 12f |
-| E   | **S3 in dev**: `docker-compose.yml` has Postgres + Redis only. Add MinIO for local uploads?                                                                                                          | 13b      |
-| F   | `Q-3`/`Q-4`/`Q-5` — due Phase 14; interim positions (chrome-only dark mode, fixed 30 days, Inter everywhere) apply unless overruled.                                                                 | Phase 14 |
+| #   | Question                                                                                                                                                                                                                              | Blocks   |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| A   | **S-01 landing page** has no task in any phase list (only the `App.tsx:67` comment says "Phase 15"). Confirm it is in scope and which phase owns it. **Resolved:** P1 in PRD §6, built in Phase 15a.                                  | Phase 15 |
+| B   | **Image upload**: code comments say Phase 12, plan tasks say Phase 13. Confirm Phase 13. **Resolved:** Phase 13 (13b/13c).                                                                                                            | 13b/13c  |
+| C   | **`Q-2` object cap** is due at Phase 11. Proceed on the interim position (soft 10k, hard 50k)? **Resolved:** soft 10k warning, hard 50k cap enforced in `OpService`.                                                                  | 11d      |
+| D   | **`Q-1` guest persistence** was due at Phase 10 and is still unratified. Proceed on the interim (rows kept, swept after 24 h idle)? **Resolved:** guest rows kept, swept by the `guest_sweep` maintenance job after 24 h idle.        | 12b, 12f |
+| E   | **S3 in dev**: `docker-compose.yml` has Postgres + Redis only. Add MinIO for local uploads? **Resolved:** no MinIO; the in-process fake S3 (`dev/fakeS3.ts`) starts with `pnpm dev`.                                                  | 13b      |
+| F   | `Q-3`/`Q-4`/`Q-5` — due Phase 14; interim positions (chrome-only dark mode, fixed 30 days, Inter everywhere) apply unless overruled. **Resolved:** Q-3 dark mode is FR-SET-002 (P2, not built); 30-day fixed trash; Inter everywhere. | Phase 14 |

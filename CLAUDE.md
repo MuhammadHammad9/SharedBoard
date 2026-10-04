@@ -4,12 +4,12 @@
 >
 > This document tells you **how to work here**. [`RULES.md`](./RULES.md) tells you **what you must not do**. When this file explains a constraint, it cites the rule ID so you can read the binding version.
 
-| Field      | Value                                                                                                                                                                                                                                                                                                               |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Product    | **CoBoard** — real-time collaborative whiteboard                                                                                                                                                                                                                                                                    |
-| Repository | `MuhammadHammad9/SharedBoard`                                                                                                                                                                                                                                                                                       |
+| Field      | Value                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Product    | **CoBoard** — real-time collaborative whiteboard                                                                                                                                                                                                                                                                                                                                                                        |
+| Repository | `MuhammadHammad9/SharedBoard`                                                                                                                                                                                                                                                                                                                                                                                           |
 | Status     | All 15 phases complete. Every P0/P1 feature is built, polished and tested. Phase 15 measured every PRD §7.1 budget on the production build and gated them in CI, prerendered S-01, and added observability (`/metrics`, request ids, eight alerts), a load test, a memory soak, deployment config, tested backups and `docs/RUNBOOK.md`. Live deploy and real-device checks remain manual. See `docs/REMAINING-WORK.md` |
-| Stack      | React 18.3 · TypeScript 5.4 strict · Vite 6 (defect `D-4`) · Zustand 4 · Canvas 2D · Tailwind 3.x · Node 20 · Express 4 · `ws` · PostgreSQL 15 · Prisma 5 · Redis 7                                                                                                                                                 |
+| Stack      | React 18.3 · TypeScript 5.4 strict · Vite 6 (defect `D-4`) · Zustand 4 · Canvas 2D · Tailwind 3.x · Node 20 · Express 4 · `ws` · PostgreSQL 15 · Prisma 5 · Redis 7                                                                                                                                                                                                                                                     |
 
 ---
 
@@ -225,63 +225,73 @@ For v1 a single Node instance is acceptable. Write the Redis pub/sub fan-out pat
 
 ```
 apps/web/src/
-├── main.tsx
+├── main.tsx                         # boot: browser check, session bootstrap, render
 ├── App.tsx                          # router + providers
+├── prerender.tsx                    # build-time S-01 render (apps/web/scripts/prerender.ts)
 ├── routes/
-│   ├── guards.tsx                   # requireAuth, requireBoardAccess
-│   ├── Landing.tsx                  # S-01  — MARKETING zone
+│   ├── guards.tsx                   # RequireAuth, RedirectIfAuthed(+Optimistic), session bootstrap
+│   ├── RequireBoardAccess.tsx       # FLOWS §2.3 requireBoardAccess
+│   ├── Landing.tsx                  # S-01  — MARKETING zone (prerendered)
 │   ├── Login.tsx  Signup.tsx  ForgotPassword.tsx  ResetPassword.tsx
 │   ├── OAuthCallback.tsx            # S-02..S-06 — AUTH zone
 │   ├── Dashboard.tsx  Trash.tsx  Settings.tsx   # S-07/08/16 — PRODUCT CHROME
 │   ├── GuestEntry.tsx               # S-11 — GUEST zone
-│   └── Board.tsx                    # S-10 shell — BOARD CHROME
+│   └── Board.tsx                    # S-10 shell (and /demo) — BOARD CHROME
 ├── features/
-│   ├── auth/         hooks, api, forms
-│   ├── boards/       BoardCard, BoardGrid, useBoards, api
+│   ├── auth/         api, guest identity
+│   ├── boards/       BoardCard, BoardGrid, useBoards, useBoardLoad, api
 │   ├── canvas/                      # ◄── CANVAS zone: no design skills
-│   │   ├── Canvas.tsx               # mounts the 4 layers, wires events
+│   │   ├── Canvas.tsx               # mounts the layers, wires events
+│   │   ├── TextOverlay.tsx  imageCache.ts  thumbnail.ts
 │   │   ├── renderer/
 │   │   │   ├── Renderer.ts          # THE single rAF loop
-│   │   │   ├── drawObjects.ts  drawInteraction.ts  drawOverlay.ts
-│   │   │   └── shapes/              stroke.ts rect.ts ellipse.ts …
+│   │   │   ├── drawObjects.ts  drawInteraction.ts  drawOverlay.ts  firstPaint.ts
+│   │   │   └── shapes/              stroke.ts rect.ts ellipse.ts textual.ts image.ts …
 │   │   ├── interaction/
 │   │   │   ├── machine.ts           # the FLOWS §15.1 state machine
-│   │   │   ├── usePointer.ts  useKeyboard.ts  useWheel.ts
-│   │   │   └── handlers/            draw.ts select.ts drag.ts resize.ts rotate.ts
-│   │   ├── geometry/                hitTest.ts bounds.ts transform.ts simplify.ts
-│   │   └── history/                 HistoryManager.ts inverseOps.ts
+│   │   │   ├── usePointer.ts  useKeyboard.ts  useWheel.ts  touchGestures.ts
+│   │   │   └── handlers/            draw.ts select.ts transform.ts erase.ts create.ts textEdit.ts …
+│   │   ├── geometry/                hitTest.ts bounds.ts culling.ts transformSelection.ts zIndex.ts …
+│   │   └── history/                 HistoryManager.ts inverseOps.ts apply.ts applyRemote.ts
 │   ├── sync/
 │   │   ├── SocketClient.ts          # connect, heartbeat, backoff
 │   │   ├── SyncEngine.ts            # ordering, gap fill, apply
-│   │   ├── Outbox.ts                # queue, persist, flush
-│   │   └── protocol.ts              # re-exported from shared
-│   ├── presence/     usePresence.ts  CursorLayer.ts  AvatarStack.tsx
-│   └── sharing/      ShareModal.tsx  useMembers.ts
-├── components/       ui/ (Button, Modal, Toast, Input, Dropdown, Tooltip…)
-├── stores/           boardStore.ts  authStore.ts  uiStore.ts
-├── lib/              api.ts  cn.ts  throttle.ts  colours.ts  strings.ts
-└── types/            branded.ts
+│   │   ├── Outbox.ts  persistence.ts  # queue, persist, flush
+│   │   └── session.ts               # one board session: snapshot → socket → outbox
+│   ├── presence/     usePresence.ts presenceStore.ts drawPresence.ts AvatarStack.tsx send.ts
+│   ├── sharing/      ShareModal.tsx useSharing.ts useGuestConversion.ts
+│   ├── uploads/      uploadEngine.ts UploadPlaceholders.tsx
+│   └── export/       ExportModal.tsx renderToCanvas.ts
+├── components/       ui/ (Button, Modal, Toast, Input, Dropdown, Tooltip…) board/ dashboard/ states/ landing/
+├── stores/           boardStore.ts  authStore.ts
+└── lib/              api.ts  strings.ts  throttle.ts  breakpoints.ts  analytics.ts  errorReporting.ts …
 
 packages/shared/src/
 ├── schemas/          object.ts  op.ts  board.ts  auth.ts   # Zod
+├── types/branded.ts                                        # CanvasPoint / ScreenPoint
 ├── protocol.ts                                             # socket messages
-├── geometry.ts                                             # pure helpers
+├── geometry.ts                                             # pure helpers, RDP simplification
 └── constants.ts                                            # palettes, limits
 
 apps/server/src/
 ├── index.ts
 ├── http/
 │   ├── app.ts
-│   ├── routes/       auth.ts boards.ts members.ts share.ts uploads.ts
-│   └── middleware/   auth.ts rateLimit.ts errorHandler.ts validate.ts
+│   ├── routes/       auth.ts boards.ts members.ts share.ts uploads.ts ws.ts metrics.ts clientErrors.ts
+│   └── middleware/   auth.ts rateLimit.ts errorHandler.ts validate.ts requestContext.ts
 ├── ws/
 │   ├── gateway.ts    # upgrade handling, auth, socket lifecycle
-│   ├── RoomManager.ts  Session.ts
+│   ├── RoomManager.ts  Session.ts  fanout.ts  live.ts
 │   └── handlers/     op.ts presence.ts join.ts
-├── services/         AuthService.ts BoardService.ts OpService.ts
-│                     PermissionService.ts SnapshotService.ts PresenceService.ts
-├── db/               prisma client, migrations
-└── lib/              redis.ts s3.ts logger.ts jwt.ts
+├── services/         AuthService.ts BoardService.ts OpService.ts MemberService.ts ShareService.ts
+│                     PermissionService.ts SnapshotService.ts PresenceService.ts ThumbnailService.ts ImageCollector.ts
+├── jobs/             maintenance.ts                        # purge, sweeps, image GC
+├── dev/              fakeS3.ts                             # in-memory S3 for dev and e2e
+└── lib/              redis.ts s3.ts logger.ts jwt.ts mailer.ts metrics.ts prisma.ts env.ts …
+
+apps/server/prisma/   schema.prisma, migrations/, seed.ts
+infra/                nginx/, docker-compose.prod.yml, prometheus/, env/*.example
+scripts/              backup/restore/test-restore, deploy, e2e, lighthouse, load-test, bundle checks
 ```
 
 ## 4.1 Module ownership

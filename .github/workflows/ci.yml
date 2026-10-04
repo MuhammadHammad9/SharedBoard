@@ -31,6 +31,10 @@ concurrency:
 # DO ship a preinstalled Chromium use the opt-in PLAYWRIGHT_CHROMIUM_EXECUTABLE
 # override in playwright.config.ts instead.
 
+# Least privilege: CI only reads the repository.
+permissions:
+  contents: read
+
 jobs:
   quality:
     name: Types, lint, tests
@@ -328,7 +332,9 @@ jobs:
 
       - name: Lighthouse budgets
         run: |
-          export CHROME_PATH=$(node -e "console.log(require('playwright').chromium.executablePath())")
+          # @playwright/test is the direct dependency; plain `playwright` is not
+          # hoisted by pnpm and would only resolve on a machine with a global copy.
+          export CHROME_PATH=$(node -e "console.log(require('@playwright/test').chromium.executablePath())")
           pnpm lighthouse
 
       - name: Board first paint (500 / 5,000 objects) and the prerendered landing

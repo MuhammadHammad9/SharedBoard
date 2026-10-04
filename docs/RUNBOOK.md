@@ -27,7 +27,8 @@ On a Linux host with Docker Engine and the compose plugin:
 
 ```bash
 sudo mkdir -p /opt/coboard && sudo chown "$USER" /opt/coboard && cd /opt/coboard
-# infra/ and scripts/deploy.sh arrive with each deploy (deploy.yml "Sync deploy files").
+# infra/, scripts/deploy.sh and the backup scripts (backup.sh, restore.sh, lib/)
+# arrive with each deploy (deploy.yml "Sync deploy files").
 # For the first run, copy them from a checkout.
 cp infra/env/server.env.example   infra/env/server.env     # fill in every value
 cp infra/env/postgres.env.example infra/env/postgres.env   # same password as in DATABASE_URL
@@ -48,7 +49,7 @@ GitHub repository secrets (environment `production`): `DEPLOY_HOST`, `DEPLOY_USE
 **Normal path.** Merge to `main`. Branch protection requires `ci.yml` to pass first. `deploy.yml` then:
 
 1. builds `coboard-server`, `coboard-migrate` and `coboard-web`, and pushes `ghcr.io/<owner>/<image>:<sha>` (plus `:latest`);
-2. syncs `infra/` and `scripts/deploy.sh` to the host;
+2. syncs `infra/`, `scripts/deploy.sh` and the backup scripts to the host, extracting with `tar --overwrite` so the bind-mounted `lb.conf` and Prometheus files change in place;
 3. `deploy.sh pull`;
 4. `deploy.sh migrate` runs the release command `prisma migrate deploy` **once**, before any instance runs new code;
 5. `deploy.sh rollout` restarts `server-1`, waits for it to be healthy, then `server-2`, then `web`, then reloads `lb`. On success it appends the tag to `.deploy-history`.
@@ -239,7 +240,7 @@ These steps need accounts or a Docker daemon. None can be done or verified from 
 1. **Build the images for real.** No daemon was available, so the Dockerfiles were validated by reproducing their steps natively, not by `docker build`. The first `deploy.yml` run is the real build. Watch it.
 2. **Provision the host:** Docker, a firewall that allows only 22 and the Cloudflare ranges on 80/443, and §1.
 3. **Cloudflare:**
-   - Proxied DNS record for the app hostname, with SSL mode **Full (strict)**: install a Cloudflare Origin CA certificate and add `listen 8443 ssl` to `lb.conf`, or use a tunnel (`cloudflared`).
+   - Proxied DNS record for the app hostname, with SSL mode **Full (strict)**: install a Cloudflare Origin CA certificate, add a `listen 8443 ssl;` server block with `ssl_certificate`/`ssl_certificate_key` to `lb.conf`, mount the certificate into the `lb` service (e.g. `./secrets/origin-ca:/etc/nginx/certs:ro`) and publish `443:8443` in `docker-compose.prod.yml`. Or use a tunnel (`cloudflared`), which needs none of that.
    - Network → **WebSockets: on**.
    - "Always Use HTTPS" and HSTS. `web.conf` already sends `max-age=31536000; includeSubDomains`; add `preload` only once every subdomain is HTTPS.
    - Generate `cloudflare-realip.conf` and uncomment the real-IP block in `lb.conf`. Without it, `ip_hash` and per-IP rate limits see Cloudflare's IPs.
