@@ -413,9 +413,56 @@ Tests: `socketAnalytics.test.ts`, `opAnalytics.test.ts`, `authAnalytics.test.ts`
 
 **Exit gate.** Every item in the gate above is met. Evidence is the axe, keyboard, responsive and reduced-motion e2e specs, the E-01 to E-22 table, the motion table, and `noInlineCopy.test.ts` for copy.
 
-### Phase 15 — Performance, e2e, deployment, monitoring (M5)
+### Phase 15 — Performance, e2e, deployment, monitoring (M5) · Whole team
 
-**(a)** Profiling at 5k/10k objects, style batching, code splitting, bundle budgets; **(b)** 30-minute memory test and leak fixes; **(c)** complete Playwright `AT-01`–`AT-44`, five must-write tests, Lighthouse CI, p95 input-to-remote instrumentation; **(d)** load test (50 users, 100 ops/s); **(e)** deployment, backups with a tested restore, monitoring for the eight signals, structured logging; **(f)** manual QA checklist and cross-browser stroke check. S-01 landing slots here if §6-A is answered "yes".
+Plan written before any code, after a survey of the branch at `3c36f6c`.
+
+#### What exists
+
+- **Budgets.** Bundle budgets are met and gated in CI: initial JS 125 KB of 250, board chunk 51 KB of 200.
+- **Frame and input metrics.** The stress-board e2e reports frame time and input-to-pixel latency: about 60 fps panning and drawing at 10,000 objects, input p95 about 8 ms.
+- **Acceptance scenarios.** All 28 PRD §11 scenarios (AT-01 … AT-44; the missing numbers are gaps in the PRD's own numbering) have tests, and the five must-write tests from TRD §13.2 exist.
+- **Logging.** A pino logger exists. Client errors carry a correlation id; server requests do not.
+- **Health.** There is a `/health` route, but no `/metrics`.
+- **CI.** Gates 1–7 run. The Lighthouse job (gate 8) is a placeholder.
+
+#### Gaps found in the survey, including leftovers from earlier phases
+
+| #     | Gap                                                                                                                                                                                                                                                                                   |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P15-1 | **S-01 landing page is missing.** It is **P1** in the PRD §6 screen table, and FLOWS §1.2 / §3.1 define its edges. `/` currently redirects to `/login`, and logout lands on `/login` too, where PRD FR-AUTH-007 says "returns to the landing page". This settles open decision **A**. |
+| P15-2 | **"Demo mode" (S-10 from "Try it now") does not exist.** Scratch boards are dev-only.                                                                                                                                                                                                 |
+| P15-3 | **Two PRD §7.1 budgets have no measurement:** board first paint (500 / 5,000 objects) and the local-input-to-remote-render p95.                                                                                                                                                       |
+| P15-4 | **Lighthouse CI is a placeholder.** Landing LCP and dashboard-interactive are unmeasured.                                                                                                                                                                                             |
+| P15-5 | **No memory soak test** (TRD §12.3: 30 minutes, close and reopen 10 times, growth near zero).                                                                                                                                                                                         |
+| P15-6 | **No load test** (PRD §7.2: 50 concurrent users on a board, 100 ops/s sustained).                                                                                                                                                                                                     |
+| P15-7 | **No observability.** No request correlation id from the edge to the logs. Op rejections are not logged with code, board, actor and correlation id. None of the eight TRD §15.4 signals is exported, and there are no alert rules.                                                    |
+| P15-8 | **No deployment, backup or runbook.** No Dockerfiles or proxy config (sticky sessions, WebSocket upgrade), no deploy workflow, no backup or restore, no `docs/RUNBOOK.md`.                                                                                                            |
+| P15-9 | **Phase 14 leftovers.** AT-08 and the thumbnail e2e fail under the full parallel run, though they pass alone. `pnpm audit` gate 6 is red on a `braces` advisory that has no patched release.                                                                                          |
+
+#### Decisions taken (flagged per the ambiguity rule; reversible)
+
+- **Landing copy.** PRD §8 fixes only the CTA labels ("Log in", "Sign up free", "Try it now"). The headline, sub-copy and feature lines are written to the product description in PRD §1 and kept in `strings.ts`. Each is a one-line change.
+- **D-19.** FLOWS labels the demo edge both "Try it now" (§1.2 table) and "Try a demo board" (§1.1 map). The table wins: it is the authoritative edge list.
+- **Demo mode** is `/demo`: the real board UI on a local-only document, with no account, no sync and nothing persisted. A bar offers "Sign up free". No server writes, so nothing needs authorizing.
+- **`braces` advisory.** Build-time only: tailwindcss → chokidar watches files during development and nothing ships to the browser. With no fix to take, CI gets a narrowly scoped, dated exception (`pnpm audit --ignore <GHSA>`) recorded as defect **D-20**, rather than a disabled gate. It is to be removed when a patch ships.
+- **What this container cannot do.** Push to Cloudflare, run Docker images (no daemon), or drive Safari and real devices. Those steps are written as config plus a runbook and marked **manual** in the outcome, not claimed as done.
+
+#### Slices
+
+| PR  | Scope                                                                                                                                                                                                                                                                                                                                                                                            | Covers             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------ |
+| 15a | **S-01 landing and demo mode.** Marketing zone: `gpt-taste` design plan, `design-taste-frontend` Design Read 7/6/4, `high-end-visual-design` archetypes, no GSAP. The hero runs a live loop of two labelled cursors drawing, in CSS/SVG with no canvas engine in the landing chunk. Authed visitors redirect to S-07. Logout goes to S-01. `/demo` is a local board. Axe and e2e cover all of it | P15-1, P15-2, D-19 |
+| 15b | **Measured budgets.** First-paint perf marks, asserted in e2e at 500 and 5,000 objects. A p95 local-input-to-remote-render measurement (two contexts, timestamps on each side) asserted in e2e. Lighthouse CI on landing and dashboard as a real gate 8                                                                                                                                          | P15-3, P15-4       |
+| 15c | **Memory.** A Playwright soak over CDP: heap snapshot, use the board, close and reopen 10 times, force GC, compare. Five minutes in CI, 30 with `SOAK_MINUTES=30`. Any leak found gets fixed                                                                                                                                                                                                     | P15-5              |
+| 15d | **Load.** `scripts/load-test.ts`: 50 `ws` clients on one board, 100 ops/s for 60 s. It reports ack p95, nacks and dropped ops, and checks the op log has every acked op exactly once                                                                                                                                                                                                             | P15-6              |
+| 15e | **Observability.** A request id middleware (accept or mint `x-request-id`, echo it, put it in every log line), socket session ids in logs, op-rejection logs with code, board, actor and correlation id, a `/metrics` endpoint covering the eight TRD §15.4 signals, and Prometheus alert rules at the TRD thresholds                                                                            | P15-7              |
+| 15f | **Deploy and recover.** Dockerfiles (server; web served by nginx), `infra/nginx.conf` with `ip_hash` and WebSocket upgrade, `infra/docker-compose.prod.yml`, `deploy.yml` (images built in CI; the deploy step is gated on secrets), `scripts/backup.sh` / `restore.sh` with a restore test run against a scratch database, and `docs/RUNBOOK.md`                                                | P15-8              |
+| 15g | **Close-out.** Root-cause the AT-08 and thumbnail flakes, add the D-20 audit exception, automate what can be automated from the TRD §13.3 manual QA list, add Playwright Firefox/WebKit projects for CI, and update the status in docs                                                                                                                                                           | P15-9              |
+
+**Ownership heads-up (`R-ARCH-006`):** 15b instruments `features/sync` and the renderer (perf marks only); 15c may touch any module a leak is found in.
+
+Exit gate (plan §Phase 15): every budget measured and CI-enforced, every AT scenario passing, a tested backup restore, monitoring and alert rules for the eight signals. Deployment config is complete; the live deploy and real-device checks are listed as manual steps.
 
 ## 5. Sequencing and critical path
 
@@ -435,11 +482,11 @@ Tests: `socketAnalytics.test.ts`, `opAnalytics.test.ts`, `authAnalytics.test.ts`
 
 ## 6. Decisions needed before work starts (per the ambiguity rule, `A-80`)
 
-| #   | Question                                                                                                                                             | Blocks   |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| A   | **S-01 landing page** has no task in any phase list (only the `App.tsx:67` comment says "Phase 15"). Confirm it is in scope and which phase owns it. | Phase 15 |
-| B   | **Image upload**: code comments say Phase 12, plan tasks say Phase 13. Confirm Phase 13.                                                             | 13b/13c  |
-| C   | **`Q-2` object cap** is due at Phase 11. Proceed on the interim position (soft 10k, hard 50k)?                                                       | 11d      |
-| D   | **`Q-1` guest persistence** was due at Phase 10 and is still unratified. Proceed on the interim (rows kept, swept after 24 h idle)?                  | 12b, 12f |
-| E   | **S3 in dev**: `docker-compose.yml` has Postgres + Redis only. Add MinIO for local uploads?                                                          | 13b      |
-| F   | `Q-3`/`Q-4`/`Q-5` — due Phase 14; interim positions (chrome-only dark mode, fixed 30 days, Inter everywhere) apply unless overruled.                 | Phase 14 |
+| #   | Question                                                                                                                                                                                             | Blocks   |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| A   | **S-01 landing page** has no task in any phase list (only the `App.tsx:67` comment says "Phase 15"). Confirm it is in scope and which phase owns it. **Resolved:** P1 in PRD §6, built in Phase 15a. | Phase 15 |
+| B   | **Image upload**: code comments say Phase 12, plan tasks say Phase 13. Confirm Phase 13.                                                                                                             | 13b/13c  |
+| C   | **`Q-2` object cap** is due at Phase 11. Proceed on the interim position (soft 10k, hard 50k)?                                                                                                       | 11d      |
+| D   | **`Q-1` guest persistence** was due at Phase 10 and is still unratified. Proceed on the interim (rows kept, swept after 24 h idle)?                                                                  | 12b, 12f |
+| E   | **S3 in dev**: `docker-compose.yml` has Postgres + Redis only. Add MinIO for local uploads?                                                                                                          | 13b      |
+| F   | `Q-3`/`Q-4`/`Q-5` — due Phase 14; interim positions (chrome-only dark mode, fixed 30 days, Inter everywhere) apply unless overruled.                                                                 | Phase 14 |
