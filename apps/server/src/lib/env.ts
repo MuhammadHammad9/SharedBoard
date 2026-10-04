@@ -32,6 +32,9 @@ const EnvSchema = z.object({
 
   // FR-AUTH-004. Absent in development; the Mailer falls back to logging.
   SMTP_URL: z.string().optional(),
+  // The From header for transactional email. Set it to an address your SMTP
+  // provider is authorized to send for (SPF/DKIM), or mail lands in spam.
+  MAIL_FROM: z.string().min(3).default('CoBoard <no-reply@coboard.local>'),
 
   // FR-CANVAS-010 / FR-BOARD-003 — S3-compatible object storage (TRD §4.4).
   // Absent → uploads answer 503 rather than issuing a URL to nowhere.
