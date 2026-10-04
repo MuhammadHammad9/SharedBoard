@@ -15,6 +15,14 @@ import ForgotPassword from './routes/ForgotPassword.js'
 import ResetPassword from './routes/ResetPassword.js'
 import OAuthCallback from './routes/OAuthCallback.js'
 import Settings from './routes/Settings.js'
+/*
+ * S-01 is STATIC, unlike the board. It is prerendered into dist/index.html
+ * (scripts/prerender.ts) for the LCP budget, and React's first render must be
+ * the same markup — a lazy route would first render an empty Suspense
+ * fallback and wipe the prerendered page until its chunk arrived. It costs
+ * ~4 KB gzipped and imports no canvas code.
+ */
+import Landing from './routes/Landing.js'
 import { loading } from './lib/strings.js'
 
 /**
@@ -30,12 +38,10 @@ import { loading } from './lib/strings.js'
  * transition — None", and it is right: a fade between pages makes an app that
  * navigates instantly feel like one that does not.
  *
- * S-01 Landing is lazy too: the marketing page must not carry app code.
+ * S-01 Landing is the exception: static, because it is prerendered.
  */
 
 const Board = lazy(() => import('./routes/Board.js'))
-// S-01 — its own chunk, so the marketing page carries no app code (TRD §12.2).
-const Landing = lazy(() => import('./routes/Landing.js'))
 const GuestEntry = lazy(() => import('./routes/GuestEntry.js'))
 
 /*
@@ -45,7 +51,20 @@ const GuestEntry = lazy(() => import('./routes/GuestEntry.js'))
  * because they share every component they use, so the second one is free once
  * the first has loaded.
  */
-const Dashboard = lazy(() => import('./routes/Dashboard.js'))
+const loadDashboard = () => import('./routes/Dashboard.js')
+const Dashboard = lazy(loadDashboard)
+/*
+ * PRD §7.1 "Dashboard interactive ≤ 2.0 s": on a direct load of the dashboard
+ * or Trash, start fetching their chunk NOW, in parallel with the silent
+ * refresh, instead of after `RequireAuth` resolves. `lazy()` then finds the
+ * module already in flight. Measured: one round trip off a slow-4G load.
+ */
+if (
+  typeof window !== 'undefined' &&
+  /^\/(dashboard|trash)\b/.test(window.location.pathname)
+) {
+  void loadDashboard()
+}
 const Trash = lazy(() => import('./routes/Trash.js'))
 
 /**
@@ -76,11 +95,7 @@ export default function App() {
               path="/"
               element={
                 <RedirectIfAuthedOptimistic>
-                  {/* No spinner fallback: a blank frame for one chunk fetch
-                      beats a spinner flash on the page whose LCP is budgeted. */}
-                  <Suspense fallback={null}>
-                    <Landing />
-                  </Suspense>
+                  <Landing />
                 </RedirectIfAuthedOptimistic>
               }
             />

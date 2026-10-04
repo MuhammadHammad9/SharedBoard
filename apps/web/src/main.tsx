@@ -7,6 +7,7 @@ import { installSubmitShortcut } from './lib/submitShortcut.js'
 import { missingBrowserFeatures } from './lib/browserSupport.js'
 import { FullScreenState } from './components/ui/FullScreenState.js'
 import { errors } from './lib/strings.js'
+import { startSessionBootstrap } from './routes/guards.js'
 import './index.css'
 
 // Errors outside render (handlers, timers, promises) are reported too.
@@ -19,6 +20,10 @@ if (!container) throw new Error('Root element #root not found')
 
 // PRD §7.6: a browser missing what the board needs gets one honest sentence.
 const supported = missingBrowserFeatures().length === 0
+
+// The silent refresh starts now, in parallel with the route's chunks, rather
+// than after the first render (PRD §7.1 dashboard budget; see guards.tsx).
+if (supported) startSessionBootstrap()
 
 createRoot(container).render(
   <StrictMode>

@@ -251,14 +251,87 @@ jobs:
           if-no-files-found: ignore
 
   lighthouse:
-    name: Lighthouse
+    name: Performance budgets (Lighthouse + first paint)
     runs-on: ubuntu-latest
-    # Gate 8 — advisory. TRD §14.3.
-    continue-on-error: true
+    # Gate 8 — TRD §14.3 calls it advisory; the Phase 15 exit gate wants
+    # every budget CI-enforced. Resolved like gate 7: blocking on main,
+    # advisory on pull requests (shared runners are noisy).
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: coboard
+          POSTGRES_PASSWORD: coboard
+          POSTGRES_DB: coboard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coboard -d coboard"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://coboard:coboard@localhost:5432/coboard
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci-access-secret-not-used-anywhere-real
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-used-anywhere-real
+      CLIENT_ORIGIN: http://localhost:4173
+      NODE_ENV: development
+
     steps:
       - uses: actions/checkout@v4
-      - name: Placeholder
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @coboard/server exec prisma generate
+      - run: pnpm --filter @coboard/server exec prisma migrate deploy
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+        timeout-minutes: 10
+
+      # The PRODUCTION build, prerender included, served by `vite preview`
+      # with the same one-origin proxy the dev server has.
+      - name: Build web
+        run: pnpm --filter @coboard/web build
+
+      - name: Start API and preview
         run: |
-          echo "Lighthouse CI is advisory and is wired in Phase 15,"
-          echo "when the landing page and dashboard exist to measure."
-          echo "Budgets: landing LCP <= 1.5s on 4G, dashboard interactive <= 2.0s."
+          pnpm --filter @coboard/server dev > api.log 2>&1 &
+          pnpm --filter @coboard/web exec vite preview > preview.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/health >/dev/null && curl -sf http://localhost:4173 >/dev/null && exit 0
+            sleep 1
+          done
+          echo "servers did not come up"; exit 1
+
+      - name: Lighthouse budgets
+        run: |
+          export CHROME_PATH=$(node -e "console.log(require('playwright').chromium.executablePath())")
+          pnpm lighthouse
+
+      - name: Board first paint (500 / 5,000 objects) and the prerendered landing
+        run: pnpm exec playwright test tests/e2e/budgets.spec.ts -g "first paint|prerendered"
+        env:
+          E2E_NO_SERVER: '1'
+          E2E_BASE_URL: http://localhost:4173
+
+      - name: Server logs
+        if: failure()
+        run: tail -n 200 api.log preview.log

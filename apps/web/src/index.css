@@ -548,7 +548,9 @@
     transition-delay: calc(var(--i, 0) * 70ms);
   }
   @starting-style {
-    [data-rise] {
+    /* Not when prerendered: the page is already on screen, and replaying the
+       rise when the SPA takes over would read as a flicker. */
+    #root:not([data-prerendered]) [data-rise] {
       opacity: 0;
       translate: 0 12px;
     }

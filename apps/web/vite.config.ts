@@ -79,6 +79,26 @@ export default defineConfig({
       },
     },
   },
+  /*
+   * `vite preview` serves the PRODUCTION build with the same one-origin proxy,
+   * so the PRD §7.1 budgets (tests/e2e/budgets.spec.ts, Lighthouse) are
+   * measured on what ships rather than on the dev server's unbundled modules.
+   */
+  preview: {
+    port: 4173,
+    strictPort: true,
+    proxy: {
+      '/api': {
+        target: process.env.API_ORIGIN ?? 'http://localhost:3000',
+        changeOrigin: false,
+      },
+      '/ws': {
+        target: process.env.API_ORIGIN ?? 'http://localhost:3000',
+        changeOrigin: false,
+        ws: true,
+      },
+    },
+  },
   build: {
     outDir: 'dist',
     sourcemap: true,

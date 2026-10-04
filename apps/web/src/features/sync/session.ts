@@ -15,6 +15,7 @@ import { presenceStore } from '../presence/presenceStore.js'
 import { handlePresenceMessage } from '../presence/usePresence.js'
 import { setPresenceEmitter } from '../presence/bus.js'
 import { setSyncProbe } from './probe.js'
+import { armFirstPaint } from '../canvas/renderer/firstPaint.js'
 
 /**
  * The board session — FLOWS §2.3 STEP 5, the whole of it in one place.
@@ -193,6 +194,8 @@ export class BoardSession {
     if (this.disposed) throw new Error('session disposed during load')
 
     boardStore.getState().loadObjects(state.objects)
+    // PRD §7.1 board first paint: measured on the next layer-1 frame.
+    armFirstPaint()
     /*
      * A fresh document means a fresh stack — R-UNDO-006. Carrying entries
      * across a load would leave undo holding inverses naming objects this
