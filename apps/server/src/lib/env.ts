@@ -51,6 +51,14 @@ const EnvSchema = z.object({
    * for free. 16 characters minimum, like the JWT secrets.
    */
   METRICS_TOKEN: z.string().min(16).optional(),
+
+  /*
+   * R-SEC-013: registrations per IP per 15 minutes. 10 is the rule. The e2e
+   * suite registers an account per spec file from one address and would
+   * exhaust it mid-run, so its servers raise this — never production, which
+   * refuses any value above 10 at boot (see loadEnv).
+   */
+  REGISTER_RATE_LIMIT: z.coerce.number().int().positive().default(10),
 })
 
 export type Env = z.infer<typeof EnvSchema>
@@ -68,6 +76,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     const missing = parsed.error.issues.map(i => i.path.join('.')).join(', ')
     throw new Error(
       `Invalid environment. Check these variables against .env.example: ${missing}`,
+    )
+  }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.REGISTER_RATE_LIMIT > 10) {
+    throw new Error(
+      'REGISTER_RATE_LIMIT may not exceed 10 in production (R-SEC-013); ' +
+        'raised limits exist for the e2e suite only.',
     )
   }
   if (parsed.data.JWT_ACCESS_SECRET === parsed.data.JWT_REFRESH_SECRET) {

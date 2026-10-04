@@ -464,6 +464,64 @@ Plan written before any code, after a survey of the branch at `3c36f6c`.
 
 Exit gate (plan §Phase 15): every budget measured and CI-enforced, every AT scenario passing, a tested backup restore, monitoring and alert rules for the eight signals. Deployment config is complete; the live deploy and real-device checks are listed as manual steps.
 
+#### Phase 15 outcome
+
+All seven slices landed, and P15-1 to P15-9 are closed. New defect-register entries: **D-19** (the demo CTA label), **D-20** (a scoped audit exception for an unpatchable build-time advisory) and **D-21** (which Lighthouse profile each budget uses).
+
+**PRD §7.1 budgets, measured on the production build and gated in CI.**
+
+| Budget                                | Measured                | Limit             | Where                                                     |
+| ------------------------------------- | ----------------------- | ----------------- | --------------------------------------------------------- |
+| Landing LCP, slow 4G + 4× CPU         | 731 ms (was 2,378)      | 1,500 ms          | `scripts/lighthouse.ts`                                   |
+| Dashboard interactive, desktop        | 540 ms                  | 2,000 ms          | `scripts/lighthouse.ts` (slow 4G ≈ 2.4 s, advisory, D-21) |
+| Board first paint, 500 objects        | 473 ms                  | 1,500 ms          | `budgets.spec.ts`                                         |
+| Board first paint, 5,000 objects      | 651 ms                  | 3,000 ms          | `budgets.spec.ts`                                         |
+| Drawing / panning, 10,000 objects     | ≈ 60 fps                | ≥ 55 fps          | `canvas-performance.spec.ts`                              |
+| Input to local pixel, p95             | ≈ 8 ms                  | 16 ms             | `canvas-performance.spec.ts`                              |
+| Local input to remote render, p95     | 61 ms                   | 250 ms            | `budgets.spec.ts`                                         |
+| Initial JS / board chunk, gzipped     | 132.8 KB / 51.3 KB      | 250 / 200 KB      | `pnpm analyze`                                            |
+| Heap after use; growth over 9 reopens | 30 MB; 0.83 MB          | 300 MB; near zero | `memory.spec.ts`                                          |
+| Load: 50 users, 100 ops/s, 60 s       | ack p95 ≈ 20 ms, 0 lost | —                 | `pnpm load-test`                                          |
+
+**Findings fixed on the way.**
+
+| #    | Finding                                                                                                                                                                 | Fix                                                                                                                                                                    |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I-17 | **Landing LCP 2.4 s.** A client-rendered page paints nothing until ~130 KB of JS arrives                                                                                | S-01 is prerendered at build. CSS is inlined and the app JS loads after first paint, for `/` only. `index.html` serves `/` and `app.html` is the SPA shell             |
+| I-18 | **Every cold load paid an extra round trip.** The silent refresh started in a guard effect, then called `/auth/me` for a user the refresh response already carried      | The refresh starts at boot and uses the user it returns. The dashboard chunk is fetched in parallel                                                                    |
+| I-19 | **Load test: ack p95 587 ms.** Concurrent snapshots of one board piled up, and Prisma took ~650 ms to write 1.7 MB of Json                                              | One snapshot per board at a time, a seq hint, and a parameterized `INSERT … ::jsonb`. p95 is now ~20 ms                                                                |
+| I-20 | **`redis()` attached an `error` listener per call**: one closure leaked per op                                                                                          | Attached once                                                                                                                                                          |
+| I-21 | **`test.use({ reducedMotion })` silently does not apply with the preinstalled Chromium**, so the Phase 14 reduced-motion e2e passed without emulation                   | `page.emulateMedia`. Both specs pass for real                                                                                                                          |
+| I-22 | **The server's `pnpm start` crashed on Node 20**: `@coboard/shared` resolves to `.ts` source                                                                            | A `coboard-dist` export condition, used by `start` and the image                                                                                                       |
+| I-23 | **The full e2e suite exhausted the registration limit** (10 per IP per 15 min) and later specs failed with 429. This was behind most "flakes under load" since Phase 13 | `REGISTER_RATE_LIMIT`: default 10, raised only for the e2e servers, refused above 10 in production. Perf specs run in their own project, after the rest, on one worker |
+| I-24 | **The thumbnail e2e mixed two paths.** Leaving by URL races the new dashboard's fetch against the `pagehide` upload                                                     | Two tests: in-app navigation (live update) and leaving by URL (the upload lands)                                                                                       |
+| I-25 | **The old AT-12 test was an approximation**: sockets dropped, but the server never died                                                                                 | `restart.spec.ts` owns its own API process, SIGKILLs it mid-session, and keeps drawing. All strokes survive exactly once                                               |
+
+**TRD §13.3 manual QA, automated where possible.**
+
+| #   | Item                                  | Automated by                                                                        |
+| --- | ------------------------------------- | ----------------------------------------------------------------------------------- |
+| 1   | Two windows, compare hashes           | `convergence.spec.ts`, `realtime.spec.ts` (AT-02, AT-08)                            |
+| 2   | Offline, 10 strokes, back online      | `convergence.spec.ts` AT-30                                                         |
+| 3   | Slow 3G, local drawing instant        | `convergence.spec.ts` AT-32                                                         |
+| 4   | 10k stress board while panning        | `canvas-performance.spec.ts`                                                        |
+| 5   | Hit testing at 10% and 500%           | `canvas-selection.spec.ts` E-11, `hitTest.test.ts`                                  |
+| 6   | Keyboard-only pass                    | `keyboard.spec.ts`, `dashboard.spec.ts`, axe on every route                         |
+| 7   | Every breakpoint                      | `responsive.spec.ts`                                                                |
+| 8   | Safari / Firefox / Chrome strokes     | `cross-browser.spec.ts` (CI job `cross-browser`; advisory until it has run history) |
+| 9   | Kill and restart the server           | `restart.spec.ts`                                                                   |
+| 10  | Trash a board with three people on it | `sharing.spec.ts` AT-23                                                             |
+
+**Still manual: this container cannot do these.**
+
+- A live deploy behind Cloudflare: `deploy.yml` is ready and skips without secrets. The steps are in RUNBOOK §11.
+- The first real `docker build`.
+- Real-device checks, including the mid-range Android motion check.
+- A visual Safari pass: WebKit runs in CI, but it is not Safari on a Mac.
+- Alert routing (Alertmanager or Grafana).
+- The first quarterly human restore drill: the scripted drill is automated daily.
+- Vitest's moderate advisory GHSA-82fw-gwwq-j7x9 needs a major upgrade to v4. It is non-blocking under R-SEC-019 and left for a dedicated PR.
+
 ## 5. Sequencing and critical path
 
 ```

@@ -236,8 +236,9 @@ test('AT-12 (approximation): every socket drops at once mid-session — nothing 
   browser,
 }) => {
   /*
-   * A real server restart cannot be driven from inside this suite — the
-   * Playwright web server owns the process. What a restart does to CLIENTS is
+   * The real kill-and-restart is tests/e2e/restart.spec.ts (Phase 15g), which
+   * owns its own server process. This one stays because it covers TWO
+   * clients and a random operation mix through the outage. What a restart does to CLIENTS is
    * reproduced exactly: every socket dies with no close frame while ops are
    * in flight, and every client must reconnect, rejoin with sinceSeq, replay
    * its outbox and converge. Server-side durability across a restart rests on

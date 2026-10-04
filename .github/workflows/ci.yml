@@ -164,8 +164,9 @@ jobs:
     # is the one we have actually hit — burns the default 6-hour job timeout
     # and leaves the PR reporting "in progress" all day. 25 minutes is roughly
     # five times the real runtime: generous for a slow runner, decisive about
-    # a stuck one.
-    timeout-minutes: 25
+    # a stuck one. Phase 15 added a 3-minute memory soak and the perf
+    # project, which runs alone after the rest: hence 35.
+    timeout-minutes: 35
 
     # Phase 8's suite drives the real stack: browser → Vite → Express →
     # Postgres. AT-10 asks whether the work is still there after a refresh,
@@ -201,6 +202,9 @@ jobs:
       JWT_REFRESH_SECRET: ci-refresh-secret-not-used-anywhere-real
       CLIENT_ORIGIN: http://localhost:5173
       NODE_ENV: development
+      # One registration per spec file from one address; the production limit
+      # (10 per 15 min, R-SEC-013) is for production. Refused there at boot.
+      REGISTER_RATE_LIMIT: '1000'
       # The in-memory fake S3 Playwright starts (apps/server/src/dev/fakeS3.ts).
       S3_ENDPOINT: http://127.0.0.1:4569
       S3_ACCESS_KEY: ci-fake-s3
@@ -290,6 +294,7 @@ jobs:
       JWT_REFRESH_SECRET: ci-refresh-secret-not-used-anywhere-real
       CLIENT_ORIGIN: http://localhost:4173
       NODE_ENV: development
+      REGISTER_RATE_LIMIT: '1000'
 
     steps:
       - uses: actions/checkout@v4
@@ -335,3 +340,42 @@ jobs:
       - name: Server logs
         if: failure()
         run: tail -n 200 api.log preview.log
+
+  cross-browser:
+    name: Cross-browser stroke rendering
+    runs-on: ubuntu-latest
+    # TRD §13.3: strokes must look identical in Safari, Firefox and Chrome.
+    # Advisory until the Firefox/WebKit tolerance has a few runs of history:
+    # the golden was produced by Chromium, and no Firefox or WebKit build was
+    # available where it was written.
+    continue-on-error: true
+    timeout-minutes: 20
+    env:
+      E2E_CROSS_BROWSER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install browsers
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+        timeout-minutes: 15
+      # Scratch board and a stubbed session: no database needed. The web dev
+      # server alone; the API is not involved.
+      - name: Stroke rendering in Chromium, Firefox and WebKit
+        run: |
+          pnpm --filter @coboard/web dev > web.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:5173 >/dev/null && break; sleep 1; done
+          pnpm exec playwright test tests/e2e/cross-browser.spec.ts --project=chromium --project=firefox --project=webkit
+        env:
+          E2E_NO_SERVER: '1'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cross-browser-diffs
+          path: test-results/
+          if-no-files-found: ignore
+

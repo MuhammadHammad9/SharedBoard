@@ -102,7 +102,7 @@ export function createAuthRouter(): Router {
 
   router.post(
     '/register',
-    limitByIp('register', 10),
+    limitByIp('register', env().REGISTER_RATE_LIMIT),
     validateBody(RegisterSchema),
     ah(async (req, res) => {
       const session = await authService.register({

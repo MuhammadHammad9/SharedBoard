@@ -20,7 +20,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=chromium && playwright test --project=perf --workers=1",
     "analyze": "pnpm --filter @coboard/web build && tsx scripts/check-bundle-size.ts",
     "check:board-chunk": "tsx scripts/check-board-chunk-imports.ts",
     "load-test": "tsx scripts/load-test.ts",
@@ -37,20 +37,27 @@
     "lighthouse": "tsx scripts/lighthouse.ts"
   },
   "pnpm": {
-    "_comment:overrides": "Security overrides. R-SEC-019 blocks the build on high/critical advisories, and R-PREC-001 puts security at Tier 1 — above the TRD §1.1 version pin. GHSA-fx2h-pf6j-xcff (vite server.fs.deny bypass) is patched only in >=6.4.3, so every transitive copy is forced there. js-yaml, undici and brace-expansion are forced to their patched releases for the same reason.",
+    "_comment:overrides": "Security overrides. R-SEC-019 blocks the build on high/critical advisories, and R-PREC-001 puts security at Tier 1 — above the TRD §1.1 version pin. GHSA-fx2h-pf6j-xcff (vite server.fs.deny bypass) is patched only in >=6.4.3, so every transitive copy is forced there. js-yaml, undici and brace-expansion are forced to their patched releases for the same reason. qs is forced to >=6.16.0 for GHSA-x5fp-wj9c-mxmx / GHSA-4mjr-xmp4-gh2g (moderate; a semver-minor bump for express and supertest).",
     "overrides": {
       "vite": "^6.4.3",
       "js-yaml@>=4.0.0 <4.3.2": "^4.3.2",
       "undici@>=8.0.0 <8.10.2": "^8.10.2",
       "brace-expansion@<1.1.20": "^1.1.20",
-      "brace-expansion@>=4.0.0 <5.0.11": "^5.0.11"
+      "brace-expansion@>=4.0.0 <5.0.11": "^5.0.11",
+      "qs": ">=6.16.0"
     },
     "onlyBuiltDependencies": [
       "@prisma/client",
       "@prisma/engines",
       "esbuild",
       "prisma"
-    ]
+    ],
+    "_comment:auditConfig": "D-20 (RULES.md §2.4): GHSA-vfj7-8cjw-p6xm, braces <=3.0.3 with NO patched release, reached only through tailwindcss → chokidar at build time; nothing ships to the browser or the server. Scoped to that one advisory id, not a severity. Remove when a fixed braces is published.",
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-vfj7-8cjw-p6xm"
+      ]
+    }
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

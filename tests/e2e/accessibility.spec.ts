@@ -51,6 +51,19 @@ async function stubApi(page: Page) {
 }
 
 async function expectNoViolations(page: Page) {
+  // Let entrance transitions settle first: axe measures contrast on what is
+  // painted, and a CTA caught mid-fade reads as a contrast failure it is not.
+  // Infinite and scroll-driven animations are excluded — they never end.
+  await page.waitForFunction(() =>
+    document.getAnimations().every(
+      a =>
+        a.playState !== 'running' ||
+        a.effect?.getTiming().iterations === Infinity ||
+        // Scroll-driven (the landing word reveal) follows the scroll
+        // position, not the clock: it is never "finished".
+        !(a.timeline instanceof DocumentTimeline),
+    ),
+  )
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze()
