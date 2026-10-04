@@ -6,7 +6,10 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "coboard-dist": "./dist/index.js",
+      "default": "./src/index.ts"
+    }
   },
   "scripts": {
     "build": "tsc --build",
@@ -14,5 +17,6 @@
   },
   "dependencies": {
     "zod": "^3.23.8"
-  }
+  },
+  "_comment:exports": "Development, Vite, Vitest and tsx consume the TypeScript source (the default). The production server runs compiled JS on Node 20, which cannot load .ts, so apps/server/Dockerfile starts it with `node --conditions=coboard-dist`, resolving this package to its tsc output in dist/. A custom condition name, not `production` or `node`, so no bundler ever picks it up by accident."
 }

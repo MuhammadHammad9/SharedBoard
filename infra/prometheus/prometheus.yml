@@ -1,0 +1,41 @@
+# Prometheus scrape config for infra/docker-compose.prod.yml (--profile monitoring).
+#
+# Scrapes every server instance DIRECTLY on the private network — never via
+# the load balancer, which would hand back a different instance each time and
+# blend their counters (and which refuses /metrics anyway).
+#
+# GET /metrics needs `Authorization: Bearer $METRICS_TOKEN`; the token is the
+# compose secret `metrics_token`, the same value as METRICS_TOKEN in
+# infra/env/server.env. Without a token the endpoint is disabled in production.
+#
+# Validate: promtool check config infra/prometheus/prometheus.yml
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    service: coboard
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+# Wire an Alertmanager (or Grafana alerting) here to route the eight
+# TRD §15.4 alerts to a pager. Until then they are visible at :9090/alerts.
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+scrape_configs:
+  - job_name: coboard-server
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/metrics_token
+    static_configs:
+      # One target per instance; keep in step with lb.conf's upstream when scaling.
+      - targets: ['server-1:3000', 'server-2:3000']
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
