@@ -570,6 +570,8 @@ A full sweep after Phase 15: an independent review of the server, the web client
 
 **Infra and dependencies.** The deploy reloads nginx after each server swap, validates its tag and ships the backup scripts. CI permissions are tightened, and e2e runs both stages through `scripts/e2e.sh`. Lighthouse runs as a pinned CLI on Node 22 because Lighthouse 13 broke Node 20 installs. The metrics label `job` is renamed to `task`, because it collided with Prometheus's own `job` label. `proxy-addr` and `source-map-js` are overridden to patched releases, and vitest is upgraded to 4.1.11 (clearing the critical tinypool advisories). `pnpm audit --audit-level high` exits 0, and `pnpm install` works on Node 20.
 
+**Verified on the final tree.** Typecheck, lint (zero warnings) and format are clean; 1,380 unit and integration tests pass; e2e passes in both stages (173 + 22, perf with one worker); `pnpm analyze` reports 138 KB initial JS / 250 KB and a 53 KB board chunk / 200 KB; Lighthouse gives landing LCP 919 ms / 1,500 ms on slow 4G and dashboard interactive 560 ms / 2,000 ms on desktop (slow-4G advisory 2,507 ms, D-21). The final e2e run also caught one regression introduced during the audit: leaving a board cleared the store before the thumbnail cleanup read it, which sent `DELETE /thumbnail`. It is fixed, with a unit test.
+
 **Still open, by decision.**
 
 - "Replace image" (FLOWS §14.4 only; not in FR-CANVAS-010) is not built.

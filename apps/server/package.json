@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc --build",
-    "start": "node --conditions=coboard-dist dist/index.js",
+    "dev": "node init && tsx watch src/index.ts",
+    "build": "node init && tsc --build",
+    "start": "node init && node --conditions=coboard-dist dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "db:migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "db:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
@@ -14,7 +14,7 @@
     "db:reset": "dotenv -e ../../.env -- prisma migrate reset --force",
     "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "prisma:generate": "dotenv -e ../../.env -- prisma generate",
-    "dev:s3": "tsx src/dev/fakeS3.ts"
+    "dev:s3": "node init && tsx src/dev/fakeS3.ts"
   },
   "prisma": {
     "schema": "prisma/schema.prisma"
