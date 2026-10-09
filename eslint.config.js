@@ -45,6 +45,8 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/coverage/**',
       '**/playwright-report/**',
+      // Local agent worktrees: full checkouts of the repo, linted in their own right.
+      '.claude/**',
       '**/test-results/**',
       '**/*.tsbuildinfo',
       'fixtures/**',

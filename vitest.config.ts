@@ -38,7 +38,7 @@ export default defineConfig({
           environment: 'node',
           setupFiles: ['./vitest.setup.ts'],
           include: ['**/*.{test,spec}.{ts,tsx}'],
-          exclude: ['**/node_modules/**', '**/dist/**', 'tests/e2e/**', INTEGRATION],
+          exclude: ['**/node_modules/**', '**/dist/**', '.claude/**', 'tests/e2e/**', INTEGRATION],
         },
       },
       {
@@ -49,7 +49,7 @@ export default defineConfig({
           environment: 'node',
           setupFiles: ['./vitest.setup.ts'],
           include: [INTEGRATION],
-          exclude: ['**/node_modules/**', '**/dist/**'],
+          exclude: ['**/node_modules/**', '**/dist/**', '.claude/**'],
           pool: 'forks',
           maxWorkers: 1,
         },

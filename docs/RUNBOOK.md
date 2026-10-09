@@ -40,7 +40,7 @@ docker compose -f infra/docker-compose.prod.yml config >/dev/null   # validates,
 
 `server.env` needs `NODE_ENV`-independent values only: `DATABASE_URL` (with `?connection_limit=N`), `REDIS_URL`, two **different** JWT secrets, `CLIENT_ORIGIN` (the public https origin), S3, SMTP, Google OAuth, `METRICS_TOKEN`. The server validates them at boot and names any missing variable (`apps/server/src/lib/env.ts`).
 
-For the CSP, set `CSP_IMG_ORIGINS` (the origin of `S3_PUBLIC_URL`, or of `S3_ENDPOINT`) and `CSP_CONNECT_ORIGINS` (the origin of `S3_ENDPOINT`, plus the read origin) in the shell or a `.env` next to the compose file. Without them, uploaded images are blocked by the browser.
+For the CSP, set `CSP_IMG_ORIGINS` (the origin of `S3_PUBLIC_URL`, or of `S3_ENDPOINT`) and `CSP_CONNECT_ORIGINS` (the origin of `S3_ENDPOINT`, plus the read origin) in the shell or a `.env` next to the compose file. Without them, uploaded images are blocked by the browser. With Google sign-in enabled, also add `https://lh3.googleusercontent.com` to `CSP_IMG_ORIGINS`: Google profile photos are linked from there, and without it they fall back to initials.
 
 GitHub repository secrets (environment `production`): `DEPLOY_HOST`, `DEPLOY_USER` (in the `docker` group), `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (`ssh-keyscan <host>`), and optionally `DEPLOY_PATH` (defaults to `/opt/coboard`). Until all four required secrets exist, `deploy.yml` builds and pushes images and skips the deploy with a notice.
 

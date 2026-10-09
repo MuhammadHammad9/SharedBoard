@@ -29,3 +29,6 @@ playwright-report/
 test-results/
 node_modules/
 apps/server/prisma/migrations/
+
+# Local agent worktrees (full repo checkouts).
+.claude/
