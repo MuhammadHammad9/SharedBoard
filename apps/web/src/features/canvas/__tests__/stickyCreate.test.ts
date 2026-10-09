@@ -95,7 +95,16 @@ describe('sticky note placement — FR-CANVAS-008', () => {
   })
 
   it('the drag preview is built by the same factory as the note', () => {
-    const preview = buildObject('sticky', { x: 0, y: 0, width: 50, height: 60 }, 'x' as never)
-    expect(preview).toMatchObject({ type: 'sticky', width: 50, height: 60, fontSize: 'auto' })
+    const preview = buildObject(
+      'sticky',
+      { x: 0, y: 0, width: 50, height: 60 },
+      'x' as never,
+    )
+    expect(preview).toMatchObject({
+      type: 'sticky',
+      width: 50,
+      height: 60,
+      fontSize: 'auto',
+    })
   })
 })

@@ -123,7 +123,12 @@ export function BoardSettingsModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={boardSettings.title} testId="board-settings">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={boardSettings.title}
+      testId="board-settings"
+    >
       <div className="flex flex-col gap-6">
         <form className="flex flex-col gap-3" onSubmit={onSave}>
           <Input

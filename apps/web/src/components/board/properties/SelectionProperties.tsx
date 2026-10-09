@@ -26,7 +26,12 @@ import { LABELS } from '../../../features/canvas/history/grouping.js'
 import { ColorSwatch } from '../../ui/ColorSwatch.js'
 import { Slider } from '../../ui/Slider.js'
 import { MIXED, MixedValue, commonValue } from './MixedValue.js'
-import { ArrowheadControl, LayerControls, StickyFontControl, toggleClass } from './controls.js'
+import {
+  ArrowheadControl,
+  LayerControls,
+  StickyFontControl,
+  toggleClass,
+} from './controls.js'
 import { arrowheadsOf, withArrowheads } from '../../../features/canvas/arrowheads.js'
 import { boardChrome } from '../../../lib/strings.js'
 
@@ -162,7 +167,9 @@ export function SelectionProperties() {
     'strokeWidth' in o ? (o as { strokeWidth: number }).strokeWidth : undefined,
   )
   const fontSize = commonValue(objects, o => (o.type === 'text' ? o.fontSize : undefined))
-  const fill = commonValue(objects, o => ('fill' in o ? (o as { fill: string }).fill : undefined))
+  const fill = commonValue(objects, o =>
+    'fill' in o ? (o as { fill: string }).fill : undefined,
+  )
   const radius = commonValue(objects, o =>
     o.type === 'rect' || o.type === 'image' ? (o.cornerRadius ?? 0) : undefined,
   )
@@ -170,7 +177,9 @@ export function SelectionProperties() {
   const bold = commonValue(objects, o => (o.type === 'text' ? o.bold : undefined))
   const italic = commonValue(objects, o => (o.type === 'text' ? o.italic : undefined))
   const align = commonValue(objects, o => (o.type === 'text' ? o.textAlign : undefined))
-  const stickyFont = commonValue(objects, o => (o.type === 'sticky' ? o.fontSize : undefined))
+  const stickyFont = commonValue(objects, o =>
+    o.type === 'sticky' ? o.fontSize : undefined,
+  )
 
   return (
     <div className="flex flex-col gap-4" data-testid="selection-properties">
@@ -254,7 +263,11 @@ export function SelectionProperties() {
               <h4 className="text-xs font-medium text-muted">{p.fill}</h4>
               {fill === MIXED && <MixedValue />}
             </div>
-            <div className="grid grid-cols-5 gap-2" role="group" aria-label={p.fillColour}>
+            <div
+              className="grid grid-cols-5 gap-2"
+              role="group"
+              aria-label={p.fillColour}
+            >
               <button
                 type="button"
                 aria-label={p.fillNone}
@@ -271,14 +284,19 @@ export function SelectionProperties() {
                     : 'ring-1 ring-border')
                 }
               >
-                <span className="absolute h-px w-5 rotate-45 bg-danger" aria-hidden="true" />
+                <span
+                  className="absolute h-px w-5 rotate-45 bg-danger"
+                  aria-hidden="true"
+                />
               </button>
               {PEN_COLOURS.slice(0, 9).map(c => (
                 <ColorSwatch
                   key={c}
                   color={c}
                   context={p.fillColour}
-                  selected={typeof fill === 'string' && fill.toLowerCase() === c.toLowerCase()}
+                  selected={
+                    typeof fill === 'string' && fill.toLowerCase() === c.toLowerCase()
+                  }
                   onSelect={next => patch(o => ('fill' in o ? { ...o, fill: next } : o))}
                 />
               ))}
@@ -286,7 +304,8 @@ export function SelectionProperties() {
           </section>
         )}
 
-      {((kind === 'shape' && objects.every(o => o.type === 'rect')) || kind === 'image') && (
+      {((kind === 'shape' && objects.every(o => o.type === 'rect')) ||
+        kind === 'image') && (
         <Slider
           label={p.cornerRadius}
           value={definite(radius) ?? 0}
@@ -368,7 +387,9 @@ export function SelectionProperties() {
       {kind === 'sticky' && (
         <StickyFontControl
           value={definite(stickyFont)}
-          onChange={next => patch(o => (o.type === 'sticky' ? { ...o, fontSize: next } : o))}
+          onChange={next =>
+            patch(o => (o.type === 'sticky' ? { ...o, fontSize: next } : o))
+          }
         />
       )}
 

@@ -222,7 +222,8 @@ export function endCreate(element: Element | null): BoardObject | null {
   state.setInteraction({ type: 'IDLE' })
 
   const box = interaction.box
-  if (interaction.tool === 'sticky') return endStickyCreate(interaction, state.viewport.zoom)
+  if (interaction.tool === 'sticky')
+    return endStickyCreate(interaction, state.viewport.zoom)
 
   const isLinear = interaction.tool === 'line' || interaction.tool === 'arrow'
   // A line may legitimately be zero-height; a rect may not be zero-anything.

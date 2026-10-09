@@ -12,7 +12,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { STICKY_COLOURS, type BoardObject, type ClientOp, type ObjectId } from '@coboard/shared'
+import {
+  STICKY_COLOURS,
+  type BoardObject,
+  type ClientOp,
+  type ObjectId,
+} from '@coboard/shared'
 import { boardStore } from '../../../stores/boardStore.js'
 import { history } from '../../../features/canvas/history/history.js'
 import { PropertiesPanel } from '../PropertiesPanel.js'
@@ -42,9 +47,22 @@ const base = (x = 0) => {
   }
 }
 const rect = (x = 0) =>
-  ({ ...base(x), type: 'rect', stroke: '#18181B', strokeWidth: 2, fill: 'none', cornerRadius: 0 }) as BoardObject
+  ({
+    ...base(x),
+    type: 'rect',
+    stroke: '#18181B',
+    strokeWidth: 2,
+    fill: 'none',
+    cornerRadius: 0,
+  }) as BoardObject
 const ellipse = (x = 0) =>
-  ({ ...base(x), type: 'ellipse', stroke: '#18181B', strokeWidth: 2, fill: 'none' }) as BoardObject
+  ({
+    ...base(x),
+    type: 'ellipse',
+    stroke: '#18181B',
+    strokeWidth: 2,
+    fill: 'none',
+  }) as BoardObject
 const line = (type: 'line' | 'arrow' = 'line') =>
   ({ ...base(), type, stroke: '#18181B', strokeWidth: 2, fill: 'none' }) as BoardObject
 const text = () =>
@@ -182,7 +200,9 @@ describe('sticky — font size auto/manual', () => {
     fireEvent.click(toggle)
     expect(get(s.id)).toMatchObject({ fontSize: 16 })
     expect(lastKeys()).toEqual(['fontSize'])
-    fireEvent.change(screen.getByTestId('sticky-font-slider'), { target: { value: '24' } })
+    fireEvent.change(screen.getByTestId('sticky-font-slider'), {
+      target: { value: '24' },
+    })
     expect(get(s.id)).toMatchObject({ fontSize: 24 })
     fireEvent.click(screen.getByTestId('sticky-font-auto'))
     expect(get(s.id)).toMatchObject({ fontSize: 'auto' })

@@ -54,7 +54,11 @@ describe('remote selection labels — FR-RT-005', () => {
       viewport: { x: 0, y: 0, zoom: 1 },
       now: 0,
       view: view([
-        { box: { x: 100, y: 200, width: 50, height: 40 }, colour: '#3B82F6', name: 'Marcus' },
+        {
+          box: { x: 100, y: 200, width: 50, height: 40 },
+          colour: '#3B82F6',
+          name: 'Marcus',
+        },
       ]),
     })
 
@@ -73,7 +77,11 @@ describe('remote selection labels — FR-RT-005', () => {
       viewport: { x: 30, y: -10, zoom: 2 },
       now: 0,
       view: view([
-        { box: { x: 100, y: 200, width: 50, height: 40 }, colour: '#3B82F6', name: 'Ana' },
+        {
+          box: { x: 100, y: 200, width: 50, height: 40 },
+          colour: '#3B82F6',
+          name: 'Ana',
+        },
       ]),
     })
     // 100 * 2 + 30, and the box top at 200 * 2 - 10.

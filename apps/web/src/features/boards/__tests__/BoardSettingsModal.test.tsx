@@ -71,10 +71,12 @@ describe('S-13 board settings', () => {
 
   it('refuses an empty name', () => {
     renderModal()
-    fireEvent.change(screen.getByTestId('board-settings-name'), { target: { value: '   ' } })
-    expect((screen.getByTestId('board-settings-save') as HTMLButtonElement).disabled).toBe(
-      true,
-    )
+    fireEvent.change(screen.getByTestId('board-settings-name'), {
+      target: { value: '   ' },
+    })
+    expect(
+      (screen.getByTestId('board-settings-save') as HTMLButtonElement).disabled,
+    ).toBe(true)
   })
 
   it('rolls the header name back when the rename fails', () => {
@@ -95,7 +97,9 @@ describe('S-13 board settings', () => {
   })
 
   it('move to trash asks first, then trashes and goes to the dashboard', () => {
-    hooks.trash.mockImplementation((_id, opts: { onSuccess: () => void }) => opts.onSuccess())
+    hooks.trash.mockImplementation((_id, opts: { onSuccess: () => void }) =>
+      opts.onSuccess(),
+    )
     renderModal()
     fireEvent.click(screen.getByTestId('board-settings-trash'))
     // Nothing yet: a confirmation, with the board-card copy.

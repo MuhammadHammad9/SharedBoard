@@ -102,7 +102,9 @@ function openMenuOn(objects: BoardObject[], selection: ObjectId[]) {
   boardStore.getState().setSelection(selection)
   const container = document.createElement('div')
   document.body.appendChild(container)
-  render(<ContextMenu container={container} getSize={() => ({ width: 800, height: 600 })} />)
+  render(
+    <ContextMenu container={container} getSize={() => ({ width: 800, height: 600 })} />,
+  )
   act(() => {
     container.dispatchEvent(
       new MouseEvent('contextmenu', { clientX: 50, clientY: 50, bubbles: true }),
@@ -115,7 +117,9 @@ describe('the "Change colour" item — FR-CANVAS-019', () => {
     const note = sticky()
     openMenuOn([note], [note.id])
 
-    fireEvent.click(screen.getByRole('menuitem', { name: boardChrome.contextMenu.changeColour }))
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: boardChrome.contextMenu.changeColour }),
+    )
     // The menu becomes the palette, anchored where it was.
     expect(screen.getByTestId('context-menu').getAttribute('data-view')).toBe('colour')
     expect(screen.getAllByRole('button')).toHaveLength(8)
@@ -134,7 +138,9 @@ describe('the "Change colour" item — FR-CANVAS-019', () => {
   it("recolours a shape's stroke from the pen palette", () => {
     const shape = rect()
     openMenuOn([shape], [shape.id])
-    fireEvent.click(screen.getByRole('menuitem', { name: boardChrome.contextMenu.changeColour }))
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: boardChrome.contextMenu.changeColour }),
+    )
     fireEvent.click(screen.getByTestId('swatch-#ef4444'))
     const after = boardStore.getState().objects.get(shape.id)
     expect(after && after.type === 'rect' && after.stroke).toBe('#EF4444')
