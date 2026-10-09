@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { boardStore, useBoardStore } from '../../stores/boardStore.js'
+import { boardStore, selectedObjects, useBoardStore } from '../../stores/boardStore.js'
 import {
   bringForward,
   bringToFront,
@@ -12,7 +12,12 @@ import {
 import { probe, toCanvas } from '../../features/canvas/interaction/handlers/select.js'
 import { applyAndEmit, deleteOps } from '../../features/canvas/history/apply.js'
 import { LABELS } from '../../features/canvas/history/grouping.js'
+import {
+  changeSelectionColour,
+  colourTargetFor,
+} from '../../features/canvas/interaction/handlers/changeColour.js'
 import { boardChrome } from '../../lib/strings.js'
+import { ColorSwatch } from '../ui/ColorSwatch.js'
 
 const menuCopy = boardChrome.contextMenu
 
@@ -20,8 +25,14 @@ const menuCopy = boardChrome.contextMenu
  * Right-click menu — FR-CANVAS-019 [P1], FLOWS §14.2.
  *
  * Two variants, exactly as specified:
- *   on an object — Duplicate, Copy, Bring to front, Send to back, Delete
+ *   on an object — Duplicate, Copy, Bring to front, Send to back,
+ *                  Change colour, Delete
  *   on empty canvas — Paste, Select all, Zoom to fit
+ *
+ * "Change colour" swaps the menu's items for the selection's palette in
+ * place, anchored where it was — the sticky palette for notes, the pen
+ * palette otherwise (D-25). It is not offered for a selection with no single
+ * palette (an image, or notes mixed with other types).
  *
  * MOTION: `opacity` + `scale(0.95)` → `1` over 150 ms, with the transform
  * ORIGIN AT THE POINTER (R-MOTION-034). A menu that grows from its own centre
@@ -38,6 +49,8 @@ interface MenuItem {
   shortcut?: string
   onSelect: () => void
   danger?: boolean
+  /** The item opens a second view of this menu rather than finishing it. */
+  keepOpen?: boolean
 }
 
 interface ContextMenuProps {
@@ -59,11 +72,13 @@ interface MenuState {
 export function ContextMenu({ container, getSize }: ContextMenuProps) {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
+  const [choosingColour, setChoosingColour] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const selectionCount = useBoardStore(s => s.selection.length)
 
   const close = useCallback(() => {
     setMenu(null)
+    setChoosingColour(false)
     container?.focus()
   }, [container])
 
@@ -89,6 +104,7 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
       }
 
       setActiveIndex(0)
+      setChoosingColour(false)
       setMenu({
         x: localX,
         y: localY,
@@ -126,10 +142,53 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
   }, [menu, close])
 
   useEffect(() => {
-    if (menu) ref.current?.focus()
-  }, [menu])
+    if (!menu) return
+    // The palette view puts focus on its first swatch; the item view on the
+    // menu itself, which then moves an active index.
+    const first = choosingColour
+      ? ref.current?.querySelector<HTMLButtonElement>('button')
+      : null
+    ;(first ?? ref.current)?.focus()
+  }, [menu, choosingColour])
 
   if (!menu) return null
+
+  // Read on render, not subscribed: the menu exists for one decision and the
+  // selection cannot change under it without closing it.
+  const colourTarget = menu.onObject ? colourTargetFor(selectedObjects()) : null
+
+  if (choosingColour && colourTarget) {
+    return (
+      <div
+        ref={ref}
+        role="group"
+        aria-label={menuCopy.changeColour}
+        tabIndex={-1}
+        data-testid="context-menu"
+        data-view="colour"
+        className="absolute z-modal rounded-md border border-border bg-app p-2 shadow-panel outline-none"
+        style={{ left: menu.x, top: menu.y }}
+      >
+        <p className="mb-2 text-xs font-medium text-muted">{menuCopy.changeColour}</p>
+        <div
+          className={`grid gap-2 ${colourTarget.palette.length === 8 ? 'grid-cols-4' : 'grid-cols-5'}`}
+        >
+          {colourTarget.palette.map(({ value, name }) => (
+            <ColorSwatch
+              key={value}
+              color={value}
+              {...(name ? { name } : {})}
+              selected={colourTarget.current?.toLowerCase() === value.toLowerCase()}
+              onSelect={next => {
+                changeSelectionColour(next)
+                close()
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   const items: MenuItem[] = menu.onObject
     ? [
@@ -139,6 +198,15 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
         { label: menuCopy.bringForward, onSelect: bringForward, shortcut: ']' },
         { label: menuCopy.sendBackward, onSelect: sendBackward, shortcut: '[' },
         { label: menuCopy.sendToBack, onSelect: sendToBack, shortcut: '⌘[' },
+        ...(colourTarget
+          ? [
+              {
+                label: menuCopy.changeColour,
+                keepOpen: true,
+                onSelect: () => setChoosingColour(true),
+              },
+            ]
+          : []),
         {
           label: menuCopy.delete,
           shortcut: '⌫',
@@ -170,7 +238,7 @@ export function ContextMenu({ container, getSize }: ContextMenuProps) {
 
   const run = (item: MenuItem) => {
     item.onSelect()
-    close()
+    if (!item.keepOpen) close()
   }
 
   return (

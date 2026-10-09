@@ -580,6 +580,8 @@ export const boardChrome = {
     bringForward: 'Bring forward',
     sendBackward: 'Send backward',
     sendToBack: 'Send to back',
+    // FR-CANVAS-019, verbatim. Palette and property per type: D-25.
+    changeColour: 'Change colour',
     delete: 'Delete',
     paste: 'Paste',
     selectAll: 'Select all',
