@@ -14,6 +14,7 @@ import {
 } from '@coboard/shared'
 import { useBoardStore } from '../../../stores/boardStore.js'
 import { ColorSwatch } from '../../ui/ColorSwatch.js'
+import { StickyFontControl } from './controls.js'
 import { Slider } from '../../ui/Slider.js'
 import { boardChrome } from '../../../lib/strings.js'
 
@@ -65,6 +66,11 @@ export function StickyProperties() {
           ))}
         </div>
       </section>
+
+      <StickyFontControl
+        value={sticky.fontSize}
+        onChange={fontSize => setSticky({ fontSize })}
+      />
 
       <p className="text-xs text-muted">{p.stickyHint}</p>
     </div>

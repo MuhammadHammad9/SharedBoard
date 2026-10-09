@@ -106,14 +106,14 @@ export function drawShape(ctx: CanvasRenderingContext2D, s: ShapeObject): void {
   if (closed && s.fill !== 'none') ctx.fill()
   if (s.strokeWidth > 0) ctx.stroke()
 
-  if (s.type !== 'arrow' || s.strokeWidth <= 0) return
+  if ((s.type !== 'arrow' && s.type !== 'line') || s.strokeWidth <= 0) return
 
   const size = arrowHeadFor(s.strokeWidth)
   const x2 = s.x + s.width
   const y2 = s.y + s.height
-  // Default to an arrowhead at the end. An arrow with neither end marked is
-  // a line, and the user did not pick the line tool.
-  const end = s.arrowEnd ?? true
+  // FLOWS §14.4 gives lines AND arrows an arrowhead style. Unset, an arrow has
+  // a head at its end and a line has none — what each tool always drew.
+  const end = s.arrowEnd ?? s.type === 'arrow'
   if (end) arrowHead(ctx, x2, y2, s.x, s.y, size)
   if (s.arrowStart) arrowHead(ctx, s.x, s.y, x2, y2, size)
 }

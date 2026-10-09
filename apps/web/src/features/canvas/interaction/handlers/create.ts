@@ -15,6 +15,7 @@ import { applyAndEmit, createOps } from '../../history/apply.js'
 import { LABELS } from '../../history/grouping.js'
 import { canTransition } from '../machine.js'
 import { releaseCapture } from './select.js'
+import { arrowFlags } from '../../arrowheads.js'
 
 /**
  * Object creation — FR-CANVAS-007 (shapes), 008 (sticky), 009 (text).
@@ -130,7 +131,9 @@ export function buildObject(tool: Tool, box: Rect, id: ObjectId): BoardObject | 
         // stored object consistent with what is drawn.
         fill: tool === 'line' || tool === 'arrow' ? 'none' : shape.fill,
         ...(tool === 'rect' ? { cornerRadius: shape.cornerRadius } : {}),
-        ...(tool === 'arrow' ? { arrowEnd: true, arrowStart: false } : {}),
+        ...(tool === 'arrow' || tool === 'line'
+          ? arrowFlags(tool === 'arrow' ? shape.arrowHeads : shape.lineHeads)
+          : {}),
         opacity: shape.opacity,
       } as ShapeObject
 
@@ -141,8 +144,9 @@ export function buildObject(tool: Tool, box: Rect, id: ObjectId): BoardObject | 
         text: '',
         color: sticky.color,
         // FR-CANVAS-008: auto-shrink is the default, so a note the user
-        // resizes reflows instead of clipping.
-        fontSize: 'auto',
+        // resizes reflows instead of clipping. A fixed size is the FLOWS
+        // §14.4 manual setting.
+        fontSize: sticky.fontSize,
         textAlign: 'center',
       } as StickyObject
 

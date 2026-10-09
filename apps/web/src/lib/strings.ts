@@ -642,6 +642,17 @@ export const boardChrome = {
     alignLeft: 'Align left',
     alignCentre: 'Align centre',
     alignRight: 'Align right',
+    // FLOWS §14.4 rows. The drawing names the controls but gives no labels
+    // beyond these words; the rest are authored to PRD §8.1.
+    arrowheads: 'Arrowheads',
+    arrowheadNone: 'No arrowheads',
+    arrowheadStart: 'Arrowhead at start',
+    arrowheadEnd: 'Arrowhead at end',
+    arrowheadBoth: 'Arrowheads at both ends',
+    fontSizeAuto: 'Auto',
+    fontSizeAutoLabel: 'Fit text to the note automatically',
+    layer: 'Layer',
+    resetSize: 'Reset size',
     stickyHint: 'Click the board to place a note and start typing.',
     textHint: 'Click the board to place text.',
     eraserHint: 'Drag across objects to delete them.',

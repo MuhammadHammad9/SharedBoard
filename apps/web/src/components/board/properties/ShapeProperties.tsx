@@ -3,6 +3,7 @@ import { useBoardStore } from '../../../stores/boardStore.js'
 import { ColorSwatch } from '../../ui/ColorSwatch.js'
 import { Slider } from '../../ui/Slider.js'
 import { boardChrome } from '../../../lib/strings.js'
+import { ArrowheadControl } from './controls.js'
 
 const p = boardChrome.properties
 
@@ -23,6 +24,7 @@ export function ShapeProperties() {
   const setShape = useBoardStore(s => s.setShape)
 
   const isRect = activeTool === 'rect'
+  const isLinear = activeTool === 'line' || activeTool === 'arrow'
   const isClosed = activeTool === 'rect' || activeTool === 'ellipse'
 
   return (
@@ -105,6 +107,15 @@ export function ShapeProperties() {
           display={`${shape.cornerRadius} px`}
           testId="shape-radius-slider"
           onChange={cornerRadius => setShape({ cornerRadius })}
+        />
+      )}
+
+      {isLinear && (
+        <ArrowheadControl
+          value={activeTool === 'arrow' ? shape.arrowHeads : shape.lineHeads}
+          onChange={next =>
+            setShape(activeTool === 'arrow' ? { arrowHeads: next } : { lineHeads: next })
+          }
         />
       )}
 

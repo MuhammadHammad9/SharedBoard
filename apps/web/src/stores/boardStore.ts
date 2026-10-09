@@ -89,12 +89,18 @@ export interface PenSettings {
 const DEFAULT_PEN: PenSettings = { color: PEN_COLOURS[0], strokeWidth: 3, opacity: 1 }
 
 /** Shape settings — FR-CANVAS-007, FLOWS §14.4. */
+/** FLOWS §14.4 — "arrowhead style (start/end/both/none)". */
+export type ArrowheadStyle = 'none' | 'start' | 'end' | 'both'
+
 export interface ShapeSettings {
   stroke: string
   strokeWidth: number
   fill: string
   cornerRadius: number
   opacity: number
+  /** Per tool, so the line tool keeps drawing plain lines by default. */
+  lineHeads: ArrowheadStyle
+  arrowHeads: ArrowheadStyle
 }
 
 const DEFAULT_SHAPE: ShapeSettings = {
@@ -103,14 +109,18 @@ const DEFAULT_SHAPE: ShapeSettings = {
   fill: 'none',
   cornerRadius: 0,
   opacity: 1,
+  lineHeads: 'none',
+  arrowHeads: 'end',
 }
 
 /** Sticky settings — FR-CANVAS-008. Colour is one of the 8 frozen values. */
 export interface StickySettings {
   color: string
+  /** FLOWS §14.4 "font size auto/manual toggle"; auto is FR-CANVAS-008's default. */
+  fontSize: number | 'auto'
 }
 
-const DEFAULT_STICKY: StickySettings = { color: STICKY_COLOURS.yellow }
+const DEFAULT_STICKY: StickySettings = { color: STICKY_COLOURS.yellow, fontSize: 'auto' }
 
 /** Text settings — FR-CANVAS-009. */
 export interface TextSettings {
