@@ -431,6 +431,8 @@ export const loading = {
   boards: 'Loading your boards',
   session: 'Checking your session',
   board: 'Opening board',
+  // FLOWS §8.1, verbatim shape: "Loading 4,312 objects…".
+  objects: (count: number) => `Loading ${count.toLocaleString('en-US')} objects…`,
   invite: 'Opening invite',
 } as const
 

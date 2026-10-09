@@ -373,8 +373,28 @@ describe('GET /boards/:id/access — every STEP 4 branch', () => {
       data: { boardId, userId: editor.userId, role: 'EDITOR' },
     })
 
-    expect((await access(boardId, auth(owner))).body).toEqual({ role: 'OWNER' })
-    expect((await access(boardId, auth(editor))).body).toEqual({ role: 'EDITOR' })
+    expect((await access(boardId, auth(owner))).body).toEqual({
+      role: 'OWNER',
+      objectCount: 0,
+    })
+    expect((await access(boardId, auth(editor))).body).toEqual({
+      role: 'EDITOR',
+      objectCount: 0,
+    })
+  })
+
+  it("member → carries the board's object count, for FLOWS §8.1's loading copy", async () => {
+    const owner = await signUp()
+    const boardId = await createBoard(owner)
+    const write = await request(app)
+      .post(`/api/boards/${boardId}/operations`)
+      .set(auth(owner))
+      .send({ ops: [stickyOp(), stickyOp(), stickyOp()] })
+    expect(write.status).toBe(200)
+    expect((await access(boardId, auth(owner))).body).toEqual({
+      role: 'OWNER',
+      objectCount: 3,
+    })
   })
 
   it('guest member → 200 with the role', async () => {
@@ -382,7 +402,10 @@ describe('GET /boards/:id/access — every STEP 4 branch', () => {
     const boardId = await createBoard(owner)
     const token = await enableLink(owner, boardId, 'VIEWER')
     const { guestId } = await join(token)
-    expect((await access(boardId, asGuest(guestId))).body).toEqual({ role: 'VIEWER' })
+    expect((await access(boardId, asGuest(guestId))).body).toEqual({
+      role: 'VIEWER',
+      objectCount: 0,
+    })
   })
 
   it('anonymous with a live link → joinable, requires a name', async () => {
@@ -400,7 +423,7 @@ describe('GET /boards/:id/access — every STEP 4 branch', () => {
     const boardId = await createBoard(owner)
     const token = await enableLink(owner, boardId, 'VIEWER')
     const response = await access(boardId, auth(marcus), token)
-    expect(response.body).toEqual({ role: 'VIEWER' })
+    expect(response.body).toEqual({ role: 'VIEWER', objectCount: 0 })
     expect(
       await prisma.boardMember.count({ where: { boardId, userId: marcus.userId } }),
     ).toBe(1)

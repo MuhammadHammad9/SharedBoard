@@ -9,12 +9,12 @@ import { BoardHeader } from '../components/board/BoardHeader.js'
 import { SessionExpiredBanner } from '../components/board/SessionExpiredBanner.js'
 import { OfflineBanner } from '../components/board/OfflineBanner.js'
 import { BoardSizeWarning } from '../components/board/BoardSizeWarning.js'
-import { FullScreenSpinner } from '../components/ui/Spinner.js'
+import { BoardShell } from '../components/board/BoardShell.js'
 import { BackHome, FullScreenState } from '../components/ui/FullScreenState.js'
 import { Button } from '../components/ui/Button.js'
 import { DEMO_BOARD_ID, useBoardLoad } from '../features/boards/useBoardLoad.js'
 import { useJoinLeaveToasts } from '../features/presence/useJoinLeaveToasts.js'
-import { actions, demo as demoStrings, guest, loading, states } from '../lib/strings.js'
+import { actions, demo as demoStrings, guest, states } from '../lib/strings.js'
 import { setGuestCredential } from '../lib/api.js'
 import { useBoardToastPlacement, useToast } from '../components/ui/Toast.js'
 import { setBoardReadOnly } from '../features/canvas/interaction/cancelGesture.js'
@@ -82,7 +82,8 @@ export default function Board({ demo = false }: { demo?: boolean } = {}) {
   }, [joinedAs, load.status, toast])
 
   if (load.status === 'loading') {
-    return <FullScreenSpinner label={loading.board} />
+    // FLOWS §8.1: the same shell the access check showed, now counting.
+    return <BoardShell objectCount={entry.objectCount} />
   }
 
   if (load.status === 'not-found') {

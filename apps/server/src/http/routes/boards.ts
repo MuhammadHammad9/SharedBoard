@@ -166,7 +166,7 @@ export function createBoardsRouter(): Router {
    * It never returns the board's name — R-SEC-018 forbids showing it on the
    * refusal screens, and the surest way not to leak it is not to send it.
    *
-   *   200 { role }                                      member → STEP 5
+   *   200 { role, objectCount }                         member → STEP 5
    *   200 { role: 'none', joinable, requiresName }     live link, no account
    *   403 { reason: 'no_access' | 'link_revoked' }     S-17
    *   404                                              S-18
@@ -186,8 +186,14 @@ export function createBoardsRouter(): Router {
           reason: 'deleted',
         })
       }
+      /*
+       * `objectCount` rides along for a member only: FLOWS §8.1 wants
+       * "Loading 4,312 objects…" under the spinner after 2 s, and this is the
+       * one response the board has before the snapshot. It is not the name
+       * (R-SEC-018), and a refusal below still carries nothing.
+       */
       if (access.role !== 'none') {
-        res.json({ role: access.role })
+        res.json({ role: access.role, objectCount: access.objectCount })
         return
       }
 
@@ -199,7 +205,7 @@ export function createBoardsRouter(): Router {
         if (identity?.kind === 'user') {
           // A signed-in person with a live link just becomes a member.
           const role = await shareService.joinAsUser(lookup.link, id, identity.userId)
-          res.json({ role })
+          res.json({ role, objectCount: access.objectCount })
           return
         }
         res.json({ role: 'none', joinable: true, requiresName: true })

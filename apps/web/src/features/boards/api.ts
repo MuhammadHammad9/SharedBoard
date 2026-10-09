@@ -45,7 +45,13 @@ export const getBoard = (id: string) =>
  * `details.reason` names the branch.
  */
 export const getBoardAccess = (id: string, share?: string | null, signal?: AbortSignal) =>
-  api.get<{ role: Role | 'none'; joinable?: boolean; requiresName?: boolean }>(
+  api.get<{
+    role: Role | 'none'
+    joinable?: boolean
+    requiresName?: boolean
+    /** Members only — FLOWS §8.1's "Loading N objects…". */
+    objectCount?: number
+  }>(
     `/boards/${id}/access${share ? `?share=${encodeURIComponent(share)}` : ''}`,
     signal ? { signal } : {},
   )

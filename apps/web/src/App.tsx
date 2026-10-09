@@ -16,6 +16,7 @@ import {
 } from './routes/guards.js'
 import { RequireBoardAccess } from './routes/RequireBoardAccess.js'
 import { FullScreenSpinner } from './components/ui/Spinner.js'
+import { BoardShell } from './components/board/BoardShell.js'
 import Login from './routes/Login.js'
 import Signup from './routes/Signup.js'
 import ForgotPassword from './routes/ForgotPassword.js'
@@ -115,7 +116,7 @@ export default function App() {
             <Route
               path="/demo"
               element={
-                <Suspense fallback={<FullScreenSpinner label={loading.board} />}>
+                <Suspense fallback={<BoardShell />}>
                   <Board demo />
                 </Suspense>
               }
@@ -222,7 +223,7 @@ function BoardRoute() {
   const { boardId = '' } = useParams<{ boardId: string }>()
   return (
     <RequireBoardAccess boardId={boardId}>
-      <Suspense fallback={<FullScreenSpinner label={loading.board} />}>
+      <Suspense fallback={<BoardShell />}>
         <Board />
       </Suspense>
     </RequireBoardAccess>

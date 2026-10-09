@@ -11,7 +11,7 @@ import {
   type GuestIdentity,
 } from '../features/auth/guestIdentity.js'
 import { Button } from '../components/ui/Button.js'
-import { Spinner } from '../components/ui/Spinner.js'
+import { BoardShell } from '../components/board/BoardShell.js'
 import { BackHome, FullScreenState } from '../components/ui/FullScreenState.js'
 import { loginUrlFor } from './nextParam.js'
 import { RequireAuth, useSessionBootstrap } from './guards.js'
@@ -42,12 +42,15 @@ export interface BoardEntry {
   returning: boolean
   /** The share token this tab arrived with, if any. */
   shareToken: string | null
+  /** The board's object count from `/access` — FLOWS §8.1's loading copy. */
+  objectCount: number | null
 }
 
 const BoardEntryContext = createContext<BoardEntry>({
   guest: null,
   returning: false,
   shareToken: null,
+  objectCount: null,
 })
 
 export const useBoardEntry = (): BoardEntry => useContext(BoardEntryContext)
@@ -124,6 +127,7 @@ function Guard({ boardId, children }: { boardId: string; children: ReactNode }) 
             guest,
             returning: returning || (guest !== null && !fromCard),
             shareToken,
+            objectCount: access.objectCount ?? null,
           },
         })
       } catch (error) {
@@ -252,27 +256,4 @@ function decisionFor(error: unknown): Decision {
   if (error.status === 404) return { kind: 'not-found' }
   if (error.status === 410) return { kind: 'deleted' }
   return { kind: 'error' }
-}
-
-/**
- * STEP 1 — the board's frame while access resolves: header skeleton, a
- * disabled toolbar placeholder, and the canvas area with a centred spinner.
- */
-function BoardShell({ children }: { children?: ReactNode }) {
-  return (
-    <main
-      className="relative h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-canvas"
-      data-testid="board-shell"
-      aria-busy={children ? undefined : true}
-    >
-      <div className="absolute inset-x-4 top-4 flex items-center gap-2">
-        <div className="h-8 w-48 rounded-md bg-app/90 shadow-panel" />
-        <div className="ml-auto h-8 w-24 rounded-md bg-app/90 shadow-panel" />
-      </div>
-      <div className="absolute left-4 top-1/2 h-64 w-12 -translate-y-1/2 rounded-md bg-app/90 opacity-60 shadow-panel" />
-      <div className="grid h-full place-items-center" role="status" aria-live="polite">
-        {children ?? <Spinner size={28} className="text-accent" />}
-      </div>
-    </main>
-  )
 }

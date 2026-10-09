@@ -26,6 +26,8 @@ export interface Access {
   ownerId: string
   deletedAt: Date | null
   name: string
+  /** Denormalised live object count (D-10) — FLOWS §8.1's "Loading N objects…". */
+  objectCount: number
 }
 
 /** A user id, or a full identity. A bare string is a user — the pre-guest API. */
@@ -73,6 +75,7 @@ export class PermissionService {
         name: true,
         ownerId: true,
         deletedAt: true,
+        objectCount: true,
         members: memberWhere
           ? {
               where: memberWhere,
@@ -100,6 +103,7 @@ export class PermissionService {
       name: board.name,
       ownerId: board.ownerId,
       deletedAt: board.deletedAt,
+      objectCount: board.objectCount,
       role,
     }
   }
