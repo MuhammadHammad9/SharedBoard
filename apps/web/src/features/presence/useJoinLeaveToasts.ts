@@ -42,10 +42,12 @@ export function useJoinLeaveToasts(): void {
 
     const before = previous.current
     for (const [key, name] of current) {
-      if (!before.has(key)) toast.show({ message: presenceStrings.userJoined(name), durationMs: TOAST_MS })
+      if (!before.has(key))
+        toast.show({ message: presenceStrings.userJoined(name), durationMs: TOAST_MS })
     }
     for (const [key, name] of before) {
-      if (!current.has(key)) toast.show({ message: presenceStrings.userLeft(name), durationMs: TOAST_MS })
+      if (!current.has(key))
+        toast.show({ message: presenceStrings.userLeft(name), durationMs: TOAST_MS })
     }
 
     previous.current = current

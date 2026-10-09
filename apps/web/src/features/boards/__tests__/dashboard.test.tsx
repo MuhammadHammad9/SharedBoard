@@ -101,7 +101,10 @@ afterEach(() => {
 describe('the seven dashboard states — FLOWS §6.3', () => {
   it('1. LOADING: renders skeleton cards, never a spinner', async () => {
     // A promise that never settles, so the loading state is stable.
-    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    )
     renderDashboard()
 
     const grid = await screen.findByTestId('board-grid-loading')
@@ -149,7 +152,10 @@ describe('the seven dashboard states — FLOWS §6.3', () => {
   })
 
   it('6. ERROR: shows Retry, and the header and sidebar keep working', async () => {
-    stubFetch(() => ({ status: 500, body: { error: { code: 'INTERNAL', message: 'x', correlationId: 'a' } } }))
+    stubFetch(() => ({
+      status: 500,
+      body: { error: { code: 'INTERNAL', message: 'x', correlationId: 'a' } },
+    }))
     renderDashboard()
 
     await screen.findByTestId('dashboard-error')
@@ -222,7 +228,9 @@ describe('filter, sort and search', () => {
     const before = requests.length
     await user.type(screen.getByTestId('board-search'), 'pricing')
 
-    await waitFor(() => expect(requests.some(url => url.includes('q=pricing'))).toBe(true))
+    await waitFor(() =>
+      expect(requests.some(url => url.includes('q=pricing'))).toBe(true),
+    )
     // Seven characters must not be seven requests.
     expect(requests.length - before).toBeLessThan(7)
   })
@@ -236,7 +244,9 @@ describe('filter, sort and search', () => {
     await user.click(screen.getByTestId('sort-menu'))
     await user.click(await screen.findByTestId('sort-name'))
 
-    await waitFor(() => expect(requests.some(url => url.includes('sort=name'))).toBe(true))
+    await waitFor(() =>
+      expect(requests.some(url => url.includes('sort=name'))).toBe(true),
+    )
   })
 })
 
@@ -259,7 +269,9 @@ describe('the card menu — FLOWS §6.4', () => {
     const user = userEvent.setup()
     stubFetch(() => ({
       body: {
-        boards: [board({ ownerId: 'someone-else', myRole: 'EDITOR', ownerName: 'Marcus Feld' })],
+        boards: [
+          board({ ownerId: 'someone-else', myRole: 'EDITOR', ownerName: 'Marcus Feld' }),
+        ],
         nextCursor: null,
       },
     }))

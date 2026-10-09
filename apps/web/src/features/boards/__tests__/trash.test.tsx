@@ -117,9 +117,9 @@ describe('Trash — S-08', () => {
     await user.click(screen.getByTestId('restore'))
 
     await waitFor(() =>
-      expect(
-        calls.some(c => c.method === 'POST' && c.url.includes('/restore')),
-      ).toBe(true),
+      expect(calls.some(c => c.method === 'POST' && c.url.includes('/restore'))).toBe(
+        true,
+      ),
     )
   })
 })

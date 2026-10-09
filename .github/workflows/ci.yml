@@ -391,4 +391,3 @@ jobs:
           name: cross-browser-diffs
           path: test-results/
           if-no-files-found: ignore
-

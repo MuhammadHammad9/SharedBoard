@@ -34,10 +34,7 @@ interface PresenceHandle {
 }
 
 /** Run something against the page's presence store. */
-async function presence<T>(
-  page: Page,
-  fn: (store: PresenceHandle) => T,
-): Promise<T> {
+async function presence<T>(page: Page, fn: (store: PresenceHandle) => T): Promise<T> {
   return page.evaluate(
     body =>
       new Function('store', `return (${body})(store)`)(
@@ -48,13 +45,12 @@ async function presence<T>(
 }
 
 const metrics = (page: Page) =>
-  page.evaluate(
-    () =>
-      (
-        window as unknown as {
-          __coboardMetrics: () => { objectPaints: number; overlayPaints: number }
-        }
-      ).__coboardMetrics(),
+  page.evaluate(() =>
+    (
+      window as unknown as {
+        __coboardMetrics: () => { objectPaints: number; overlayPaints: number }
+      }
+    ).__coboardMetrics(),
   )
 
 async function surface(page: Page) {
@@ -101,7 +97,11 @@ test('a moving remote cursor NEVER repaints the object layer', async ({ page }) 
    * ten this is what arrives every 300 ms.
    */
   await page.evaluate(() => {
-    const store = (window as unknown as { __coboardPresence: { moveCursor: (a: string, b: number, c: number) => void } }).__coboardPresence
+    const store = (
+      window as unknown as {
+        __coboardPresence: { moveCursor: (a: string, b: number, c: number) => void }
+      }
+    ).__coboardPresence
     for (let i = 0; i < 60; i++) store.moveCursor('them', 100 + i * 8, 300 + i * 4)
   })
   await page.waitForTimeout(600)
