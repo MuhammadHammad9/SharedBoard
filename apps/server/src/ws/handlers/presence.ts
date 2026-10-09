@@ -38,6 +38,10 @@ export function handlePresence(
   // or name for anyone to render it with.
   if (!session.joined) return
 
+  // Finding 11: over budget → dropped, silently. Presence has no ack and no
+  // retry, so silence is the correct answer and the cheapest one.
+  if (!session.takePresenceToken()) return
+
   /*
    * VIEWERS BROADCAST PRESENCE. This is not an oversight.
    *

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
 import type { Express } from 'express'
 import {
@@ -59,6 +59,17 @@ function cookieValue(response: request.Response, name: string): string | undefin
 
 const refreshCookie = (response: request.Response) =>
   cookieValue(response, REFRESH_COOKIE)
+
+/**
+ * Ask for a reset and wait for the email. The route answers BEFORE it does
+ * the work (finding 12), so the email lands a moment after the 200.
+ */
+async function requestReset(email: string): Promise<void> {
+  const before = mailer.sent.length
+  const response = await request(app).post('/api/auth/forgot-password').send({ email })
+  expect(response.status).toBe(200)
+  await vi.waitFor(() => expect(mailer.sent.length).toBe(before + 1))
+}
 
 beforeAll(async () => {
   app = createApp()
@@ -135,6 +146,36 @@ describe('login rate limiting counts FAILURES, not logins', () => {
         }
       }
       expect(sawRateLimit).toBe(true)
+    },
+  )
+
+  it(
+    'a success does NOT reset the per-IP failures — no spray bypass (finding 9)',
+    { timeout: 60_000 },
+    async () => {
+      const { email: own } = await registerUser()
+      // One short of the per-IP limit, against other people's accounts.
+      for (let i = 0; i < RATE_LIMIT_LOGIN_PER_IP - 1; i++) {
+        const r = await request(app)
+          .post('/api/auth/login')
+          .send({ email: freshEmail(), password: 'wrong-password-1' })
+        expect(r.status).toBe(401)
+      }
+      // The attacker logs in to their OWN account. This used to zero the IP
+      // counter, buying nineteen more guesses each time.
+      expect(
+        (await request(app).post('/api/auth/login').send({ email: own, password }))
+          .status,
+      ).toBe(200)
+
+      const twentieth = await request(app)
+        .post('/api/auth/login')
+        .send({ email: freshEmail(), password: 'wrong-password-1' })
+      expect(twentieth.status).toBe(401)
+      const twentyFirst = await request(app)
+        .post('/api/auth/login')
+        .send({ email: freshEmail(), password: 'wrong-password-1' })
+      expect(twentyFirst.status).toBe(429)
     },
   )
 })
@@ -530,6 +571,8 @@ describe('password reset', () => {
 
     expect(response.status).toBe(200)
     // And crucially sends nothing, so timing and mail volume do not leak it.
+    // The work runs after the response, so give it time to have run.
+    await new Promise(r => setTimeout(r, 150))
     expect(mailer.sent).toHaveLength(0)
   })
 
@@ -538,14 +581,15 @@ describe('password reset', () => {
     const response = await request(app).post('/api/auth/forgot-password').send({ email })
 
     expect(response.status).toBe(200)
-    expect(mailer.sent).toHaveLength(1)
+    // Sent after the response (finding 12), so waited for.
+    await vi.waitFor(() => expect(mailer.sent).toHaveLength(1))
     expect(mailer.sent[0]!.to).toBe(email)
     expect(mailer.sent[0]!.expiresInMinutes).toBe(PASSWORD_RESET_TTL_MS / 60_000)
   })
 
   it('validates a fresh token without consuming it', async () => {
     const { email } = await registerUser()
-    await request(app).post('/api/auth/forgot-password').send({ email })
+    await requestReset(email)
     const token = new URL(mailer.sent[0]!.resetUrl).searchParams.get('token')!
 
     expect(
@@ -566,7 +610,7 @@ describe('password reset', () => {
       .query({ token: 'never-issued' })
     expect(unknown.body.error.code).toBe(ERROR_CODES.TOKEN_INVALID)
 
-    await request(app).post('/api/auth/forgot-password').send({ email })
+    await requestReset(email)
     const token = new URL(mailer.sent[0]!.resetUrl).searchParams.get('token')!
     await prisma.passwordResetToken.update({
       where: { tokenHash: hashToken(token) },
@@ -583,7 +627,7 @@ describe('password reset', () => {
     const { email, response: registered } = await registerUser()
     const sessionBefore = refreshCookie(registered)!
 
-    await request(app).post('/api/auth/forgot-password').send({ email })
+    await requestReset(email)
     const token = new URL(mailer.sent[0]!.resetUrl).searchParams.get('token')!
 
     const newPassword = 'brand-new-pass-9'
@@ -612,7 +656,7 @@ describe('password reset', () => {
 
   it('is single-use: the second submission of the same token fails', async () => {
     const { email } = await registerUser()
-    await request(app).post('/api/auth/forgot-password').send({ email })
+    await requestReset(email)
     const token = new URL(mailer.sent[0]!.resetUrl).searchParams.get('token')!
 
     await request(app)
@@ -628,13 +672,168 @@ describe('password reset', () => {
 
   it('rejects a weak new password with 422', async () => {
     const { email } = await registerUser()
-    await request(app).post('/api/auth/forgot-password').send({ email })
+    await requestReset(email)
     const token = new URL(mailer.sent[0]!.resetUrl).searchParams.get('token')!
 
     const response = await request(app)
       .post('/api/auth/reset')
       .send({ token, password: 'weak' })
     expect(response.status).toBe(422)
+  })
+})
+
+describe('password reset hardening', () => {
+  it('answers forgot-password without waiting on the email — no timing oracle (finding 12)', async () => {
+    const { email } = await registerUser()
+    // A mailer that never finishes. Awaited in the request, the response
+    // would hang for as long as SMTP does — for existing accounts only.
+    let calls = 0
+    setMailer({
+      sendPasswordReset: () => {
+        calls += 1
+        return new Promise<void>(() => {})
+      },
+      sendBoardInvite: async () => {},
+      sendEmailVerification: async () => {},
+    })
+    const started = Date.now()
+    const response = await request(app)
+      .post('/api/auth/forgot-password')
+      .send({ email })
+      .timeout(2_000)
+    expect(response.status).toBe(200)
+    expect(Date.now() - started).toBeLessThan(1_000)
+    await vi.waitFor(() => expect(calls).toBe(1))
+  })
+
+  it('a second concurrent reset with the same token is a 400, never a 500 (finding 17)', async () => {
+    const { email } = await registerUser()
+    await requestReset(email)
+    const token = new URL(mailer.sent[0]!.resetUrl).searchParams.get('token')!
+
+    const results = await Promise.all([
+      request(app).post('/api/auth/reset').send({ token, password: 'brand-new-pass-9' }),
+      request(app).post('/api/auth/reset').send({ token, password: 'another-pass-77' }),
+    ])
+    expect(results.map(r => r.status).sort()).toEqual([200, 400])
+  })
+
+  it('a successful reset kills every other outstanding reset link (finding 17)', async () => {
+    const { email } = await registerUser()
+    await requestReset(email)
+    await requestReset(email)
+    const first = new URL(mailer.sent[0]!.resetUrl).searchParams.get('token')!
+    const second = new URL(mailer.sent[1]!.resetUrl).searchParams.get('token')!
+
+    expect(
+      (
+        await request(app)
+          .post('/api/auth/reset')
+          .send({ token: second, password: 'brand-new-pass-9' })
+      ).status,
+    ).toBe(200)
+    const stale = await request(app)
+      .post('/api/auth/reset')
+      .send({ token: first, password: 'attacker-pass-11' })
+    expect(stale.status).toBe(400)
+  })
+})
+
+/* ── Email verification — D-22 ────────────────────────────────────────────── */
+
+describe('email verification and invite claims — D-22', () => {
+  /** A board owned by someone else, with a pending invite for `email`. */
+  async function inviteTo(email: string, role: 'EDITOR' | 'VIEWER' = 'EDITOR') {
+    const { response } = await registerUser({ displayName: 'Board Owner' })
+    const token = response.body.accessToken as string
+    const board = await request(app)
+      .post('/api/boards')
+      .set({ Authorization: `Bearer ${token}` })
+      .send({ name: 'Q3 Retrospective' })
+    const boardId = board.body.board.id as string
+    await request(app)
+      .post(`/api/boards/${boardId}/members`)
+      .set({ Authorization: `Bearer ${token}` })
+      .send({ emails: [email], role })
+    return boardId
+  }
+
+  const membership = async (boardId: string, email: string) => {
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { emailLower: email.toLowerCase() },
+    })
+    return prisma.boardMember.findFirst({ where: { boardId, userId: user.id } })
+  }
+
+  it('does NOT claim invites at registration; claims them once the address is verified', async () => {
+    const email = freshEmail()
+    const boardId = await inviteTo(email)
+
+    const { response } = await registerUser({ email })
+    expect(response.status).toBe(201)
+    expect(await membership(boardId, email)).toBeNull()
+
+    await vi.waitFor(() => expect(mailer.verifications).toHaveLength(1))
+    const sent = mailer.verifications[0]!
+    expect(sent.to).toBe(email)
+    expect(sent.expiresInHours).toBe(24)
+    const token = new URL(sent.verifyUrl).searchParams.get('token')!
+    expect(new URL(sent.verifyUrl).pathname).toBe('/verify-email')
+
+    const verified = await request(app).post('/api/auth/verify-email').send({ token })
+    expect(verified.status).toBe(200)
+    expect(verified.body.claimed).toBe(1)
+    expect((await membership(boardId, email))?.role).toBe('EDITOR')
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { emailLower: email.toLowerCase() },
+    })
+    expect(user.emailVerifiedAt).not.toBeNull()
+
+    // Single use.
+    const again = await request(app).post('/api/auth/verify-email').send({ token })
+    expect(again.status).toBe(400)
+    expect(again.body.error.code).toBe(ERROR_CODES.TOKEN_USED)
+  })
+
+  it('stores only a hash, refuses an unknown token, and expires after 24 h', async () => {
+    const email = freshEmail()
+    await inviteTo(email)
+    await registerUser({ email })
+    await vi.waitFor(() => expect(mailer.verifications).toHaveLength(1))
+    const token = new URL(mailer.verifications[0]!.verifyUrl).searchParams.get('token')!
+
+    expect(
+      await prisma.emailVerificationToken.count({ where: { tokenHash: token } }),
+    ).toBe(0)
+    const unknown = await request(app)
+      .post('/api/auth/verify-email')
+      .send({ token: 'never-issued' })
+    expect(unknown.body.error.code).toBe(ERROR_CODES.TOKEN_INVALID)
+
+    await prisma.emailVerificationToken.update({
+      where: { tokenHash: hashToken(token) },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    })
+    const expired = await request(app).post('/api/auth/verify-email').send({ token })
+    expect(expired.body.error.code).toBe(ERROR_CODES.TOKEN_EXPIRED)
+  })
+
+  it('sends no verification email when nothing is waiting for the address', async () => {
+    await registerUser()
+    await new Promise(r => setTimeout(r, 150))
+    expect(mailer.verifications).toHaveLength(0)
+  })
+
+  it('claimInvites itself refuses an unverified address', async () => {
+    const { memberService } = await import('../services/MemberService.js')
+    const email = freshEmail()
+    const boardId = await inviteTo(email)
+    await registerUser({ email })
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { emailLower: email.toLowerCase() },
+    })
+    expect(await memberService.claimInvites(user.id, user.emailLower)).toBe(0)
+    expect(await membership(boardId, email)).toBeNull()
   })
 })
 
@@ -698,10 +897,81 @@ describe('Google OAuth account linking', () => {
     })
     expect(users).toHaveLength(1)
     expect(users[0]!.googleId).toBe('google-link')
-    // The password still works — linking adds a way in, it does not replace one.
+    expect(users[0]!.emailVerifiedAt).not.toBeNull()
+  })
+
+  it('PRE-HIJACK: linking into an unverified password account clears the password and its sessions (D-22)', async () => {
+    // The attacker registers the victim's address first, with a password.
+    const { email, response: attacker } = await registerUser()
+    const attackerCookie = refreshCookie(attacker)!
+
+    // The victim signs in with Google; Google vouches for the address.
+    withProfile({ googleId: 'google-victim', email })
+    const signedIn = await callback()
+    expect(signedIn.headers.location).toContain('/auth/callback')
+
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { emailLower: email.toLowerCase() },
+    })
+    expect(user.googleId).toBe('google-victim')
+    expect(user.passwordHash).toBeNull()
+    expect(user.emailVerifiedAt).not.toBeNull()
+    // The attacker's password and session are both dead.
+    expect(
+      (await request(app).post('/api/auth/login').send({ email, password })).status,
+    ).toBe(401)
+    expect(
+      (
+        await request(app)
+          .post('/api/auth/refresh')
+          .set('Cookie', `${REFRESH_COOKIE}=${attackerCookie}`)
+      ).status,
+    ).toBe(401)
+  })
+
+  it('keeps the password of an account whose address was already verified', async () => {
+    const { email } = await registerUser()
+    await prisma.user.update({
+      where: { emailLower: email.toLowerCase() },
+      data: { emailVerifiedAt: new Date() },
+    })
+    withProfile({ googleId: 'google-verified', email })
+    await callback()
+    // Linking adds a way in; it does not replace a proven one.
     expect(
       (await request(app).post('/api/auth/login').send({ email, password })).status,
     ).toBe(200)
+  })
+
+  it('claims invites for a verified Google address, never for an unverified one (D-22)', async () => {
+    const { response } = await registerUser({ displayName: 'Board Owner' })
+    const owner = { Authorization: `Bearer ${response.body.accessToken as string}` }
+    const boardId = (
+      await request(app).post('/api/boards').set(owner).send({ name: 'Roadmap' })
+    ).body.board.id as string
+    const unverified = freshEmail()
+    const verified = freshEmail()
+    await request(app)
+      .post(`/api/boards/${boardId}/members`)
+      .set(owner)
+      .send({ emails: [unverified, verified], role: 'EDITOR' })
+
+    withProfile({
+      googleId: 'google-unverified',
+      email: unverified,
+      emailVerified: false,
+    })
+    await callback()
+    withProfile({ googleId: 'google-ok', email: verified })
+    await callback()
+
+    const roleOf = async (email: string) => {
+      const user = await prisma.user.findUniqueOrThrow({ where: { emailLower: email } })
+      return (await prisma.boardMember.findFirst({ where: { boardId, userId: user.id } }))
+        ?.role
+    }
+    expect(await roleOf(unverified)).toBeUndefined()
+    expect(await roleOf(verified)).toBe('EDITOR')
   })
 
   it('REFUSES to link when Google says the email is unverified', async () => {

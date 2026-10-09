@@ -289,6 +289,64 @@ describe('POST /uploads/confirm', () => {
     }
   })
 
+  it('serves an SVG as an attachment, before and after confirm, even when re-PUT — finding 6', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const hostile = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect width="4" height="4"/></svg>',
+    )
+    const signed = await presign(priya, boardId, 'image/svg+xml', hostile.length)
+    // The disposition is part of what the browser must send — and is signed.
+    expect(signed.body.headers['content-disposition']).toBe('attachment')
+
+    // A PUT that drops the header does not match the signature.
+    const stripped = await fetch(signed.body.uploadUrl as string, {
+      method: 'PUT',
+      body: Buffer.from(hostile),
+      headers: { 'content-type': 'image/svg+xml' },
+    })
+    expect(stripped.status).toBe(403)
+
+    const put = await fetch(signed.body.uploadUrl as string, {
+      method: 'PUT',
+      body: Buffer.from(hostile),
+      headers: signed.body.headers as Record<string, string>,
+    })
+    expect(put.status).toBe(200)
+    const key = signed.body.key as string
+    // Public before confirm — but a navigation downloads it, never renders it.
+    const early = await fetch(`${s3.url}/coboard/${key}`)
+    expect(early.headers.get('content-disposition')).toBe('attachment')
+
+    const confirm = await request(app)
+      .post('/api/uploads/confirm')
+      .set(auth(priya))
+      .send({ key })
+    expect(confirm.status).toBe(200)
+    expect(stored(key)!.contentDisposition).toBe('attachment')
+    expect(stored(key)!.body.toString('utf8')).not.toContain('<script')
+
+    // The presigned URL is still valid: re-PUTting the original payload over
+    // the sanitized copy still lands as an attachment.
+    const again = await fetch(signed.body.uploadUrl as string, {
+      method: 'PUT',
+      body: Buffer.from(hostile),
+      headers: signed.body.headers as Record<string, string>,
+    })
+    expect(again.status).toBe(200)
+    const served = await fetch(`${s3.url}/coboard/${key}`)
+    expect(served.headers.get('content-disposition')).toBe('attachment')
+  })
+
+  it('does not put a disposition on raster uploads', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const { confirm, signed, key } = await upload(priya, boardId, 'image/png', PNG)
+    expect(confirm.status).toBe(200)
+    expect(signed.body.headers['content-disposition']).toBeUndefined()
+    expect(stored(key)!.contentDisposition).toBeUndefined()
+  })
+
   it('refuses a key on a board the caller cannot edit, and a malformed key', async () => {
     const priya = await signUp()
     const dana = await signUp()
@@ -490,5 +548,73 @@ describe('the image collector', () => {
     expect(stored(used.key)).toBeDefined()
     expect(stored(inSnapshot.key)).toBeDefined()
     expect(stored(young.key)).toBeDefined()
+  })
+})
+
+/* ── Image ops must point at our uploads — finding 19 ─────────────────────── */
+
+describe('image object urls', () => {
+  const imageOp = (url: string) => {
+    const id = crypto.randomUUID()
+    return {
+      id: crypto.randomUUID(),
+      type: 'CREATE',
+      objectId: id,
+      payload: {
+        id,
+        type: 'image',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        rotation: 0,
+        zIndex: 'a0',
+        opacity: 1,
+        createdBy: 'test',
+        createdAt: 1_760_000_000_000,
+        updatedAt: 1_760_000_000_000,
+        url,
+        naturalWidth: 100,
+        naturalHeight: 100,
+        cornerRadius: 0,
+      },
+    }
+  }
+
+  it('accepts an image op whose url is an upload, and refuses any other url', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const { confirm } = await upload(priya, boardId, 'image/png', PNG)
+    const ours = imageOp(confirm.body.url as string)
+    const foreign = imageOp('https://tracker.example.com/pixel.png')
+    // Our storage host, but not an upload key.
+    const lookalike = imageOp(`${s3.url}/coboard/../../admin.png`)
+
+    const response = await request(app)
+      .post(`/api/boards/${boardId}/operations`)
+      .set(auth(priya))
+      .send({ ops: [ours, foreign, lookalike] })
+    expect(response.status).toBe(200)
+    expect(response.body.applied.map((a: { id: string }) => a.id)).toEqual([ours.id])
+    expect(response.body.rejected.map((r: { id: string }) => r.id).sort()).toEqual(
+      [foreign.id, lookalike.id].sort(),
+    )
+
+    // And an UPDATE cannot swap the url for a foreign one later.
+    const swap = await request(app)
+      .post(`/api/boards/${boardId}/operations`)
+      .set(auth(priya))
+      .send({
+        ops: [
+          {
+            id: crypto.randomUUID(),
+            type: 'UPDATE',
+            objectId: ours.objectId,
+            payload: { url: 'https://tracker.example.com/pixel.png' },
+          },
+        ],
+      })
+    expect(swap.body.applied).toEqual([])
+    expect(swap.body.rejected).toHaveLength(1)
   })
 })

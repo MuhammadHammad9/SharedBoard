@@ -109,7 +109,7 @@ export default defineConfig({
           timeout: 60_000,
           // Each spec file registers its own account from 127.0.0.1; the
           // production limit of 10 per 15 min ran out mid-suite (Phase 15g).
-          env: { REGISTER_RATE_LIMIT: '1000' },
+          env: { REGISTER_RATE_LIMIT: '1000', REST_OPS_RATE_LIMIT: '100000' },
         },
         {
           command: 'pnpm --filter @coboard/web dev',

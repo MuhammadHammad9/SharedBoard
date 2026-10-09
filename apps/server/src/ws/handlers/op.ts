@@ -70,10 +70,22 @@ export async function handleOps(
   try {
     await permissionService.assertCanEdit(session.boardId, session.identity)
   } catch (error) {
-    const code =
-      error instanceof AuthError && error.status === 404
-        ? NACK_CODES.BOARD_GONE
-        : NACK_CODES.FORBIDDEN
+    /*
+     * Only an AuthError is a DECISION. Anything else — Postgres or Redis
+     * blipping under the permission lookup — says nothing about the user's
+     * rights, and a nack is never retried (R-SYNC-011): answering FORBIDDEN
+     * here made the client discard real work over a transient fault. Same
+     * posture as the persist catch below: log, send nothing, and let the
+     * client's ack timeout retry the batch.
+     */
+    if (!(error instanceof AuthError)) {
+      session.log.error(
+        { err: error, opCount: incoming.length },
+        'op authorization check failed',
+      )
+      return
+    }
+    const code = error.status === 404 ? NACK_CODES.BOARD_GONE : NACK_CODES.FORBIDDEN
     for (const raw of incoming) nack(session, opId(raw), code, 'View-only access')
     return
   }
@@ -131,7 +143,14 @@ export async function handleOps(
     return
   }
 
+  // Refused by the checks that need the board's state — the target's type,
+  // the image url, a reused op id. Decisions, so nacked; never persisted.
+  for (const refused of result.rejected) {
+    nack(session, refused.id, NACK_CODES.INVALID_OP, refused.reason)
+  }
+
   // STEP 6 — ACK THE SENDER FIRST.
+  if (result.applied.length === 0) return
   opsAccepted.inc({ transport: 'ws' }, result.applied.length)
   session.send({
     t: 'ack',

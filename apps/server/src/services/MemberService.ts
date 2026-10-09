@@ -190,11 +190,32 @@ export class MemberService {
     await permissionService.invalidate(boardId, identity)
   }
 
+  /** Whether any live invite is waiting for this address — D-22. */
+  async hasPendingInvites(emailLower: string): Promise<boolean> {
+    const count = await this.db.boardInvite.count({
+      where: { email: emailLower, claimedAt: null, board: { deletedAt: null } },
+    })
+    return count > 0
+  }
+
   /**
-   * Turn a new account's pending invites into memberships — FR-SHARE-004
-   * "on signup they are auto-added". Called from every account-creating path.
+   * Turn an account's pending invites into memberships — FR-SHARE-004
+   * "on signup they are auto-added".
+   *
+   * D-22: ONLY for a PROVEN address. An invite is addressed to whoever reads
+   * that mailbox, and typing an address into a signup form proves nothing —
+   * claiming at registration let anyone who guessed an invitee's address walk
+   * into the board. Callers claim after a verified Google sign-in or an opened
+   * verification link; this re-checks it anyway, so a future caller that
+   * forgets cannot reopen the hole.
    */
   async claimInvites(userId: string, emailLower: string): Promise<number> {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      select: { emailLower: true, emailVerifiedAt: true },
+    })
+    if (!user?.emailVerifiedAt || user.emailLower !== emailLower) return 0
+
     const invites = await this.db.boardInvite.findMany({
       where: { email: emailLower, claimedAt: null, board: { deletedAt: null } },
       select: { id: true, boardId: true, role: true, invitedById: true },
@@ -223,8 +244,14 @@ export class MemberService {
   /**
    * Guest → account — FLOWS §7.4. The person who was guest `guestId` on this
    * board has just signed up (or in) as `userId`; their guest membership
-   * becomes their account's, "added as an Editor". An existing membership is
-   * never lowered by this.
+   * becomes their account's.
+   *
+   * D-23: the guest's ROLE carries over — FLOWS says "added as an Editor",
+   * which assumed the guest came in on an edit link. A guest on a VIEWER link
+   * who signed up used to come out an editor: sign-up as privilege
+   * escalation. The result is the higher of the guest's role and any
+   * membership the account already had; it never raises a viewer, and never
+   * lowers anyone.
    *
    * Proof of being that guest is the guest id itself — the bearer secret only
    * that browser holds (D-1).
@@ -232,7 +259,7 @@ export class MemberService {
   async claimGuest(boardId: string, guestId: string, userId: string): Promise<Role> {
     const guest = await this.db.boardMember.findUnique({
       where: { boardId_guestId: { boardId, guestId } },
-      select: { id: true },
+      select: { id: true, role: true },
     })
     if (!guest) throw new AuthError(ERROR_CODES.NOT_FOUND, 'Guest not found', 404)
 
@@ -240,7 +267,9 @@ export class MemberService {
       where: { boardId_userId: { boardId, userId } },
       select: { role: true },
     })
-    const role: Role = existing && existing.role !== 'VIEWER' ? existing.role : 'EDITOR'
+    const rank: Record<Role, number> = { VIEWER: 0, EDITOR: 1, OWNER: 2 }
+    const role: Role =
+      existing && rank[existing.role] > rank[guest.role] ? existing.role : guest.role
     await this.db.$transaction([
       this.db.boardMember.delete({ where: { id: guest.id } }),
       this.db.boardMember.upsert({

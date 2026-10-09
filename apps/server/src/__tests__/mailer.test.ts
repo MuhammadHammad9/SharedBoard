@@ -54,6 +54,27 @@ describe('SmtpMailer', () => {
     expect(sent[0]!.text).toContain('https://coboard.example.com/signup?invite=1')
   })
 
+  it('composes the verification email, escaping the name — D-22', async () => {
+    const sent: Record<string, string>[] = []
+    const mailer = new SmtpMailer(
+      { sendMail: async (m: Record<string, string>) => void sent.push(m) } as never,
+      'CoBoard <no-reply@coboard.example.com>',
+    )
+    await mailer.sendEmailVerification({
+      to: 'sam@example.com',
+      displayName: 'Sam <b>',
+      verifyUrl: 'https://coboard.example.com/verify-email?token=abc',
+      expiresInHours: 24,
+    })
+    expect(sent[0]).toMatchObject({
+      to: 'sam@example.com',
+      subject: 'Confirm your CoBoard email address',
+    })
+    expect(sent[0]!.text).toContain('https://coboard.example.com/verify-email?token=abc')
+    expect(sent[0]!.text).toContain('24 hours')
+    expect(sent[0]!.html).toContain('Sam &#60;b&#62;')
+  })
+
   describe('over a real SMTP conversation', () => {
     let server: Server | null = null
     afterEach(() => server?.close())

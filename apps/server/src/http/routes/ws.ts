@@ -5,7 +5,8 @@ import { ERROR_CODES } from '@coboard/shared'
 import { permissionService } from '../../services/PermissionService.js'
 import { redis } from '../../lib/redis.js'
 import { assertIdentified, identify } from '../middleware/auth.js'
-import type { Identity } from '../../lib/identity.js'
+import { identityKey, type Identity } from '../../lib/identity.js'
+import { consume, type Bucket } from '../../lib/tokenBucket.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
 import { validateBody } from '../middleware/validate.js'
 
@@ -40,6 +41,9 @@ import { validateBody } from '../middleware/validate.js'
 export const TICKET_TTL_SECONDS = 60
 
 const TicketRequestSchema = z.object({ boardId: z.string().uuid() })
+
+/** 30 tickets a minute per identity, refilling steadily — finding 10. */
+export const TICKETS_BUCKET: Bucket = { rate: 30 / 60, capacity: 30 }
 
 export interface TicketPayload {
   identity: Identity
@@ -80,6 +84,13 @@ export function createWsRouter(): Router {
       // share link created (FR-AUTH-006).
       const identity = assertIdentified(req)
       const { boardId } = req.body as z.infer<typeof TicketRequestSchema>
+
+      // Finding 10: tickets are cheap to mint and each one buys an upgraded
+      // socket, so minting is bounded per identity. Reconnect backoff never
+      // gets near 30 a minute; a script farming sockets does.
+      if (!(await consume(`ws-ticket:${identityKey(identity)}`, 1, TICKETS_BUCKET))) {
+        throw new HttpError(ERROR_CODES.RATE_LIMITED, 'Too many connection attempts', 429)
+      }
 
       /*
        * Authorization happens HERE, over HTTP, where a refusal can be a 404

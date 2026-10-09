@@ -1,4 +1,4 @@
-import type { ServerOp } from '@coboard/shared'
+import { CLOSE_CODES, type ServerOp } from '@coboard/shared'
 import { opService } from '../../services/OpService.js'
 import { presenceService } from '../../services/PresenceService.js'
 import type { RoomManager } from '../RoomManager.js'
@@ -26,9 +26,31 @@ export async function handleJoin(
   sinceSeq: number,
 ): Promise<void> {
   if (session.joined) return
+
+  /*
+   * The room cap, again — finding 10. The upgrade checked it, but sockets
+   * that upgraded together all saw the same count before any of them had
+   * joined; this is the check that counts what is actually in the room.
+   */
+  if (rooms.isFull(session.boardId)) {
+    session.log.warn('board full: join refused')
+    session.close(CLOSE_CODES.RATE_LIMITED, 'Board is full')
+    return
+  }
   session.joined = true
 
-  rooms.join(session, await presenceService.nextColourSlot(session.boardId))
+  const slot = await presenceService.nextColourSlot(session.boardId)
+  /*
+   * Finding 14: the socket can close during any await below. Its `close`
+   * handler has already run `leave` — before this function put it in the
+   * room — so carrying on would add a session nobody will ever remove: a
+   * ghost on every participant's avatar stack. Bail out after each await.
+   */
+  if (!session.open) {
+    session.joined = false
+    return
+  }
+  rooms.join(session, slot)
   // Record in Redis so other instances can see this session — TRD §15.2.
   void presenceService.touch(session.boardId, session.toPresenceUser())
 
@@ -36,6 +58,13 @@ export async function handleJoin(
     opService.currentSeq(session.boardId),
     presenceService.list(session.boardId),
   ])
+  if (!session.open) {
+    // In the room by now, so leave it the way the close handler would have.
+    session.joined = false
+    rooms.leave(session)
+    void presenceService.forget(session.boardId, session.id)
+    return
+  }
 
   // Who is already here: this instance's room, plus the sessions other
   // instances recorded in Redis (TRD §15.2). Local entries win — they are
@@ -81,7 +110,8 @@ export async function handleJoin(
    * snapshot; that is how they opened the board.
    */
   const ops = await opService.since(session.boardId, sinceSeq, JOIN_CATCHUP_LIMIT)
-  if (ops.length === 0) return
+  // Closed meanwhile: the close handler has already cleaned up; nothing to send.
+  if (ops.length === 0 || !session.open) return
 
   session.send({
     t: 'op_batch',

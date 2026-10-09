@@ -242,12 +242,18 @@ describe('GET /metrics', () => {
 
   it('is disabled in production when no token is configured', async () => {
     const previous = process.env.NODE_ENV
+    const previousSmtp = process.env.SMTP_URL
     process.env.NODE_ENV = 'production'
+    // Production refuses to boot without SMTP (finding 15); any value will do,
+    // nothing is sent.
+    process.env.SMTP_URL = 'smtp://127.0.0.1:1'
     resetEnvCache()
     try {
       expect((await request(app).get('/metrics')).status).toBe(404)
     } finally {
       process.env.NODE_ENV = previous
+      if (previousSmtp === undefined) delete process.env.SMTP_URL
+      else process.env.SMTP_URL = previousSmtp
       resetEnvCache()
     }
   })

@@ -1117,3 +1117,352 @@ describe('live access changes — FLOWS §9.5, Phase 12c', () => {
     expect(m.all('board_renamed').at(-1)?.name).toBe(final)
   })
 })
+
+/* ── Security review — findings 1, 3, 5, 10, 13, 14, 16 ──────────────────── */
+
+describe('UPDATE payloads are validated — finding 1', () => {
+  const update = (objectId: string, payload: unknown) => ({
+    id: randomUUID(),
+    type: 'UPDATE',
+    objectId,
+    payload,
+  })
+
+  async function boardWithSticky() {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const a = await connect(priya, boardId)
+    await a.join(boardId)
+    const note = sticky()
+    a.send({ t: 'op', op: createOp(note) })
+    await a.waitFor('ack')
+    a.received.length = 0
+    return { a, boardId, note }
+  }
+
+  const storedUpdates = (boardId: string) =>
+    prisma.operation.count({ where: { boardId, type: 'UPDATE' } })
+
+  it('nacks null points, an id or type change, and unknown keys — nothing persisted', async () => {
+    const { a, boardId, note } = await boardWithSticky()
+    for (const payload of [
+      { points: null },
+      { type: 'image' },
+      { id: randomUUID() },
+      { width: 'abc' },
+      { notAField: 1 },
+    ]) {
+      const op = update(note.id, payload)
+      a.send({ t: 'op', op })
+      await waitUntil(() => a.all('nack').some(n => n.id === op.id))
+      expect(a.all('nack').find(n => n.id === op.id)?.code).toBe(NACK_CODES.INVALID_OP)
+    }
+    expect(a.all('ack')).toHaveLength(0)
+    expect(await storedUpdates(boardId)).toBe(0)
+  })
+
+  it('nacks an infinite coordinate sent as a raw 1e309 literal', async () => {
+    const { a, boardId, note } = await boardWithSticky()
+    const id = randomUUID()
+    // JSON.stringify cannot produce this; JSON.parse turns it into Infinity.
+    a.socket.send(
+      `{"t":"op","op":{"id":"${id}","type":"UPDATE","objectId":"${note.id}","payload":{"x":1e309}}}`,
+    )
+    expect(await a.waitFor('nack')).toMatchObject({ id, code: NACK_CODES.INVALID_OP })
+    expect(await storedUpdates(boardId)).toBe(0)
+  })
+
+  it("judges an update against its TARGET's type: a stroke colour is not a sticky colour", async () => {
+    const { a, boardId, note } = await boardWithSticky()
+    // A valid hex colour, so the wire schema passes it — but stickies use the
+    // frozen palette (R-UI-014), and the merged object would be invalid.
+    const bad = update(note.id, { color: '#123456' })
+    // `text` is a sticky field too, so this one is fine; `url` is not.
+    const wrongField = update(note.id, { simplified: true })
+    const good = update(note.id, { color: '#FED7AA', x: 40, text: 'Moved' })
+    a.send({ t: 'op_batch', ops: [bad, wrongField, good] })
+
+    const ack = await a.waitFor('ack')
+    expect(ack.ids).toEqual([good.id])
+    await waitUntil(() => a.all('nack').length === 2)
+    expect(
+      a
+        .all('nack')
+        .map(n => n.id)
+        .sort(),
+    ).toEqual([bad.id, wrongField.id].sort())
+    expect(await storedUpdates(boardId)).toBe(1)
+  })
+
+  it('judges an update against a CREATE earlier in the same batch', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const a = await connect(priya, boardId)
+    await a.join(boardId)
+    const note = sticky()
+    const create = createOp(note)
+    const bad = update(note.id, { color: '#123456' })
+    a.send({ t: 'op_batch', ops: [create, bad] })
+    expect((await a.waitFor('ack')).ids).toEqual([create.id])
+    expect(await a.waitFor('nack')).toMatchObject({ id: bad.id })
+  })
+
+  it('nacks a CREATE whose payload id is not its objectId', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const a = await connect(priya, boardId)
+    await a.join(boardId)
+    const op = { ...createOp(sticky()), objectId: randomUUID() }
+    a.send({ t: 'op', op })
+    expect(await a.waitFor('nack')).toMatchObject({
+      id: op.id,
+      code: NACK_CODES.INVALID_OP,
+    })
+  })
+
+  it('nacks an image whose url is not one of our uploads — finding 19', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const a = await connect(priya, boardId)
+    await a.join(boardId)
+    const id = randomUUID()
+    const op: ClientOp = {
+      id: randomUUID(),
+      type: 'CREATE',
+      objectId: id,
+      payload: {
+        ...(sticky() as object),
+        id,
+        type: 'image',
+        url: 'https://tracker.example.com/pixel.png',
+        naturalWidth: 10,
+        naturalHeight: 10,
+        cornerRadius: 0,
+      } as unknown as BoardObject,
+    }
+    a.send({ t: 'op', op })
+    expect(await a.waitFor('nack')).toMatchObject({
+      id: op.id,
+      code: NACK_CODES.INVALID_OP,
+    })
+    expect(await prisma.operation.count({ where: { boardId } })).toBe(0)
+  })
+})
+
+describe('op id collisions are decisions, not retries — finding 13', () => {
+  it('nacks an op id already stored on ANOTHER board, instead of failing the batch forever', async () => {
+    const priya = await signUp()
+    const first = await createBoard(priya)
+    const second = await createBoard(priya)
+    const a = await connect(priya, first)
+    await a.join(first)
+    const op = createOp(sticky())
+    a.send({ t: 'op', op })
+    await a.waitFor('ack')
+
+    const b = await connect(priya, second)
+    await b.join(second)
+    const fresh = createOp(sticky())
+    // Same op id, different board — plus an innocent op in the same batch.
+    b.send({ t: 'op_batch', ops: [{ ...createOp(sticky()), id: op.id }, fresh] })
+    expect(await b.waitFor('nack')).toMatchObject({
+      id: op.id,
+      code: NACK_CODES.INVALID_OP,
+    })
+    expect((await b.waitFor('ack')).ids).toEqual([fresh.id])
+    expect(await prisma.operation.count({ where: { boardId: second } })).toBe(1)
+  })
+
+  it('nacks a duplicated op id within one batch and stores the rest', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const a = await connect(priya, boardId)
+    await a.join(boardId)
+    const dup = createOp(sticky())
+    const fine = createOp(sticky())
+    a.send({ t: 'op_batch', ops: [dup, { ...createOp(sticky()), id: dup.id }, fine] })
+    expect(await a.waitFor('nack')).toMatchObject({ id: dup.id })
+    expect((await a.waitFor('ack')).ids).toEqual([fine.id])
+  })
+})
+
+describe('transient failures are not decisions', () => {
+  it('a non-AuthError from the permission check is NOT nacked FORBIDDEN — finding 5', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const a = await connect(priya, boardId)
+    await a.join(boardId)
+
+    const spy = vi
+      .spyOn(permissionService, 'assertCanEdit')
+      .mockRejectedValueOnce(new Error('redis: connection reset'))
+    const op = createOp(sticky())
+    a.send({ t: 'op', op })
+    await new Promise(r => setTimeout(r, 200))
+    spy.mockRestore()
+    // Silence: the client's ack timeout retries. A nack would discard the work.
+    expect(a.all('nack')).toHaveLength(0)
+    expect(a.all('ack')).toHaveLength(0)
+
+    a.send({ t: 'op', op })
+    expect((await a.waitFor('ack')).ids).toEqual([op.id])
+  })
+
+  it('a database error during join closes that socket with 1011 and keeps the server up — finding 3', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const a = await connect(priya, boardId)
+
+    const spy = vi
+      .spyOn(opService, 'currentSeq')
+      .mockRejectedValueOnce(new Error('connection terminated unexpectedly'))
+    a.send({ t: 'join', boardId, sinceSeq: 0 })
+    expect(await a.waitForClose()).toBe(CLOSE_CODES.INTERNAL_ERROR)
+    spy.mockRestore()
+    expect(gateway.rooms.size(boardId)).toBe(0)
+
+    // The process — and every other room — is still serving.
+    const b = await connect(priya, boardId)
+    expect((await b.join(boardId)).t).toBe('join_ack')
+  })
+})
+
+describe('sockets that never join, and the room cap — finding 10', () => {
+  it('closes a socket that has not joined within the deadline', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const serverB = createServer(app)
+    const gatewayB = attachGateway(serverB, {
+      rooms: new RoomManager(0),
+      joinTimeoutMs: 200,
+    })
+    await new Promise<void>(resolve => serverB.listen(0, '127.0.0.1', resolve))
+    const portB = (serverB.address() as { port: number }).port
+    try {
+      const idle = await Client.connect(await getTicket(priya, boardId), portB)
+      const joined = await Client.connect(await getTicket(priya, boardId), portB)
+      await joined.join(boardId)
+
+      expect(await idle.waitForClose()).toBe(CLOSE_CODES.POLICY_VIOLATION)
+      await new Promise(r => setTimeout(r, 150))
+      expect(joined.closeCode).toBeNull()
+      joined.close()
+    } finally {
+      await gatewayB.close()
+      await new Promise<void>(resolve => serverB.close(() => resolve()))
+    }
+  })
+
+  it('re-checks the room cap at join, not only at upgrade', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    // Upgraded while the room was empty…
+    const late = await connect(priya, boardId)
+    // …and the room filled before it joined.
+    const fakes = Array.from({ length: 50 }, () => ({
+      id: randomUUID(),
+      boardId,
+      joined: true,
+    }))
+    for (const fake of fakes) gateway.rooms.join(fake as never)
+    try {
+      late.send({ t: 'join', boardId, sinceSeq: 0 })
+      expect(await late.waitForClose()).toBe(CLOSE_CODES.RATE_LIMITED)
+    } finally {
+      for (const fake of fakes) gateway.rooms.leave(fake as never)
+    }
+  })
+
+  it('rate-limits ticket minting per identity', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const statuses: number[] = []
+    for (let i = 0; i < 31; i++) {
+      const response = await request(app)
+        .post('/api/ws/ticket')
+        .set({ Authorization: `Bearer ${priya.token}` })
+        .send({ boardId })
+      statuses.push(response.status)
+    }
+    expect(statuses.slice(0, 30).every(s => s === 200)).toBe(true)
+    expect(statuses[30]).toBe(429)
+  })
+})
+
+describe('a socket that closes mid-join leaves no ghost — finding 14', () => {
+  it('does not add a session whose socket closed during the colour lookup', async () => {
+    const { presenceService } = await import('../services/PresenceService.js')
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const a = await connect(priya, boardId)
+
+    let release!: () => void
+    const gate = new Promise<void>(r => (release = r))
+    const spy = vi
+      .spyOn(presenceService, 'nextColourSlot')
+      .mockImplementationOnce(async () => {
+        await gate
+        return 0
+      })
+    a.send({ t: 'join', boardId, sinceSeq: 0 })
+    await new Promise(r => setTimeout(r, 50))
+    a.close()
+    await a.waitForClose()
+    await new Promise(r => setTimeout(r, 50))
+    release()
+    await new Promise(r => setTimeout(r, 100))
+    spy.mockRestore()
+
+    expect(gateway.rooms.size(boardId)).toBe(0)
+  })
+})
+
+describe('permanent delete notifies the room — finding 16', () => {
+  it('a board deleted without being trashed first shows everyone S-19', async () => {
+    const priya = await signUp()
+    const marcus = await signUp('Marcus Feld')
+    const boardId = await createBoard(priya)
+    await prisma.boardMember.create({
+      data: { boardId, userId: marcus.userId, role: 'EDITOR' },
+    })
+    const m = await connect(marcus, boardId)
+    await m.join(boardId)
+
+    const gone = await request(app)
+      .post(`/api/boards/${boardId}/permanent-delete`)
+      .set({ Authorization: `Bearer ${priya.token}` })
+      .send({ confirmName: 'Q3 Retrospective' })
+    expect(gone.status).toBe(204)
+
+    expect(await m.waitFor('board_deleted')).toEqual({ t: 'board_deleted' })
+    expect(await m.waitForClose()).toBe(CLOSE_CODES.NOT_FOUND)
+  })
+})
+
+describe('presence is throttled server-side — finding 11', () => {
+  it('relays at most the burst of a cursor flood, silently, and stays up', async () => {
+    const priya = await signUp()
+    const marcus = await signUp('Marcus Feld')
+    const boardId = await createBoard(priya)
+    await prisma.boardMember.create({
+      data: { boardId, userId: marcus.userId, role: 'EDITOR' },
+    })
+    const a = await connect(priya, boardId)
+    const b = await connect(marcus, boardId)
+    await a.join(boardId)
+    await b.join(boardId)
+
+    for (let i = 0; i < 1_000; i++) a.send({ t: 'cursor', x: i, y: i })
+    await new Promise(r => setTimeout(r, 500))
+    const relayed = b.all('cursor').length
+    expect(relayed).toBeGreaterThan(0)
+    // Capacity 160 plus at most a second of refill at 80/s.
+    expect(relayed).toBeLessThan(300)
+
+    // Nothing was nacked or closed: dropping presence is silent.
+    expect(a.closeCode).toBeNull()
+    const op = createOp(sticky())
+    a.send({ t: 'op', op })
+    expect((await a.waitFor('ack')).ids).toEqual([op.id])
+  })
+})

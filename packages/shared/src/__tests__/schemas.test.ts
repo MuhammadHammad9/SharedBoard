@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import {
   BoardObjectSchema,
+  OP_PAYLOAD_MAX_BYTES,
+  ServerOpSchema,
+  UpdatePayloadByType,
+  UpdatePayloadSchema,
   ClientOpSchema,
   ClientMessageSchema,
   PRESENCE_COLOURS,
@@ -237,5 +242,120 @@ describe('frozen palettes — R-UI-013, R-UI-014', () => {
     expect(Object.keys(STICKY_COLOURS)).toHaveLength(8)
     expect(STICKY_COLOURS.yellow).toBe('#FEF08A')
     expect(STICKY_COLOURS.grey).toBe('#E4E4E7')
+  })
+})
+
+describe('UPDATE payloads are strict — finding 1', () => {
+  const op = (payload: unknown) => ({
+    id: '55555555-5555-4555-8555-555555555555',
+    type: 'UPDATE' as const,
+    objectId: validStroke.id,
+    payload,
+  })
+
+  it('refuses unknown keys, id, type, null and out-of-bounds values', () => {
+    for (const payload of [
+      { notAField: 1 },
+      { id: validStroke.id },
+      { type: 'image' },
+      { points: null },
+      { x: Infinity },
+      { x: 2_000_000 },
+      { width: 'abc' },
+      { opacity: 2 },
+    ]) {
+      expect(ClientOpSchema.safeParse(op(payload)).success, JSON.stringify(payload)).toBe(
+        false,
+      )
+    }
+  })
+
+  it('accepts a partial of any object type, including keys two types share', () => {
+    for (const payload of [
+      {},
+      { x: 1, y: 2 },
+      { color: '#123456' }, // a stroke or text colour
+      { fontSize: 'auto' }, // a sticky's
+      { text: 'x'.repeat(5_000) }, // a text object's maximum
+      { url: 'https://cdn.example.com/a.png', cornerRadius: 4 },
+    ]) {
+      expect(
+        UpdatePayloadSchema.safeParse(payload).success,
+        JSON.stringify(payload),
+      ).toBe(true)
+    }
+  })
+
+  it('narrows to the exact type: a sticky accepts only its frozen palette', () => {
+    expect(UpdatePayloadByType.sticky.safeParse({ color: '#FEF08A' }).success).toBe(true)
+    expect(UpdatePayloadByType.sticky.safeParse({ color: '#123456' }).success).toBe(false)
+    expect(
+      UpdatePayloadByType.rect.safeParse({ url: 'https://x.example/a.png' }).success,
+    ).toBe(false)
+    expect(
+      UpdatePayloadByType.sticky.safeParse({ text: 'x'.repeat(2_001) }).success,
+    ).toBe(false)
+  })
+
+  it('stays equivalent to merge-and-reparse: no object schema has a cross-field rule', () => {
+    // The server validates an UPDATE per field against the target's type
+    // instead of materialising and re-parsing the merged object. That is
+    // only sound while every object schema is a plain object — a refinement
+    // across fields would wrap it in ZodEffects and fail here.
+    expect(BoardObjectSchema).toBeInstanceOf(z.ZodDiscriminatedUnion)
+    for (const option of BoardObjectSchema.options) {
+      expect(option).toBeInstanceOf(z.ZodObject)
+    }
+  })
+
+  it('bounds stroke points like every other coordinate', () => {
+    expect(
+      StrokeObjectSchema.safeParse({ ...validStroke, points: [0, 0, 0.5, 1e300, 1, 0.5] })
+        .success,
+    ).toBe(false)
+  })
+})
+
+describe('CREATE rules — findings 1 and 7', () => {
+  it('requires payload.id === objectId', () => {
+    expect(
+      ClientOpSchema.safeParse({
+        id: '66666666-6666-4666-8666-666666666666',
+        type: 'CREATE',
+        objectId: '77777777-7777-4777-8777-777777777777',
+        payload: validStroke,
+      }).success,
+    ).toBe(false)
+  })
+
+  it('caps the serialized payload at OP_PAYLOAD_MAX_BYTES', () => {
+    const points = Array.from({ length: 30_000 }, (_, i) => 123_456.123456789 + i / 7)
+    const big = { ...validStroke, points }
+    expect(JSON.stringify(big).length).toBeGreaterThan(OP_PAYLOAD_MAX_BYTES)
+    expect(
+      ClientOpSchema.safeParse({
+        id: '88888888-8888-4888-8888-888888888888',
+        type: 'CREATE',
+        objectId: validStroke.id,
+        payload: big,
+      }).success,
+    ).toBe(false)
+  })
+})
+
+describe('ServerOpSchema stays lenient on stored UPDATEs', () => {
+  it('accepts a historical UPDATE the strict client schema would refuse', () => {
+    // The client parses every op_batch with this; one old op must not make it
+    // drop a whole batch and diverge.
+    expect(
+      ServerOpSchema.safeParse({
+        id: '99999999-9999-4999-8999-999999999999',
+        type: 'UPDATE',
+        objectId: validStroke.id,
+        payload: { legacyKey: true },
+        seq: 4,
+        actorSessionId: 'replay',
+      }).success,
+    ).toBe(true)
   })
 })

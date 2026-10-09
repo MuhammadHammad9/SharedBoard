@@ -11,7 +11,7 @@
 // outbox replay, ordering authority and auditability (anti-pattern A-07).
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   // Phase 15e: `prisma.$metrics` exposes the connection-pool gauges that the
   // TRD §15.4 "Postgres pool utilization" signal is computed from. Preview in
   // Prisma 5; it reads counters the engine already keeps, and changes no query.
@@ -26,28 +26,34 @@ datasource db {
 // ── Phase 7 — authentication ─────────────────────────────────────────────────
 
 model User {
-  id            String   @id @default(uuid())
-  email         String   @unique
+  id              String    @id @default(uuid())
+  email           String    @unique
   /// Lower-cased copy of `email`, so lookup is case-insensitive without
   /// forcing a functional index or a citext extension. Both columns are
   /// unique: `email` preserves what the user typed, `emailLower` is what we
   /// match on.
-  emailLower    String   @unique
+  emailLower      String    @unique
   /// Null for OAuth-only accounts — TRD §3.1. An account created through
   /// Google has no password until the user sets one.
-  passwordHash  String?
-  displayName   String   @db.VarChar(40)
-  avatarUrl     String?
-  googleId      String?  @unique
-  emailVerified Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  passwordHash    String?
+  displayName     String    @db.VarChar(40)
+  avatarUrl       String?
+  googleId        String?   @unique
+  emailVerified   Boolean   @default(false)
+  /// D-22: when this address was PROVEN to belong to the account — by a
+  /// verified Google identity, or by opening an emailed verification link.
+  /// Board invites are claimed only for a proven address. Null for a plain
+  /// password registration until the link is opened.
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  refreshTokens  RefreshToken[]
-  passwordResets PasswordResetToken[]
-  ownedBoards    Board[]              @relation("BoardOwner")
-  memberships    BoardMember[]
-  operations     Operation[]
+  refreshTokens      RefreshToken[]
+  passwordResets     PasswordResetToken[]
+  emailVerifications EmailVerificationToken[]
+  ownedBoards        Board[]                  @relation("BoardOwner")
+  memberships        BoardMember[]
+  operations         Operation[]
 
   @@index([emailLower])
 }
@@ -93,6 +99,22 @@ model PasswordResetToken {
   @@index([expiresAt])
 }
 
+/// D-22: proof of address ownership for a password registration, mirroring
+/// PasswordResetToken — hashed at rest, single-use, 24 h expiry.
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 // ── Phase 8 — boards, the op log, and snapshots ──────────────────────────────
 
 model Board {
@@ -129,16 +151,16 @@ model Board {
 /// because `GET /boards/:id` must report `myRole`, and because the owner
 /// needs a membership row from the moment the board is created.
 model BoardMember {
-  id        String   @id @default(uuid())
-  boardId   String
+  id          String   @id @default(uuid())
+  boardId     String
   /// Null for a guest — FR-AUTH-006.
-  userId    String?
+  userId      String?
   /// A guest's client-generated id. A BEARER SECRET (decision D-1 in
   /// docs/REMAINING-WORK.md): it authenticates the guest, so it is never sent
   /// to anyone but its owner — not in presence, not in member lists.
-  guestId   String?
-  guestName String?  @db.VarChar(40)
-  role      Role
+  guestId     String?
+  guestName   String?  @db.VarChar(40)
+  role        Role
   /// The link a guest came in through. Turning that link off or resetting it
   /// removes these members (FLOWS §10.2).
   shareLinkId String?

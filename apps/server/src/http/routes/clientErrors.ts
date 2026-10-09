@@ -34,6 +34,21 @@ const ReportSchema = z.object({
   source: z.enum(['boundary', 'canvas-boundary', 'window', 'promise']),
 })
 
+/**
+ * The page URL, minus anything that is a credential — finding 15.
+ *
+ * A reset or verification link carries its token in the query string, and a
+ * share link is `/join/<token>` — a bearer secret for the board. An error on
+ * any of those pages would otherwise write a working credential into the log
+ * pipeline. Query and fragment are dropped entirely; a join token is replaced
+ * by a placeholder so the log still says which screen it was.
+ */
+export function scrubUrl(raw: string): string {
+  const cut = raw.search(/[?#]/)
+  const path = cut === -1 ? raw : raw.slice(0, cut)
+  return path.replace(/\/join\/[^/]+/g, '/join/[redacted]')
+}
+
 const REPORTS_BUCKET: Bucket = { rate: 30 / 60, capacity: 30 }
 
 export function createClientErrorsRouter(): Router {
@@ -47,7 +62,8 @@ export function createClientErrorsRouter(): Router {
       if (!(await consume(`client-errors:${clientIp(req)}`, 1, REPORTS_BUCKET))) {
         throw new HttpError(ERROR_CODES.RATE_LIMITED, 'Too many reports', 429)
       }
-      const report = req.body as z.infer<typeof ReportSchema>
+      const body = req.body as z.infer<typeof ReportSchema>
+      const report = body.url === undefined ? body : { ...body, url: scrubUrl(body.url) }
       const identity = identityOf(req)
       logger.warn(
         {

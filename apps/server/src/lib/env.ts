@@ -62,6 +62,14 @@ const EnvSchema = z.object({
    * refuses any value above 10 at boot (see loadEnv).
    */
   REGISTER_RATE_LIMIT: z.coerce.number().int().positive().default(10),
+
+  /*
+   * R-SEC-013 on the REST op path (finding 4): ops per second per identity,
+   * the same budget a socket session gets. The e2e suite seeds 5,000-object
+   * boards through this endpoint in back-to-back 200-op batches and raises it
+   * for that; production refuses any value above the default at boot.
+   */
+  REST_OPS_RATE_LIMIT: z.coerce.number().int().positive().default(100),
 })
 
 export type Env = z.infer<typeof EnvSchema>
@@ -85,6 +93,24 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new Error(
       'REGISTER_RATE_LIMIT may not exceed 10 in production (R-SEC-013); ' +
         'raised limits exist for the e2e suite only.',
+    )
+  }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.REST_OPS_RATE_LIMIT > 100) {
+    throw new Error(
+      'REST_OPS_RATE_LIMIT may not exceed 100 in production (R-SEC-013); ' +
+        'raised limits exist for the e2e suite only.',
+    )
+  }
+  /*
+   * Finding 15: without SMTP, the mailer falls back to LOGGING every email —
+   * password-reset and verification links included. In development that is
+   * how the link is found; in production it writes account-takeover tokens to
+   * the log pipeline and delivers nothing. So production does not boot.
+   */
+  if (parsed.data.NODE_ENV === 'production' && !parsed.data.SMTP_URL) {
+    throw new Error(
+      'SMTP_URL must be set in production: without it password-reset and ' +
+        'verification emails are written to the log instead of delivered.',
     )
   }
   if (parsed.data.JWT_ACCESS_SECRET === parsed.data.JWT_REFRESH_SECRET) {

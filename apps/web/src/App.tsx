@@ -13,6 +13,7 @@ import Login from './routes/Login.js'
 import Signup from './routes/Signup.js'
 import ForgotPassword from './routes/ForgotPassword.js'
 import ResetPassword from './routes/ResetPassword.js'
+import VerifyEmail from './routes/VerifyEmail.js'
 import OAuthCallback from './routes/OAuthCallback.js'
 import Settings from './routes/Settings.js'
 /*
@@ -137,6 +138,8 @@ export default function App() {
             {/* Guarded by the token in the URL, not by a session — a logged-out
             user following a reset link must reach it. */}
             <Route path="/reset-password" element={<ResetPassword />} />
+            {/* D-22: the emailed address-verification link, token-guarded too. */}
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/auth/callback" element={<OAuthCallback />} />
 
             {/* PRODUCT CHROME */}

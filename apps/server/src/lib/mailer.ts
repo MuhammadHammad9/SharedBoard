@@ -15,8 +15,8 @@ import { logger } from './logger.js'
  * DELIVERY: with `SMTP_URL` set, `SmtpMailer` sends through any SMTP relay
  * (SES, Postmark, Mailgun, a local Mailpit) via Nodemailer. Without it —
  * development and the test suite — `LoggingMailer` writes the URL to the
- * server log and development copies it from there. A production boot
- * without `SMTP_URL` logs an error, because nobody would get a reset email.
+ * server log and development copies it from there. Production refuses to
+ * boot without `SMTP_URL` (lib/env.ts): the log would carry live tokens.
  *
  * The alternative was to pretend, by returning the token in the HTTP response
  * "for development". That is how a reset endpoint ships to production handing
@@ -40,15 +40,29 @@ export interface InviteEmail {
   url: string
 }
 
+/**
+ * D-22: proof that the person registering owns the address, sent when that
+ * address has pending board invites. Invites are claimed only once the link
+ * in this email is opened.
+ */
+export interface VerificationEmail {
+  to: string
+  displayName: string
+  verifyUrl: string
+  expiresInHours: number
+}
+
 export interface Mailer {
   sendPasswordReset(email: ResetEmail): Promise<void>
   sendBoardInvite(email: InviteEmail): Promise<void>
+  sendEmailVerification(email: VerificationEmail): Promise<void>
 }
 
 export class LoggingMailer implements Mailer {
   /** Captured in-process so integration tests can assert on what was sent. */
   readonly sent: ResetEmail[] = []
   readonly invites: InviteEmail[] = []
+  readonly verifications: VerificationEmail[] = []
 
   async sendPasswordReset(email: ResetEmail): Promise<void> {
     this.sent.push(email)
@@ -63,6 +77,14 @@ export class LoggingMailer implements Mailer {
     logger.info(
       { to: email.to, board: email.boardName, url: email.url },
       'board invite email (not delivered — no SMTP transport configured)',
+    )
+  }
+
+  async sendEmailVerification(email: VerificationEmail): Promise<void> {
+    this.verifications.push(email)
+    logger.info(
+      { to: email.to, verifyUrl: email.verifyUrl },
+      'email verification (not delivered — no SMTP transport configured)',
     )
   }
 }
@@ -122,6 +144,28 @@ export class SmtpMailer implements Mailer {
     })
     logger.info({ kind: 'board_invite' }, 'email sent')
   }
+
+  async sendEmailVerification(email: VerificationEmail): Promise<void> {
+    const text =
+      `Hi ${email.displayName},\n\n` +
+      `You've been invited to boards on CoBoard. Confirm this is your email ` +
+      `address to open them. This link works once, for ${email.expiresInHours} hours:\n\n` +
+      `${email.verifyUrl}\n\n` +
+      `If you didn't create a CoBoard account, ignore this email.`
+    await this.transport.sendMail({
+      from: this.from,
+      to: email.to,
+      subject: 'Confirm your CoBoard email address',
+      text,
+      html:
+        `<p>Hi ${escapeHtml(email.displayName)},</p>` +
+        `<p>You've been invited to boards on CoBoard. Confirm this is your email ` +
+        `address to open them. This link works once, for ${email.expiresInHours} hours:</p>` +
+        `<p><a href="${escapeHtml(email.verifyUrl)}">Confirm your email address</a></p>` +
+        `<p>If you didn't create a CoBoard account, ignore this email.</p>`,
+    })
+    logger.info({ kind: 'email_verification' }, 'email sent')
+  }
 }
 
 let mailer: Mailer | null = null
@@ -129,9 +173,15 @@ let mailer: Mailer | null = null
 export function createMailer(): Mailer {
   const { SMTP_URL, MAIL_FROM, NODE_ENV } = env()
   if (SMTP_URL) return new SmtpMailer(nodemailer.createTransport(SMTP_URL), MAIL_FROM)
+  /*
+   * Finding 15. The logging fallback writes reset and verification URLs —
+   * live account-takeover tokens — to the log. `loadEnv` already refuses to
+   * boot production without SMTP_URL; this is the second lock on the same
+   * door, for anything that reaches here with a hand-built environment.
+   */
   if (NODE_ENV === 'production') {
-    logger.error(
-      'SMTP_URL is not set: password-reset and invite emails will NOT be delivered',
+    throw new Error(
+      'SMTP_URL is not set: refusing to log password-reset and verification links in production',
     )
   }
   return new LoggingMailer()

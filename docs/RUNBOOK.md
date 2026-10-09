@@ -245,7 +245,7 @@ These steps need accounts or a Docker daemon. None can be done or verified from 
    - "Always Use HTTPS" and HSTS. `web.conf` already sends `max-age=31536000; includeSubDomains`; add `preload` only once every subdomain is HTTPS.
    - Generate `cloudflare-realip.conf` and uncomment the real-IP block in `lb.conf`. Without it, `ip_hash` and per-IP rate limits see Cloudflare's IPs.
    - Cache rule: bypass `/api/*` and `/ws`. Static assets can be cached; the origin already sends `immutable`.
-4. **Managed Postgres with a replica and PITR, S3 buckets** (uploads with CORS for `CLIENT_ORIGIN`; backups with lifecycle, versioning and a write-only key), and SMTP and Google OAuth credentials.
+4. **Managed Postgres with a replica and PITR, S3 buckets** (uploads with a CORS rule allowing `PUT`/`GET` from `CLIENT_ORIGIN` and the request headers `content-type` and `content-disposition` — SVG presigns sign `Content-Disposition: attachment` (security review finding 6), so a rule without it fails every SVG upload in the browser; backups with lifecycle, versioning and a write-only key), and SMTP and Google OAuth credentials.
 5. **GitHub:** the `production` environment with required reviewers if wanted, the deploy secrets (§1), the backup-verify secrets (§6), and branch protection on `main` requiring CI.
 6. **Alert routing:** an Alertmanager or Grafana contact point (see `infra/prometheus/prometheus.yml`), plus an external uptime check on `https://<host>/health` for the 99.5% SLO.
 7. **First deploy and smoke test** (§2), then the first quarterly restore drill (§6).

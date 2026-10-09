@@ -708,3 +708,13 @@ export const demo = {
   boardName: 'Demo board',
   back: 'Back to home',
 } as const
+
+/** `/verify-email` — D-22: the emailed address-verification link. */
+export const verifyEmail = {
+  checking: 'Confirming your email address…',
+  verified: 'Email confirmed. Boards you were invited to are on your dashboard.',
+  invalid: "That confirmation link isn't valid.",
+  expired: 'That confirmation link has expired.',
+  used: 'That confirmation link has already been used.',
+  failed: "We couldn't confirm your email address. Try the link again.",
+} as const

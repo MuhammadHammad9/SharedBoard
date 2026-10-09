@@ -11,7 +11,7 @@ import { storageConfigured } from '../../lib/env.js'
 import { EXTENSION, sniffImageType } from '../../lib/fileType.js'
 import { identityKey } from '../../lib/identity.js'
 import { logger } from '../../lib/logger.js'
-import { storage } from '../../lib/s3.js'
+import { storage, UPLOAD_KEY } from '../../lib/s3.js'
 import { sanitizeSvg } from '../../lib/svgSanitize.js'
 import { consume, UPLOADS_BUCKET } from '../../lib/tokenBucket.js'
 import { permissionService } from '../../services/PermissionService.js'
@@ -44,7 +44,7 @@ const PresignSchema = z.object({
 
 const ConfirmSchema = z.object({ key: z.string().min(1).max(200) })
 
-const KEY = /^boards\/([0-9a-f-]{36})\/[0-9a-f-]{36}\.(png|jpg|gif|webp|svg)$/
+const KEY = UPLOAD_KEY
 
 const TYPE_OF_EXTENSION = Object.fromEntries(
   Object.entries(EXTENSION).map(([type, ext]) => [ext, type]),
@@ -63,6 +63,33 @@ const unsupported = () =>
   new HttpError(ERROR_CODES.VALIDATION_FAILED, 'Unsupported file type', 415, {
     reason: 'unsupported_type',
   })
+
+/**
+ * SVG uploads are served as ATTACHMENTS — finding 6.
+ *
+ * Two windows used to let an unsanitized SVG execute on the storage origin:
+ * the object is public between the PUT and `/confirm`, and the presigned URL
+ * stays valid for ten minutes, so the same URL can re-PUT the original
+ * payload over the sanitized copy after confirm. Both are closed by the
+ * disposition rather than by a race: it is part of the PUT's SIGNATURE, so
+ * every write through that URL — first or repeated — stores
+ * `Content-Disposition: attachment`, and a browser navigating to the object
+ * downloads it instead of rendering it as a document. `<img>` and canvas
+ * rendering ignore the header, and an SVG loaded as an image never runs
+ * script, so the board is unaffected. Confirm re-writes the sanitized bytes
+ * with the same header.
+ *
+ * Chosen over a quarantine prefix + copy-on-confirm because that needs the
+ * bucket policy to keep the quarantine prefix private — configuration this
+ * code cannot enforce — while the signed header holds on any S3-compatible
+ * store. Deployment note: the bucket's CORS rule must allow the
+ * `content-disposition` request header, or the browser's PUT is preflighted
+ * away.
+ */
+const SVG_DISPOSITION = 'attachment'
+
+const dispositionFor = (contentType: AcceptedImageType): string | undefined =>
+  contentType === 'image/svg+xml' ? SVG_DISPOSITION : undefined
 
 function requireStorage(): void {
   if (!storageConfigured()) {
@@ -95,12 +122,16 @@ export function createUploadsRouter(): Router {
       }
 
       const key = `boards/${boardId}/${randomUUID()}.${EXTENSION[contentType]}`
+      const disposition = dispositionFor(contentType)
       res.json({
-        uploadUrl: await storage.presignPut(key, contentType, size),
+        uploadUrl: await storage.presignPut(key, contentType, size, disposition),
         publicUrl: storage.publicUrl(key),
         key,
-        // The PUT must carry exactly this, or a real S3 rejects the signature.
-        headers: { 'content-type': contentType },
+        // The PUT must carry exactly these, or a real S3 rejects the signature.
+        headers: {
+          'content-type': contentType,
+          ...(disposition ? { 'content-disposition': disposition } : {}),
+        },
       })
     }),
   )
@@ -137,9 +168,12 @@ export function createUploadsRouter(): Router {
       if (sniffImageType(bytes) !== declared) return reject(unsupported())
 
       if (declared === 'image/svg+xml') {
+        // Signed into the PUT, so it can only be missing if something went
+        // around the presigned URL. Refused rather than repaired.
+        if (head.contentDisposition !== SVG_DISPOSITION) return reject(unsupported())
         const clean = sanitizeSvg(new TextDecoder().decode(bytes))
         if (!clean) return reject(unsupported())
-        await storage.put(key, clean, declared)
+        await storage.put(key, clean, declared, SVG_DISPOSITION)
       }
 
       res.json({ url: storage.publicUrl(key), contentType: declared })

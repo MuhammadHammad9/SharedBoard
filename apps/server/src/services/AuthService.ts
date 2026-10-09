@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
-import type { PrismaClient, User } from '@prisma/client'
+import { Prisma, type PrismaClient, type User } from '@prisma/client'
 import {
   BCRYPT_COST,
+  EMAIL_VERIFICATION_TTL_MS,
   ERROR_CODES,
   PASSWORD_RESET_TTL_MS,
   type PublicUser,
@@ -340,22 +341,114 @@ export class AuthService {
     if (!row) throw new AuthError(ERROR_CODES.TOKEN_INVALID, 'Unknown reset token', 400)
 
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST)
+    const now = new Date()
 
-    const [, user] = await this.db.$transaction([
-      // Marking used INSIDE the transaction is what makes it single-use under
-      // concurrency: two simultaneous submissions cannot both succeed.
-      this.db.passwordResetToken.update({
-        where: { id: row.id, usedAt: null },
-        data: { usedAt: new Date() },
-      }),
-      this.db.user.update({ where: { id: row.userId }, data: { passwordHash } }),
-      this.db.refreshToken.updateMany({
-        where: { userId: row.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      }),
-    ])
+    try {
+      const [, user] = await this.db.$transaction([
+        // Marking used INSIDE the transaction is what makes it single-use under
+        // concurrency: two simultaneous submissions cannot both succeed.
+        this.db.passwordResetToken.update({
+          where: { id: row.id, usedAt: null },
+          data: { usedAt: now },
+        }),
+        this.db.user.update({ where: { id: row.userId }, data: { passwordHash } }),
+        this.db.refreshToken.updateMany({
+          where: { userId: row.userId, revokedAt: null },
+          data: { revokedAt: now },
+        }),
+        /*
+         * Finding 17: every OTHER outstanding reset link dies with this one.
+         * Whoever triggered the reset may have requested several; a second
+         * live link in an inbox someone else can read would undo the reset.
+         */
+        this.db.passwordResetToken.updateMany({
+          where: { userId: row.userId, usedAt: null },
+          data: { usedAt: now },
+        }),
+      ])
+      return user
+    } catch (error) {
+      /*
+       * Finding 17: the losing half of two concurrent submissions finds the
+       * row already used — Prisma's P2025, "record to update not found" — and
+       * used to surface as a 500. It is the same answer as a token that was
+       * never valid: this link cannot reset anything.
+       */
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new AuthError(ERROR_CODES.TOKEN_INVALID, 'Unknown reset token', 400)
+      }
+      throw error
+    }
+  }
 
-    return user
+  /* ── Email verification — D-22 ──────────────────────────────────────────── */
+
+  /**
+   * Mint a verification token for the account's CURRENT address. Mirrors the
+   * reset token: 256 bits from the CSPRNG, only the SHA-256 stored, single
+   * use, and a 24-hour expiry.
+   */
+  async createEmailVerification(user: User): Promise<string> {
+    const token = randomBytes(32).toString('base64url')
+    await this.db.emailVerificationToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
+      },
+    })
+    return token
+  }
+
+  /**
+   * Consume a verification token and mark the address proven. Returns the
+   * user, so the caller can claim the invites that were waiting for this
+   * proof. The same three failures as a reset token, for the same reason.
+   */
+  async verifyEmail(token: string): Promise<User> {
+    const row = await this.db.emailVerificationToken.findUnique({
+      where: { tokenHash: hashToken(token) },
+    })
+    if (!row) {
+      throw new AuthError(ERROR_CODES.TOKEN_INVALID, 'Unknown verification token', 400)
+    }
+    if (row.usedAt) {
+      throw new AuthError(ERROR_CODES.TOKEN_USED, 'Verification token already used', 400)
+    }
+    if (row.expiresAt.getTime() <= Date.now()) {
+      throw new AuthError(ERROR_CODES.TOKEN_EXPIRED, 'Verification token expired', 400)
+    }
+
+    const now = new Date()
+    try {
+      const [, user] = await this.db.$transaction([
+        // Conditional on still being unused: single-use under concurrency.
+        this.db.emailVerificationToken.update({
+          where: { id: row.id, usedAt: null },
+          data: { usedAt: now },
+        }),
+        this.db.user.update({
+          where: { id: row.userId },
+          data: { emailVerified: true, emailVerifiedAt: now },
+        }),
+      ])
+      return user
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new AuthError(
+          ERROR_CODES.TOKEN_USED,
+          'Verification token already used',
+          400,
+        )
+      }
+      throw error
+    }
   }
 
   /* ── Profile — FR-SET-001 ───────────────────────────────────────────────── */
@@ -450,12 +543,27 @@ export class AuthService {
     displayName: string
     avatarUrl?: string | null
   }): Promise<User & { created?: true }> {
+    const emailLower = profile.email.toLowerCase()
+
     const byGoogle = await this.db.user.findUnique({
       where: { googleId: profile.googleId },
     })
-    if (byGoogle) return byGoogle
+    if (byGoogle) {
+      // A returning Google user whose address Google now vouches for, and
+      // which is still the address on the account, becomes proven (D-22).
+      if (
+        profile.emailVerified &&
+        !byGoogle.emailVerifiedAt &&
+        byGoogle.emailLower === emailLower
+      ) {
+        return this.db.user.update({
+          where: { id: byGoogle.id },
+          data: { emailVerified: true, emailVerifiedAt: new Date() },
+        })
+      }
+      return byGoogle
+    }
 
-    const emailLower = profile.email.toLowerCase()
     const byEmail = await this.db.user.findUnique({ where: { emailLower } })
 
     if (byEmail) {
@@ -466,16 +574,53 @@ export class AuthService {
           400,
         )
       }
-      return this.db.user.update({
-        where: { id: byEmail.id },
-        data: {
-          googleId: profile.googleId,
-          // Only fill an avatar that is missing. Overwriting one the user
-          // chose in CoBoard with their Google photo is not an improvement.
-          avatarUrl: byEmail.avatarUrl ?? profile.avatarUrl ?? null,
-          emailVerified: true,
-        },
-      })
+
+      /*
+       * ACCOUNT PRE-HIJACK — D-22.
+       *
+       * An attacker registers the victim's address with a password before the
+       * victim ever signs up. The victim later signs in with Google, which
+       * links into that account by email — and the attacker's password still
+       * opens it. When the address was never proven and the account has a
+       * password, nobody has shown that password belongs to the address's
+       * owner. The verified Google identity is the first proof, so it wins:
+       * the password hash is cleared and every session the password-holder
+       * may have open is revoked. The real owner can set a password later
+       * through Settings or a reset email, which only they receive.
+       */
+      const unprovenPassword = !byEmail.emailVerifiedAt && byEmail.passwordHash !== null
+      const now = new Date()
+      if (unprovenPassword) {
+        logger.warn(
+          { userId: byEmail.id },
+          'verified Google identity linked to an unverified password account — clearing the password',
+        )
+      }
+      const [user] = await this.db.$transaction([
+        this.db.user.update({
+          where: { id: byEmail.id },
+          data: {
+            googleId: profile.googleId,
+            // Only fill an avatar that is missing. Overwriting one the user
+            // chose in CoBoard with their Google photo is not an improvement.
+            avatarUrl: byEmail.avatarUrl ?? profile.avatarUrl ?? null,
+            emailVerified: true,
+            emailVerifiedAt: byEmail.emailVerifiedAt ?? now,
+            ...(unprovenPassword ? { passwordHash: null } : {}),
+          },
+        }),
+        // Every refresh family, not only the live ones' heads: revoking all
+        // unrevoked rows ends every session the password ever opened.
+        ...(unprovenPassword
+          ? [
+              this.db.refreshToken.updateMany({
+                where: { userId: byEmail.id, revokedAt: null },
+                data: { revokedAt: now },
+              }),
+            ]
+          : []),
+      ])
+      return user
     }
 
     // `created` lets the callback tell the client this was a sign-up, for
@@ -488,6 +633,7 @@ export class AuthService {
         displayName: profile.displayName.slice(0, 40) || 'New user',
         avatarUrl: profile.avatarUrl ?? null,
         emailVerified: profile.emailVerified,
+        emailVerifiedAt: profile.emailVerified ? new Date() : null,
         // No passwordHash: this account cannot log in with a password until
         // the user sets one in Settings.
       },

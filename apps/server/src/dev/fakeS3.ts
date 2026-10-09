@@ -28,6 +28,8 @@ import * as zlib from 'node:zlib'
 interface Stored {
   body: Buffer
   contentType: string
+  /** Stored and served back, as S3 does — the SVG attachment rule depends on it. */
+  contentDisposition?: string
   modified: Date
 }
 
@@ -43,7 +45,7 @@ const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, PUT, HEAD, DELETE',
   'access-control-allow-headers': '*',
-  'access-control-expose-headers': 'ETag',
+  'access-control-expose-headers': 'ETag, Content-Disposition',
 }
 
 const notFound = (key: string) =>
@@ -193,10 +195,12 @@ export async function startFakeS3(
             return
           }
         }
+        const disposition = req.headers['content-disposition']
         objects.set(key, {
           modified: new Date(),
           body,
           contentType: req.headers['content-type'] ?? 'application/octet-stream',
+          ...(disposition ? { contentDisposition: disposition } : {}),
         })
         res.writeHead(200, { ...CORS, etag: `"${objects.size}"` }).end()
       })
@@ -240,6 +244,9 @@ export async function startFakeS3(
       ...CORS,
       'content-type': stored.contentType,
       'content-length': String(stored.body.length),
+      ...(stored.contentDisposition
+        ? { 'content-disposition': stored.contentDisposition }
+        : {}),
     })
     res.end(req.method === 'HEAD' ? undefined : stored.body)
   })

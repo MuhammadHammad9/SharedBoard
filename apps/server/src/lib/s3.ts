@@ -29,6 +29,7 @@ import { env, storageConfigured } from './env.js'
 export interface StoredObject {
   size: number
   contentType: string | undefined
+  contentDisposition?: string | undefined
 }
 
 /** Presigned URLs live this long — long enough for a slow 10 MB upload. */
@@ -68,7 +69,12 @@ export const storage = {
    * A URL the browser may PUT exactly these bytes to. Content type and length
    * are part of the signature, so real S3 refuses anything else.
    */
-  presignPut(key: string, contentType: string, size: number): Promise<string> {
+  presignPut(
+    key: string,
+    contentType: string,
+    size: number,
+    contentDisposition?: string,
+  ): Promise<string> {
     return getSignedUrl(
       s3(),
       new PutObjectCommand({
@@ -76,12 +82,16 @@ export const storage = {
         Key: key,
         ContentType: contentType,
         ContentLength: size,
+        ...(contentDisposition ? { ContentDisposition: contentDisposition } : {}),
       }),
       {
         expiresIn: PRESIGN_SECONDS,
         // Without this the SDK signs only content-length and host, and a
-        // browser could PUT any content type on the URL.
-        signableHeaders: new Set(['content-type']),
+        // browser could PUT any content type on the URL. The disposition is
+        // signed too when there is one, so a PUT that drops it is refused.
+        signableHeaders: new Set(
+          contentDisposition ? ['content-type', 'content-disposition'] : ['content-type'],
+        ),
       },
     )
   },
@@ -89,7 +99,11 @@ export const storage = {
   async head(key: string): Promise<StoredObject | null> {
     try {
       const out = await s3().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }))
-      return { size: out.ContentLength ?? 0, contentType: out.ContentType }
+      return {
+        size: out.ContentLength ?? 0,
+        contentType: out.ContentType,
+        contentDisposition: out.ContentDisposition,
+      }
     } catch (error) {
       const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata
         ?.httpStatusCode
@@ -103,13 +117,19 @@ export const storage = {
     return out.Body ? out.Body.transformToByteArray() : new Uint8Array()
   },
 
-  async put(key: string, body: Uint8Array | string, contentType: string): Promise<void> {
+  async put(
+    key: string,
+    body: Uint8Array | string,
+    contentType: string,
+    contentDisposition?: string,
+  ): Promise<void> {
     await s3().send(
       new PutObjectCommand({
         Bucket: bucket(),
         Key: key,
         Body: body,
         ContentType: contentType,
+        ...(contentDisposition ? { ContentDisposition: contentDisposition } : {}),
         // Thumbnails are replaced under new keys; images never change.
         CacheControl: 'public, max-age=31536000, immutable',
       }),
@@ -157,6 +177,33 @@ export const storage = {
     )
     return url.startsWith(`${base}/`) ? url.slice(base.length + 1) : null
   },
+}
+
+/**
+ * The shape of an upload's key: `boards/<board uuid>/<object uuid>.<ext>`.
+ * The board segment names the board the upload was AUTHORIZED for, which is
+ * not necessarily the board an image op places it on — a paste between boards
+ * reuses the URL, and the image collector keeps it alive by reference.
+ */
+export const UPLOAD_KEY =
+  /^boards\/([0-9a-f-]{36})\/[0-9a-f-]{36}\.(png|jpg|gif|webp|svg)$/
+
+/**
+ * Whether an image object's `url` points at one of OUR uploads — finding 19.
+ *
+ * The shared schema accepts any URL so the client stays environment-agnostic;
+ * the server narrows it here, on every CREATE and UPDATE that carries one.
+ * Without this an image op can make every viewer's browser fetch an arbitrary
+ * third-party URL (a tracking pixel that logs each member's IP, or a request
+ * into their local network), and the board would render whatever lives there.
+ * Uploads are always stored as absolute URLs under the storage public base
+ * (`publicUrl`), so that is the only form accepted; there are no relative
+ * image URLs in this codebase.
+ */
+export function isStorageImageUrl(url: string): boolean {
+  if (!storageConfigured()) return false
+  const key = storage.keyOf(url)
+  return key !== null && UPLOAD_KEY.test(key)
 }
 
 /** Tests point the client at a fresh endpoint between suites. */

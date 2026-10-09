@@ -5,7 +5,7 @@ import {
   RATE_LIMIT_LOGIN_PER_IP,
   RATE_LIMIT_LOGIN_WINDOW_MS,
 } from '@coboard/shared'
-import { clearCounter, hitCounter } from '../../lib/redis.js'
+import { clearCounter, hitCounter, releaseCounter } from '../../lib/redis.js'
 import { HttpError } from './errorHandler.js'
 
 /**
@@ -19,7 +19,7 @@ import { HttpError } from './errorHandler.js'
  * An email-only limit misses the spray entirely; an IP-only limit misses an
  * attacker with a proxy pool. Neither subsumes the other.
  *
- * Counted on FAILURE only, and cleared on success (see `clearLoginAttempts`).
+ * Counted on FAILURE only (see `clearLoginAttempts`).
  * Counting successful logins too would lock out a shared office IP for doing
  * nothing wrong.
  */
@@ -68,29 +68,27 @@ export async function assertLoginAllowed(email: string, ip: string): Promise<voi
 }
 
 /**
- * A successful login wipes BOTH strike counts — the email's and the IP's.
+ * A successful login clears the EMAIL's strikes and takes back the one IP hit
+ * this attempt cost. It never clears the IP counter.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │  Clearing only the email counter was a real lockout bug.                 │
+ * │  Clearing the IP counter on success was a password-spray bypass          │
+ * │  (finding 9): nineteen guesses against other people's accounts, one      │
+ * │  correct login to the attacker's own, counter back to zero, repeat.      │
  * │                                                                          │
- * │  `assertLoginAllowed` increments both counters on every attempt, before  │
- * │  it can know whether the password was right. Clearing only the email     │
- * │  side meant the IP counter accumulated on SUCCESSFUL logins too, so an   │
- * │  office behind one NAT hit 20 in fifteen minutes and the twenty-first    │
- * │  person — with a correct password — got a 429.                           │
+ * │  Not clearing it at all is the older lockout bug instead: both counters  │
+ * │  are incremented BEFORE the password is checked, so an office behind one │
+ * │  NAT would hit 20 on successful logins alone (D-14).                     │
  * │                                                                          │
- * │  That is precisely what the "counted on failure only" comment above      │
- * │  promises does not happen. Found when the Phase 9 e2e suite, which logs  │
- * │  in twice per test from one address, started failing on `login 429`.     │
- * │                                                                          │
- * │  The spray defence is unaffected: an attacker trying many accounts is    │
- * │  failing, and failures are exactly what still accumulate.                │
+ * │  Releasing exactly the hit this attempt took satisfies both: the IP      │
+ * │  counter ends up counting failures and nothing else. A success leaves it │
+ * │  where it was before the attempt — never lower.                          │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 export async function clearLoginAttempts(email: string, ip?: string): Promise<void> {
   await Promise.all([
     clearCounter(emailKey(email)),
-    ip ? clearCounter(ipKey(ip)) : Promise.resolve(),
+    ip ? releaseCounter(ipKey(ip)) : Promise.resolve(),
   ])
 }
 

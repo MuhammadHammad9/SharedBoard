@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
 import type { Express } from 'express'
 import { createApp } from '../http/app.js'
@@ -139,7 +139,7 @@ describe('POST /members — invite by email, FR-SHARE-004', () => {
     expect(mailer.invites).toHaveLength(0)
   })
 
-  it('emails an unregistered address, and adds them the moment they sign up', async () => {
+  it('emails an unregistered address, and adds them once they sign up AND verify it (D-22)', async () => {
     const owner = await signUp('Priya Raman')
     const boardId = await createBoard(owner, 'Q3 Retrospective')
     const email = freshEmail()
@@ -163,6 +163,16 @@ describe('POST /members — invite by email, FR-SHARE-004', () => {
     expect(listed.body.invites).toEqual([{ email, role: 'EDITOR' }])
 
     const newcomer = await signUp('Sam Okafor', email)
+    // D-22: signing up with the address proves nothing; nothing is claimed yet.
+    expect(
+      await prisma.boardMember.findFirst({ where: { boardId, userId: newcomer.userId } }),
+    ).toBeNull()
+    await vi.waitFor(() => expect(mailer.verifications).toHaveLength(1))
+    const token = new URL(mailer.verifications[0]!.verifyUrl).searchParams.get('token')
+    expect(
+      (await request(app).post('/api/auth/verify-email').send({ token })).status,
+    ).toBe(200)
+
     const member = await prisma.boardMember.findFirst({
       where: { boardId, userId: newcomer.userId },
     })
@@ -302,7 +312,7 @@ describe('DELETE /members/me — leave', () => {
 })
 
 describe('POST /members/claim-guest — guest to account, FLOWS §7.4', () => {
-  it("moves the guest's seat to the new account as an Editor", async () => {
+  it("moves the guest's seat to the new account, keeping the guest's VIEWER role (D-23)", async () => {
     const owner = await signUp()
     const boardId = await createBoard(owner)
     const guestId = randomUUID()
@@ -315,7 +325,12 @@ describe('POST /members/claim-guest — guest to account, FLOWS §7.4', () => {
       .post(`/api/boards/${boardId}/members/claim-guest`)
       .set(auth(marcus))
       .send({ guestId })
-    expect(res.body).toEqual({ role: 'EDITOR' })
+    // A viewer-link guest stays a viewer: signing up is not a promotion.
+    expect(res.body).toEqual({ role: 'VIEWER' })
+    expect(
+      (await prisma.boardMember.findFirst({ where: { boardId, userId: marcus.userId } }))
+        ?.role,
+    ).toBe('VIEWER')
     expect(await prisma.boardMember.count({ where: { boardId, guestId } })).toBe(0)
     expect(
       (await request(app).get(`/api/boards/${boardId}/snapshot`).set(auth(marcus)))
@@ -329,6 +344,35 @@ describe('POST /members/claim-guest — guest to account, FLOWS §7.4', () => {
           .set({ 'x-coboard-guest': guestId })
       ).status,
     ).toBe(404)
+  })
+
+  it('carries the higher of the guest role and an existing membership, never lowering (D-23)', async () => {
+    const owner = await signUp()
+    const boardId = await createBoard(owner)
+    const claim = async (
+      guestRole: 'EDITOR' | 'VIEWER',
+      existing?: 'EDITOR' | 'VIEWER',
+    ) => {
+      const user = await signUp('Marcus Feld')
+      if (existing) {
+        await prisma.boardMember.create({
+          data: { boardId, userId: user.userId, role: existing },
+        })
+      }
+      const guestId = randomUUID()
+      await prisma.boardMember.create({
+        data: { boardId, guestId, guestName: 'Marcus', role: guestRole },
+      })
+      const res = await request(app)
+        .post(`/api/boards/${boardId}/members/claim-guest`)
+        .set(auth(user))
+        .send({ guestId })
+      return res.body.role as string
+    }
+    expect(await claim('EDITOR')).toBe('EDITOR')
+    expect(await claim('VIEWER', 'EDITOR')).toBe('EDITOR')
+    expect(await claim('EDITOR', 'VIEWER')).toBe('EDITOR')
+    expect(await claim('VIEWER', 'VIEWER')).toBe('VIEWER')
   })
 
   it('needs a real guest of this board and a signed-in user', async () => {

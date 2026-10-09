@@ -843,3 +843,61 @@ describe('POST /api/boards/:id/duplicate', () => {
     expect(state.body.objects[0]).toMatchObject({ x: 50 })
   })
 })
+
+/* ── Security review — findings 1 and 4 over REST ─────────────────────────── */
+
+describe('POST /operations hardening', () => {
+  it('rate-limits REST op writes per identity, costed per op, with the error envelope — finding 4', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const batch = () => Array.from({ length: 200 }, () => createOp(sticky()))
+
+    // The bucket holds one full 200-op batch; the next one, immediately, is
+    // over budget — a script cannot write faster than a socket can.
+    expect((await appendOps(priya, boardId, batch())).status).toBe(200)
+    const refused = await appendOps(priya, boardId, batch())
+    expect(refused.status).toBe(429)
+    expect(refused.body.error.code).toBe(ERROR_CODES.RATE_LIMITED)
+    expect(await prisma.operation.count({ where: { boardId } })).toBe(200)
+  })
+
+  it('refuses an oversized payload (OP_PAYLOAD_MAX_BYTES) — finding 1', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const id = randomUUID()
+    // 30,000 numbers is within STROKE_POINTS_MAX, but at ~18 bytes each the
+    // payload is far past the 256 KB cap.
+    const points = Array.from({ length: 30_000 }, (_, i) => 123_456.123456789 + i / 7)
+    const stroke = {
+      ...sticky(),
+      id,
+      type: 'stroke',
+      points,
+      color: '#18181B',
+      strokeWidth: 2,
+      simplified: true,
+    } as unknown as BoardObject
+    const response = await appendOps(priya, boardId, [createOp(stroke)])
+    expect(response.status).toBe(422)
+    expect(await prisma.operation.count({ where: { boardId } })).toBe(0)
+  })
+
+  it('omits a type-invalid UPDATE from `applied` and lists it in `rejected` — finding 1', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const note = sticky()
+    await appendOps(priya, boardId, [createOp(note)])
+
+    const bad = updateOp(note.id, { color: '#123456' })
+    const good = updateOp(note.id, { x: 90 })
+    const response = await appendOps(priya, boardId, [bad, good])
+    expect(response.status).toBe(200)
+    expect(response.body.applied.map((a: { id: string }) => a.id)).toEqual([good.id])
+    expect(response.body.rejected).toEqual([{ id: bad.id, reason: expect.any(String) }])
+
+    const state = await request(app)
+      .get(`/api/boards/${boardId}/snapshot`)
+      .set(auth(priya))
+    expect(state.body.objects[0]).toMatchObject({ x: 90, color: '#FEF08A' })
+  })
+})

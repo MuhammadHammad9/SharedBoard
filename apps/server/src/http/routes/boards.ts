@@ -34,7 +34,10 @@ import type { AccessChange } from '../../services/ShareService.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
 import { requestId, requestLog } from '../middleware/requestContext.js'
 import { AuthError } from '../../services/AuthService.js'
+import { env } from '../../lib/env.js'
+import { identityKey } from '../../lib/identity.js'
 import { opsAccepted } from '../../lib/metrics.js'
+import { consume } from '../../lib/tokenBucket.js'
 import { recordOpRejection } from '../../lib/opRejection.js'
 import { validateBody, validatedQuery, validateQuery } from '../middleware/validate.js'
 
@@ -47,8 +50,10 @@ import { validateBody, validatedQuery, validateQuery } from '../middleware/valid
  * is all it is for.
  */
 
+const MAX_OPS_PER_REQUEST = 200
+
 const AppendOpsSchema = z.object({
-  ops: z.array(ClientOpSchema).min(1).max(200),
+  ops: z.array(ClientOpSchema).min(1).max(MAX_OPS_PER_REQUEST),
 })
 
 const SinceQuerySchema = z.object({
@@ -380,6 +385,15 @@ export function createBoardsRouter(): Router {
       const thumbnail = await boardService.thumbnailOf(id)
       await boardService.destroy(id, userId, confirmName)
       void thumbnailService.discard(thumbnail)
+      /*
+       * Finding 16: the same aftermath as trashing. A board deleted straight
+       * from the dashboard, never trashed, still has people on it: drop every
+       * cached role, so nothing is authorized against a board that no longer
+       * exists, and show everyone connected S-19 and close their sockets.
+       * Harmless for a board that was trashed first — its room is empty.
+       */
+      await permissionService.invalidate(id)
+      boardDeletedLive(id)
       res.status(204).end()
     }),
   )
@@ -507,6 +521,26 @@ export function createBoardsRouter(): Router {
         await permissionService.assertCanEdit(id, identity)
 
         const { ops } = req.body as z.infer<typeof AppendOpsSchema>
+
+        /*
+         * Step 3: RATE LIMIT — finding 4. The same token bucket as the socket
+         * (R-SEC-013), costed per op, keyed by WHO is writing rather than by a
+         * session: there is no session here, and keying by request would let a
+         * script that never opens a socket write as fast as Postgres accepts.
+         * The client's outbox treats a 429 as "wait and retry", not a refusal.
+         */
+        const rate = env().REST_OPS_RATE_LIMIT
+        if (
+          !(await consume(`rest-ops:${identityKey(identity)}`, ops.length, {
+            rate,
+            // Never below the largest batch the schema admits, or a full
+            // 200-op batch could not pass even on a full bucket.
+            capacity: Math.max(rate, MAX_OPS_PER_REQUEST),
+          }))
+        ) {
+          throw new HttpError(ERROR_CODES.RATE_LIMITED, 'Slow down', 429)
+        }
+
         result = await opService.append(
           id,
           ops,
@@ -521,8 +555,31 @@ export function createBoardsRouter(): Router {
       opsAccepted.inc({ transport: 'rest' }, result.applied.length)
       const actorTag = identity.kind === 'user' ? identity.userId : 'guest'
 
+      /*
+       * Ops refused by the board-dependent checks (wrong field for the
+       * target's type, a foreign image url, a reused op id) are absent from
+       * `applied`, which the client's REST transport reads as a nack for
+       * exactly those ops (persistence.ts). Listed in `rejected` as well, and
+       * logged like every other refusal (TRD §15.4).
+       */
+      for (const refused of result.rejected) {
+        recordOpRejection(requestLog(req), {
+          transport: 'rest',
+          code: NACK_CODES.INVALID_OP,
+          opId: refused.id,
+          correlationId: requestId(req),
+          boardId: id,
+          actor: actorTag,
+          reason: refused.reason,
+        })
+      }
+
       // Persisted, so it is safe to acknowledge — R-SYNC-012.
-      res.json({ applied: result.applied, currentSeq: result.currentSeq })
+      res.json({
+        applied: result.applied,
+        rejected: result.rejected,
+        currentSeq: result.currentSeq,
+      })
 
       /*
        * BROADCAST, exactly as the socket path does (§5.4 step 7). The outbox

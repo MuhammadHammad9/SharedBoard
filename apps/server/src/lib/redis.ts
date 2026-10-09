@@ -102,3 +102,23 @@ export async function clearCounter(key: string): Promise<void> {
     // failing the login that just succeeded.
   }
 }
+
+/**
+ * Take back one hit from a counter, never below zero — a successful login
+ * returning the per-IP hit `assertLoginAllowed` charged it (finding 9).
+ * Atomic, so two concurrent successes cannot drive it negative.
+ */
+const RELEASE = `
+local v = tonumber(redis.call('GET', KEYS[1]))
+if v and v > 0 then return redis.call('DECR', KEYS[1]) end
+return 0
+`
+
+export async function releaseCounter(key: string): Promise<void> {
+  try {
+    await redis().eval(RELEASE, 1, key)
+  } catch {
+    // Same reasoning as clearCounter: a stale strike is not worth failing a
+    // login that just succeeded.
+  }
+}
