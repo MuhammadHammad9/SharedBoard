@@ -85,6 +85,8 @@ export function drawPresence(
 
   // Remote selection outlines — FR-RT-005. Instant, no animation.
   for (const selection of view.selections) {
+    const left = Math.round(sx(selection.box.x))
+    const top = Math.round(sy(selection.box.y))
     ctx.save()
     ctx.strokeStyle = selection.colour
     ctx.lineWidth = 1
@@ -93,11 +95,21 @@ export function drawPresence(
     // hues (R-A11Y-007).
     ctx.setLineDash([4, 3])
     ctx.strokeRect(
-      Math.round(sx(selection.box.x)) + 0.5,
-      Math.round(sy(selection.box.y)) + 0.5,
+      left + 0.5,
+      top + 0.5,
       Math.round(selection.box.width * viewport.zoom),
       Math.round(selection.box.height * viewport.zoom),
     )
+    ctx.restore()
+
+    /*
+     * "…with their name label" — FR-RT-005. On the outline's left edge and
+     * entirely ABOVE it, so it never covers the object being worked on. The
+     * same pill as the cursor's, for the same reason: colour is never the only
+     * identifier (R-A11Y-007). Screen-space, so it reads at every zoom.
+     */
+    ctx.save()
+    namePill(ctx, selection.name, selection.colour, left, top - PILL_H - 2)
     ctx.restore()
   }
 
@@ -131,26 +143,35 @@ export function drawPresence(
      * similar to anyone, and identical to someone with a colour vision
      * deficiency. The name is what actually identifies them.
      */
-    const label = cursor.name
-    ctx.font = '11px Inter, system-ui, sans-serif'
-    ctx.textBaseline = 'middle'
-    const padX = 6
-    const textW = ctx.measureText(label).width
-    const pillW = textW + padX * 2
-    const pillH = 18
-    const pillX = 14
-    const pillY = 12
-
-    ctx.fillStyle = cursor.colour
-    ctx.beginPath()
-    ctx.roundRect(pillX, pillY, pillW, pillH, 4)
-    ctx.fill()
-
-    ctx.fillStyle = WHITE
-    ctx.fillText(label, pillX + padX, pillY + pillH / 2 + 0.5)
+    namePill(ctx, cursor.name, cursor.colour, 14, 12)
 
     ctx.restore()
   }
+}
+
+/** Height of a name pill, in screen px. */
+const PILL_H = 18
+
+/** A name in a pill of the user's colour, top-left at (x, y), screen px. */
+function namePill(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  colour: string,
+  x: number,
+  y: number,
+): void {
+  ctx.font = '11px Inter, system-ui, sans-serif'
+  ctx.textBaseline = 'middle'
+  const padX = 6
+  const pillW = ctx.measureText(label).width + padX * 2
+
+  ctx.fillStyle = colour
+  ctx.beginPath()
+  ctx.roundRect(x, y, pillW, PILL_H, 4)
+  ctx.fill()
+
+  ctx.fillStyle = WHITE
+  ctx.fillText(label, x + padX, y + PILL_H / 2 + 0.5)
 }
 
 /** Truncate a display name for the pill — E-20. */
