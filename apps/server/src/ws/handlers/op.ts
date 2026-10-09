@@ -1,15 +1,11 @@
-import {
-  canEdit,
-  ClientOpSchema,
-  NACK_CODES,
-  type ClientOp,
-  type ServerOp,
-} from '@coboard/shared'
+import { ClientOpSchema, NACK_CODES, type ClientOp, type ServerOp } from '@coboard/shared'
 import { AuthError } from '../../services/AuthService.js'
 import { opService } from '../../services/OpService.js'
+import { permissionService } from '../../services/PermissionService.js'
 import { snapshotService } from '../../services/SnapshotService.js'
 import { consume } from '../../lib/tokenBucket.js'
-import { logger } from '../../lib/logger.js'
+import { opsAccepted } from '../../lib/metrics.js'
+import { recordOpRejection } from '../../lib/opRejection.js'
 import type { RoomManager } from '../RoomManager.js'
 import type { Session } from '../Session.js'
 
@@ -44,6 +40,16 @@ import type { Session } from '../Session.js'
  */
 
 const nack = (session: Session, id: string, code: string, message: string): void => {
+  // Logged and counted first — TRD §15.4. The session's child logger already
+  // carries sessionId, boardId and actor; the correlation id is the session
+  // plus the op, which is unique and names both halves of the conversation.
+  recordOpRejection(session.log, {
+    transport: 'ws',
+    code,
+    opId: id,
+    correlationId: `${session.id}:${id}`,
+    reason: message,
+  })
   // Never batched — R-SYNC-016. An error is a decision the sender is blocked
   // on, and delaying it 16 ms to travel with unrelated ops helps nobody.
   session.send({ t: 'nack', id, code, message })
@@ -55,10 +61,41 @@ export async function handleOps(
   incoming: unknown[],
 ): Promise<void> {
   // STEP 1 — AUTHORIZE. Every message. No exceptions.
-  if (!canEdit(session.role)) {
-    for (const raw of incoming) {
+  //
+  // An over-capacity session (FR-RT-011, D-26) is a viewer for the life of
+  // the socket whatever its membership says, so it is refused before the
+  // membership is even consulted.
+  if (session.overCapacity) {
+    for (const raw of incoming)
       nack(session, opId(raw), NACK_CODES.FORBIDDEN, 'View-only access')
+    return
+  }
+  //
+  // Against the CURRENT role — defect P-1 — not the one this socket opened
+  // with. `session.role` is a snapshot taken at upgrade; a member demoted or
+  // removed since must stop writing now, not on their next reconnect. The
+  // lookup is Redis-cached for 60 s and invalidated on every role change, so
+  // this costs one GET per batch.
+  try {
+    await permissionService.assertCanEdit(session.boardId, session.identity)
+  } catch (error) {
+    /*
+     * Only an AuthError is a DECISION. Anything else — Postgres or Redis
+     * blipping under the permission lookup — says nothing about the user's
+     * rights, and a nack is never retried (R-SYNC-011): answering FORBIDDEN
+     * here made the client discard real work over a transient fault. Same
+     * posture as the persist catch below: log, send nothing, and let the
+     * client's ack timeout retry the batch.
+     */
+    if (!(error instanceof AuthError)) {
+      session.log.error(
+        { err: error, opCount: incoming.length },
+        'op authorization check failed',
+      )
+      return
     }
+    const code = error.status === 404 ? NACK_CODES.BOARD_GONE : NACK_CODES.FORBIDDEN
+    for (const raw of incoming) nack(session, opId(raw), code, 'View-only access')
     return
   }
 
@@ -87,11 +124,13 @@ export async function handleOps(
   // STEPS 4 AND 5 — idempotency and transactional persistence.
   let result: Awaited<ReturnType<typeof opService.append>>
   try {
-    result = await opService.append(session.boardId, valid, { userId: session.userId })
+    result = await opService.append(session.boardId, valid, {
+      ...(session.userId ? { userId: session.userId } : {}),
+      ...(session.guestId ? { guestId: session.guestId } : {}),
+    })
   } catch (error) {
     if (error instanceof AuthError) {
-      const code =
-        error.status === 404 ? NACK_CODES.BOARD_GONE : NACK_CODES.INVALID_OP
+      const code = error.status === 404 ? NACK_CODES.BOARD_GONE : NACK_CODES.INVALID_OP
       for (const op of valid) nack(session, op.id, code, error.message)
       return
     }
@@ -101,14 +140,27 @@ export async function handleOps(
      * work is durable when it is not, and that is the one lie the whole
      * zero-loss guarantee rests on never telling (R-SYNC-012).
      */
-    logger.error({ err: error, boardId: session.boardId }, 'op persist failed')
-    for (const op of valid) {
-      nack(session, op.id, NACK_CODES.INVALID_OP, 'Could not save that change')
-    }
+    session.log.error({ err: error, opIds: valid.map(op => op.id) }, 'op persist failed')
+    /*
+     * And NOT nacked either. A nack is a decision the client never retries
+     * (R-SYNC-011), so nacking a transient database failure would make the
+     * client throw the user's work away — the opposite of what the comment
+     * above promises. Silence lets the client's ack timeout fire, which keeps
+     * the ops queued and retries them with backoff; the op ids make that
+     * retry safe if this attempt did in fact commit (R-SYNC-014).
+     */
     return
   }
 
+  // Refused by the checks that need the board's state — the target's type,
+  // the image url, a reused op id. Decisions, so nacked; never persisted.
+  for (const refused of result.rejected) {
+    nack(session, refused.id, NACK_CODES.INVALID_OP, refused.reason)
+  }
+
   // STEP 6 — ACK THE SENDER FIRST.
+  if (result.applied.length === 0) return
+  opsAccepted.inc({ transport: 'ws' }, result.applied.length)
   session.send({
     t: 'ack',
     ids: result.applied.map(op => op.id),
@@ -140,7 +192,9 @@ export async function handleOps(
    * the 500th would make one unlucky user's stroke visibly slower than the 499
    * before it, against a 16 ms input-to-pixel budget.
    */
-  if (fresh.length > 0) void snapshotService.maybeSnapshot(session.boardId)
+  if (fresh.length > 0) {
+    void snapshotService.maybeSnapshot(session.boardId, result.currentSeq)
+  }
 }
 
 /** Best-effort id extraction, so even a malformed op can be nacked by name. */

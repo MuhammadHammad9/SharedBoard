@@ -14,6 +14,7 @@ import { canTransition } from '../machine.js'
 import { applyAndEmit, snapshotReader, updateOps } from '../../history/apply.js'
 import { LABELS, nudgeKey } from '../../history/grouping.js'
 import { releaseCapture } from './select.js'
+import { emitTransform, emitTransformEnd } from '../../../presence/bus.js'
 
 /**
  * Move, resize and rotate — FR-CANVAS-011/012/013, FLOWS §8.2.3.
@@ -56,7 +57,122 @@ function snapshot(): { ids: ObjectId[]; origin: Map<ObjectId, BoardObject> } {
   const objects = selectedObjects()
   const origin = new Map<ObjectId, BoardObject>()
   for (const o of objects) origin.set(o.id, o)
+  written = new Map()
   return { ids: objects.map(o => o.id), origin }
+}
+
+/*
+ * ── Geometry only ────────────────────────────────────────────────────────────
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │  A gesture owns the fields it changes, and nothing else.                 │
+ * │                                                                          │
+ * │  Remote ops keep arriving while the user drags. Writing whole objects   │
+ * │  rebuilt from the pointerdown snapshot on every pointermove would put   │
+ * │  back the colour, the text, the z-index a teammate changed a moment     │
+ * │  ago — here and nowhere else, which is a divergence (R-CONV-002).       │
+ * │                                                                          │
+ * │  So each frame copies only these keys onto the CURRENT store object,    │
+ * │  cancel restores only these keys, and the commit diffs only these keys. │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * `updatedAt` is deliberately not among them: it is stamped once, on the
+ * commit op, so a cancelled gesture leaves the object exactly as every other
+ * client has it.
+ */
+const GEOMETRY_KEYS = ['x', 'y', 'width', 'height', 'rotation', 'points'] as const
+
+/** What this gesture last wrote, per object — to notice a remote write since. */
+let written = new Map<ObjectId, BoardObject>()
+
+/** `target` with `source`'s geometry keys. Every other field is `target`'s. */
+function withGeometry(target: BoardObject, source: BoardObject): BoardObject {
+  const out = { ...target } as unknown as Record<string, unknown>
+  const from = source as unknown as Record<string, unknown>
+  for (const key of GEOMETRY_KEYS) if (key in from) out[key] = from[key]
+  return out as unknown as BoardObject
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+
+/**
+ * The origin for `id`, rebased onto any REMOTE geometry write since this
+ * gesture last wrote it.
+ *
+ * A teammate moving the same object mid-drag is a later decision than our
+ * pointerdown: their value becomes the base we transform from, the value a
+ * cancel restores, and the "before" our undo returns to — rather than being
+ * overwritten by the next frame and silently lost on this screen only.
+ */
+function rebasedOrigin(
+  origin: Map<ObjectId, BoardObject>,
+  id: ObjectId,
+  current: BoardObject,
+): BoardObject | undefined {
+  const start = origin.get(id)
+  if (!start) return undefined
+  const last = (written.get(id) ?? start) as unknown as Record<string, unknown>
+  const now = current as unknown as Record<string, unknown>
+  let rebased: Record<string, unknown> | null = null
+  for (const key of GEOMETRY_KEYS) {
+    if (sameValue(now[key], last[key])) continue
+    rebased ??= { ...(start as unknown as Record<string, unknown>) }
+    rebased[key] = now[key]
+  }
+  if (!rebased) return start
+  const next = rebased as unknown as BoardObject
+  origin.set(id, next)
+  return next
+}
+
+/**
+ * One frame of a live gesture: transform each object from its (rebased)
+ * origin and write only the geometry onto what the store holds now. ONE store
+ * commit for the whole selection — E-07.
+ */
+function writeFrame(
+  ids: readonly ObjectId[],
+  origin: Map<ObjectId, BoardObject>,
+  transform: (start: BoardObject) => BoardObject,
+): void {
+  const { objects, updateObjects } = boardStore.getState()
+  const next: BoardObject[] = []
+  for (const id of ids) {
+    const current = objects.get(id)
+    // Deleted by a teammate mid-gesture: delete wins (R-CONV-003).
+    if (!current) continue
+    const start = rebasedOrigin(origin, id, current)
+    if (start) next.push(withGeometry(current, transform(start)))
+  }
+  updateObjects(next)
+  // Read back what the store holds — it clamps on the way in.
+  const after = boardStore.getState().objects
+  for (const o of next) {
+    const stored = after.get(o.id)
+    if (stored) written.set(o.id, stored)
+  }
+}
+
+/** Put the geometry back to the origin's, leaving every other field alone. */
+function restoreGeometry(
+  ids: readonly ObjectId[],
+  origin: Map<ObjectId, BoardObject>,
+): void {
+  const { objects, updateObjects } = boardStore.getState()
+  const next: BoardObject[] = []
+  for (const id of ids) {
+    const current = objects.get(id)
+    if (!current) continue
+    const start = rebasedOrigin(origin, id, current)
+    if (start) next.push(withGeometry(current, start))
+  }
+  written = new Map()
+  updateObjects(next)
 }
 
 /* ── Move ─────────────────────────────────────────────────────────────────── */
@@ -156,15 +272,11 @@ export function updateDrag(px: number, py: number, snapEnabled = true): void {
     state.setInteraction({ ...interaction, moved: true, guides })
   }
 
-  const next: BoardObject[] = []
-  for (const id of interaction.ids) {
-    const start = interaction.origin.get(id)
-    if (start) next.push(translateObject(start, dx, dy))
-  }
-  state.updateObjects(next)
+  writeFrame(interaction.ids, interaction.origin, start => translateObject(start, dx, dy))
 
-  // PHASE 10 SLOT: throttled presence:transform at 20 Hz, dropping to 10 Hz
-  // above 100 selected objects (FLOWS E-07). Ephemeral, never an op.
+  // FLOWS E-07: presence, throttled to 20 Hz (10 Hz above 100 selected).
+  // Ephemeral, never an op — the op is the one commit on pointerup.
+  emitTransform(interaction.ids, dx, dy)
 }
 
 /**
@@ -190,46 +302,55 @@ export function endDrag(element: Element | null): void {
 
   // A press that never crossed the threshold moved nothing. Recording it would
   // put an entry on the stack whose undo is invisible.
-  if (interaction.moved) commitTransform(interaction.ids, interaction.origin, LABELS.move)
+  if (interaction.moved) {
+    commitTransform(interaction.ids, interaction.origin, LABELS.move)
+    emitTransformEnd()
+  }
 }
 
 /**
  * Record a finished live gesture as ONE history entry — R-UNDO-004,
  * R-UNDO-010's "pushed on pointerup, never on pointermove".
  *
- * The forward ops are minimal UPDATEs diffed from the pointerdown snapshot, so
- * a drag records `{x, y, updatedAt}` and a rotate records `{x, y, rotation,
- * updatedAt}` — never the whole object, which is what would clobber a
- * teammate's concurrent edit to an untouched field (R-UNDO-007).
+ * The forward ops are minimal UPDATEs diffed from the pointerdown snapshot
+ * over the GEOMETRY keys only, so a drag records `{x, y, updatedAt}` and a
+ * rotate records `{x, y, rotation, updatedAt}` — never the whole object, and
+ * never a field a teammate changed mid-gesture, which would echo their edit
+ * back as ours and let our undo revert it (R-UNDO-007, R-CONV-002).
  *
  * Re-applying those UPDATEs inside `applyAndEmit` writes values the store
- * already holds. That is intentional: one commit path, no second "record but
- * do not apply" branch to keep in step with it.
+ * already holds (plus the one `updatedAt` stamp). That is intentional: one
+ * commit path, no second "record but do not apply" branch to keep in step with
+ * it. `applyAndEmit` emits the whole batch as one op message (E-07).
  */
 function commitTransform(
   ids: readonly ObjectId[],
-  origin: ReadonlyMap<ObjectId, BoardObject>,
+  origin: Map<ObjectId, BoardObject>,
   label: string,
 ): void {
   const { objects } = boardStore.getState()
+  const now = Date.now()
   const next: BoardObject[] = []
   for (const id of ids) {
-    const o = objects.get(id)
-    if (o) next.push(o)
+    const current = objects.get(id)
+    if (!current) continue
+    const start = rebasedOrigin(origin, id, current)
+    if (start) next.push({ ...withGeometry(start, current), updatedAt: now })
   }
+  written = new Map()
 
   const before = snapshotReader(origin)
   applyAndEmit(updateOps(next, before), label, { before })
-  // PHASE 9 SLOT: applyAndEmit emits the same batch as one op message (E-07).
 }
 
 /** Restore every object to its pointerdown state — pointercancel, Escape. */
 export function cancelDrag(element: Element | null): void {
-  const { interaction, updateObjects, setInteraction } = boardStore.getState()
+  const { interaction, setInteraction } = boardStore.getState()
   if (interaction.type !== 'DRAGGING') return
   releaseCapture(element, interaction.pointerId)
-  updateObjects([...interaction.origin.values()])
+  restoreGeometry(interaction.ids, interaction.origin)
   setInteraction({ type: 'IDLE' })
+  if (interaction.moved) emitTransformEnd()
 }
 
 /* ── Resize ───────────────────────────────────────────────────────────────── */
@@ -251,17 +372,13 @@ export function updateResize(
   py: number,
   mods: { aspect: boolean; fromCentre: boolean },
 ): void {
-  const { interaction, updateObjects } = boardStore.getState()
+  const { interaction } = boardStore.getState()
   if (interaction.type !== 'RESIZING') return
 
   const box = resizeBox(interaction.startBox, interaction.handle, px, py, mods)
-
-  const next: BoardObject[] = []
-  for (const id of interaction.ids) {
-    const start = interaction.origin.get(id)
-    if (start) next.push(applyBoxTransform(start, interaction.startBox, box))
-  }
-  updateObjects(next)
+  writeFrame(interaction.ids, interaction.origin, start =>
+    applyBoxTransform(start, interaction.startBox, box),
+  )
 }
 
 export function endResize(element: Element | null): void {
@@ -273,10 +390,10 @@ export function endResize(element: Element | null): void {
 }
 
 export function cancelResize(element: Element | null): void {
-  const { interaction, updateObjects, setInteraction } = boardStore.getState()
+  const { interaction, setInteraction } = boardStore.getState()
   if (interaction.type !== 'RESIZING') return
   releaseCapture(element, interaction.pointerId)
-  updateObjects([...interaction.origin.values()])
+  restoreGeometry(interaction.ids, interaction.origin)
   setInteraction({ type: 'IDLE' })
 }
 
@@ -319,13 +436,9 @@ export function updateRotate(px: number, py: number, snap: boolean): void {
   // on a true multiple of 15° regardless of where the drag started.
   if (snap) delta = Math.round(delta / 15) * 15
 
-  const next: BoardObject[] = []
-  for (const id of interaction.ids) {
-    const start = interaction.origin.get(id)
-    if (start)
-      next.push(applyRotation(start, interaction.centreX, interaction.centreY, delta))
-  }
-  state.updateObjects(next)
+  writeFrame(interaction.ids, interaction.origin, start =>
+    applyRotation(start, interaction.centreX, interaction.centreY, delta),
+  )
   state.setInteraction({ ...interaction, currentDeg: ((delta % 360) + 360) % 360 })
 }
 
@@ -338,10 +451,10 @@ export function endRotate(element: Element | null): void {
 }
 
 export function cancelRotate(element: Element | null): void {
-  const { interaction, updateObjects, setInteraction } = boardStore.getState()
+  const { interaction, setInteraction } = boardStore.getState()
   if (interaction.type !== 'ROTATING') return
   releaseCapture(element, interaction.pointerId)
-  updateObjects([...interaction.origin.values()])
+  restoreGeometry(interaction.ids, interaction.origin)
   setInteraction({ type: 'IDLE' })
 }
 

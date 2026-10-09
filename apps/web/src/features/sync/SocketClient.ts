@@ -1,6 +1,4 @@
 import {
-  BACKOFF_BASE_MS,
-  BACKOFF_MAX_MS,
   CLOSE_CODES,
   MAX_RECONNECT_ATTEMPTS,
   PING_INTERVAL_MS,
@@ -11,6 +9,11 @@ import {
   type ServerMessage,
 } from '@coboard/shared'
 import { api } from '../../lib/api.js'
+import { track } from '../../lib/analytics.js'
+import { backoffFor } from './backoff.js'
+import { transition, type ConnectionEvent } from './ConnectionMachine.js'
+
+export { backoffFor }
 
 /**
  * The socket transport — TRD §5.1, §5.6, §10.2.
@@ -47,6 +50,13 @@ export interface SocketHandlers {
   onState: (state: ConnectionState) => void
   /** A close the client must not retry — 4001/4003/4004. */
   onFatal: (code: number) => void
+  /**
+   * A reconnect attempt is starting — "Reconnecting… (attempt {N})". Separate
+   * from `onState` because the state stays RECONNECTING across attempts.
+   */
+  onAttempt?: (attempt: number) => void
+  /** Unsent ops right now — reported with PRD §9 `socket_reconnected`. */
+  outboxSize?: () => number
 }
 
 /** Injected in tests so nothing has to wait out a real backoff. */
@@ -58,15 +68,29 @@ export interface SocketDeps {
 }
 
 /**
- * Full jitter — R-SYNC-030.
- *
- * `random() * ceiling`, never the ceiling itself. A server that restarts with
- * two hundred boards attached gets two hundred reconnects spread across the
- * window rather than two hundred arriving in the same millisecond and killing
- * it again. Without the jitter the reconnect storm is self-sustaining.
+ * A close code as a short PRD §9 `socket_disconnected` reason. A code we have
+ * no name for is reported as the number, which is still groupable.
  */
-export const backoffFor = (attempt: number): number =>
-  Math.random() * Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.min(attempt, 5))
+export function disconnectReason(code: number): string {
+  switch (code) {
+    case CLOSE_CODES.NORMAL:
+      return 'normal'
+    case CLOSE_CODES.GOING_AWAY:
+      return 'going_away'
+    case CLOSE_CODES.ABNORMAL:
+      return 'abnormal'
+    case CLOSE_CODES.UNAUTHORIZED:
+      return 'unauthorized'
+    case CLOSE_CODES.FORBIDDEN:
+      return 'forbidden'
+    case CLOSE_CODES.NOT_FOUND:
+      return 'not_found'
+    case CLOSE_CODES.RATE_LIMITED:
+      return 'rate_limited'
+    default:
+      return `code_${code}`
+  }
+}
 
 /**
  * Close codes and what the client does about them — TRD §5.6.
@@ -98,6 +122,28 @@ export class SocketClient {
   private attempt = 0
   private closedByUs = false
   private refreshedOnce = false
+  /**
+   * A connect is between its ticket request and the socket it opens. The
+   * `this.socket` guard cannot cover that window — there is no socket yet —
+   * and `online` plus `visibilitychange` firing together on wake would each
+   * fetch a ticket and open a socket of their own.
+   */
+  private connecting = false
+  /**
+   * Bumped by `restart()`, so a ticket fetched under the previous identity is
+   * abandoned rather than used to open a second socket beside the new one.
+   */
+  private generation = 0
+
+  /*
+   * PRD §9 socket_disconnected / socket_reconnected bookkeeping. `openedAt`
+   * is set while a socket is open; `droppedAt` from an unplanned close until
+   * the next successful open, and `reconnectAttempts` counts the connects
+   * made in between (separate from `attempt`, which `resume()` resets).
+   */
+  private openedAt: number | null = null
+  private droppedAt: number | null = null
+  private reconnectAttempts = 0
 
   private pingTimer: unknown = null
   private pongTimer: unknown = null
@@ -106,6 +152,7 @@ export class SocketClient {
   private readonly open: (url: string) => WebSocket
   private readonly setTimer: (fn: () => void, ms: number) => unknown
   private readonly clearTimer: (handle: unknown) => void
+  private readonly now: () => number
 
   constructor(
     private readonly boardId: string,
@@ -115,20 +162,35 @@ export class SocketClient {
     this.open = deps.connect ?? (url => new WebSocket(url))
     this.setTimer = deps.setTimer ?? ((fn, ms) => globalThis.setTimeout(fn, ms))
     this.clearTimer = deps.clearTimer ?? (h => globalThis.clearTimeout(h as number))
+    this.now = deps.now ?? (() => Date.now())
   }
 
   get connectionState(): ConnectionState {
     return this.state
   }
 
+  /** Which reconnect attempt is in flight — "Reconnecting… (attempt {N})". */
+  get reconnectAttempt(): number {
+    return this.attempt
+  }
+
   get isOpen(): boolean {
     return this.socket?.readyState === 1
   }
 
-  private setState(state: ConnectionState): void {
-    if (state === this.state) return
-    this.state = state
-    this.handlers.onState(state)
+  /**
+   * Every state change goes through the table in ConnectionMachine.ts. An
+   * event the current state does not accept is ignored — returning false so
+   * the caller can tell.
+   */
+  private fire(event: ConnectionEvent): boolean {
+    const next = transition(this.state, event)
+    if (next === null) return false
+    if (next !== this.state) {
+      this.state = next
+      this.handlers.onState(next)
+    }
+    return true
   }
 
   /**
@@ -141,9 +203,15 @@ export class SocketClient {
    */
   async connect(): Promise<void> {
     if (this.closedByUs) return
+    if (this.connecting) return
     if (this.socket && this.socket.readyState <= 1) return
+    this.connecting = true
+    const generation = this.generation
 
-    this.setState(this.attempt === 0 ? 'connecting' : 'reconnecting')
+    // From DISCONNECTED this is the first connect; from OFFLINE it is a
+    // retry. From RECONNECTING it is the next attempt and nothing changes.
+    this.fire('connect')
+    if (this.droppedAt !== null) this.reconnectAttempts += 1
 
     let ticket: string
     try {
@@ -152,28 +220,57 @@ export class SocketClient {
       })
       ticket = response.ticket
     } catch {
+      // Superseded by a restart while the request was out: that connect owns
+      // the retry now.
+      if (generation !== this.generation) return
+      this.connecting = false
       // Could not even get a ticket — the API is down or the session expired.
       // Treated as a network failure, because that is what it usually is.
       this.scheduleRetry()
       return
     }
+    if (generation !== this.generation) return
+    this.connecting = false
     if (this.closedByUs) return
 
-    const url = new URL(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`)
+    const url = new URL(
+      `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
+    )
     url.searchParams.set('ticket', ticket)
 
     const socket = this.open(url.toString())
     this.socket = socket
 
     socket.onopen = () => {
+      // Opened after we gave up on it — the board unmounted mid-handshake.
+      if (this.closedByUs || this.socket !== socket) {
+        try {
+          socket.close(CLOSE_CODES.NORMAL)
+        } catch {
+          // Already gone.
+        }
+        return
+      }
       this.attempt = 0
       this.refreshedOnce = false
-      this.setState('syncing')
+      this.openedAt = this.now()
+      if (this.droppedAt !== null) {
+        track('socket_reconnected', {
+          attempts: this.reconnectAttempts,
+          downtime_ms: this.openedAt - this.droppedAt,
+          outbox_size: this.handlers.outboxSize?.() ?? 0,
+        })
+        this.droppedAt = null
+        this.reconnectAttempts = 0
+      }
+      this.fire('open')
       this.startHeartbeat()
       this.handlers.onOpen()
     }
 
     socket.onmessage = event => {
+      // A socket we have already replaced or given up on speaks for nothing.
+      if (this.socket !== socket) return
       const parsed = safeParse(event.data)
       if (!parsed) return
 
@@ -185,16 +282,30 @@ export class SocketClient {
       this.handlers.onMessage(parsed)
     }
 
-    socket.onclose = event => this.onClose(event.code)
+    /*
+     * Only the CURRENT socket's close is a drop. A superseded socket closing
+     * late — after a restart, a heartbeat teardown, or a duplicate connect —
+     * would otherwise stop the live socket's heartbeat, null it and report
+     * 'disconnected' while it is perfectly healthy.
+     */
+    socket.onclose = event => {
+      if (this.socket !== socket) return
+      this.onClose(event.code)
+    }
     socket.onerror = () => {
       // `error` is always followed by `close`, which is where the reaction
       // lives. Handling both would double every reconnect.
     }
   }
 
-  /** Called by SyncEngine once `join_ack` has been processed. */
+  /**
+   * SYNCING → CONNECTED. Called by the board session once the rejoin has been
+   * acknowledged AND the outbox has drained — FLOWS §15.2. Not at `join_ack`:
+   * a header that turns green while twelve offline changes are still on
+   * their way is reporting a guarantee it does not yet have.
+   */
   markSynced(): void {
-    if (this.state === 'syncing') this.setState('connected')
+    this.fire('synced')
   }
 
   send(message: ClientMessage): boolean {
@@ -210,8 +321,10 @@ export class SocketClient {
   /** A deliberate close. No reconnect follows. */
   close(): void {
     this.closedByUs = true
+    // Leaving the board is not a disconnect — nothing is tracked.
+    this.openedAt = null
     this.stopTimers()
-    this.setState('disconnected')
+    this.fire('close')
     try {
       this.socket?.close(CLOSE_CODES.NORMAL)
     } catch {
@@ -220,15 +333,28 @@ export class SocketClient {
     this.socket = null
   }
 
-  private onClose(code: number): void {
+  private onClose(code: number, reason?: string): void {
     this.stopTimers()
     this.socket = null
     if (this.closedByUs) return
 
+    // PRD §9: only a connection that was actually open can be "lost". A
+    // reconnect attempt that never opened is not a second disconnect.
+    if (this.openedAt !== null) {
+      const at = this.now()
+      track('socket_disconnected', {
+        reason: reason ?? disconnectReason(code),
+        session_duration_ms: at - this.openedAt,
+      })
+      this.openedAt = null
+      this.droppedAt = at
+      this.reconnectAttempts = 0
+    }
+
     const reaction = reactionTo(code)
 
     if (reaction === 'stop') {
-      this.setState('disconnected')
+      this.fire('close')
       this.handlers.onFatal(code)
       return
     }
@@ -236,14 +362,14 @@ export class SocketClient {
     if (reaction === 'refresh-then-retry') {
       if (this.refreshedOnce) {
         // Second 4001 in a row. The session is gone, not stale.
-        this.setState('disconnected')
+        this.fire('close')
         this.handlers.onFatal(code)
         return
       }
       this.refreshedOnce = true
       // The ticket request itself goes through `api`, which refreshes on a
       // 401 and replays — so simply reconnecting IS the refresh.
-      this.setState('reconnecting')
+      this.fire('drop')
       void this.connect()
       return
     }
@@ -255,6 +381,14 @@ export class SocketClient {
   private scheduleRetry(fixedDelayMs?: number): void {
     if (this.closedByUs || this.retryTimer !== null) return
 
+    // FLOWS §9.4: the browser saying it has no network is OFFLINE at once.
+    // Retrying into a dead interface only burns the attempt budget; the
+    // `online` event brings us back through `resume()`.
+    if (browserOffline()) {
+      this.fire('browser-offline')
+      return
+    }
+
     this.attempt += 1
     if (this.attempt > MAX_RECONNECT_ATTEMPTS) {
       /*
@@ -263,11 +397,14 @@ export class SocketClient {
        * `online` event will start again. 'offline' is the state that tells the
        * header to say so rather than pretending to be connected.
        */
-      this.setState('offline')
+      this.fire('exhausted')
       return
     }
 
-    this.setState('reconnecting')
+    // From CONNECTED or SYNCING this is the drop; from RECONNECTING it is
+    // already true and the table leaves it be.
+    this.fire('drop')
+    this.handlers.onAttempt?.(this.attempt)
     this.retryTimer = this.setTimer(
       () => {
         this.retryTimer = null
@@ -277,7 +414,10 @@ export class SocketClient {
     )
   }
 
-  /** Manual retry — the browser came back online, or the user asked. */
+  /**
+   * Retry NOW — the browser came back online, or the user pressed "Retry
+   * now". The backoff restarts from attempt 1 (FLOWS §9.4).
+   */
   resume(): void {
     if (this.closedByUs || this.isOpen) return
     if (this.retryTimer !== null) {
@@ -286,6 +426,97 @@ export class SocketClient {
     }
     this.attempt = 0
     void this.connect()
+  }
+
+  /**
+   * The browser announced it has no network. Say so immediately rather than
+   * after the heartbeat notices — the socket may still read OPEN for tens of
+   * seconds while every send disappears.
+   */
+  goOffline(): void {
+    if (this.closedByUs) return
+    if (this.retryTimer !== null) {
+      this.clearTimer(this.retryTimer)
+      this.retryTimer = null
+    }
+    this.fire('browser-offline')
+  }
+
+  /**
+   * E-02: the tab came back to the front. A backgrounded tab's socket is
+   * often silently dead — the OS suspended it, the NAT forgot it — and the
+   * 25 s heartbeat may be throttled to minutes. If the socket claims to be
+   * open, ping it now and let the pong timeout decide; if not, reconnect.
+   */
+  checkNow(): void {
+    if (this.closedByUs) return
+    if (this.isOpen) {
+      this.stopHeartbeat()
+      this.ping()
+      return
+    }
+    this.resume()
+  }
+
+  /*
+   * ── Fault injection, development builds only ─────────────────────────────
+   *
+   * The chaos e2e suite (AT-30 … AT-35) needs to cut a live connection the
+   * way a network does — no close frame, no warning — and Playwright's
+   * `setOffline` does not reliably sever a WebSocket that is already open.
+   * These do exactly that and nothing else; the session only exposes them on
+   * `window` when `import.meta.env.DEV`.
+   */
+
+  /** Sever the connection as a dead network would: 1006, then reconnect. */
+  simulateDrop(): void {
+    const socket = this.socket
+    if (!socket || this.closedByUs) return
+    socket.onclose = null
+    socket.onmessage = null
+    try {
+      socket.close(3000)
+    } catch {
+      // Already gone.
+    }
+    this.onClose(CLOSE_CODES.ABNORMAL)
+  }
+
+  /**
+   * Reconnect now, under whatever credential is current — guest → account
+   * conversion (FLOWS §7.4). The canvas, the outbox and the applied seq all
+   * stay; only the socket's identity changes, so the rejoin replays nothing
+   * the document does not already have.
+   */
+  restart(): void {
+    if (this.closedByUs) return
+    const socket = this.socket
+    this.stopTimers()
+    this.socket = null
+    // A ticket request still in flight belongs to the old identity.
+    this.generation += 1
+    this.connecting = false
+    // A planned swap of identity, not a drop: nothing is tracked for it.
+    this.openedAt = null
+    if (socket) {
+      socket.onclose = null
+      socket.onmessage = null
+      try {
+        socket.close(CLOSE_CODES.NORMAL)
+      } catch {
+        // Already gone.
+      }
+    }
+    this.attempt = 0
+    this.fire('drop')
+    void this.connect()
+  }
+
+  /** Put arbitrary bytes on the wire — AT-35's forged console message. */
+  sendRaw(data: string): boolean {
+    if (!this.isOpen) return false
+    this.socket!.send(data)
+    return true
   }
 
   private startHeartbeat(): void {
@@ -309,7 +540,7 @@ export class SocketClient {
       } catch {
         // Nothing to close.
       }
-      this.onClose(CLOSE_CODES.ABNORMAL)
+      this.onClose(CLOSE_CODES.ABNORMAL, 'heartbeat_timeout')
     }, PONG_TIMEOUT_MS)
 
     this.pingTimer = this.setTimer(() => this.ping(), PING_INTERVAL_MS)
@@ -336,6 +567,11 @@ export class SocketClient {
       this.retryTimer = null
     }
   }
+}
+
+function browserOffline(): boolean {
+  const nav = globalThis.navigator as { onLine?: boolean } | undefined
+  return nav?.onLine === false
 }
 
 /**

@@ -1,0 +1,123 @@
+name: Backup verify
+
+# PRD §7.3: "automated daily backups with a TESTED restore". Daily, this job
+#   1. runs scripts/test-restore.sh against a throwaway Postgres — proving
+#      backup.sh and restore.sh still round-trip the current schema exactly
+#      (row counts per table, op-log max seq per board, op-log checksum);
+#   2. if the backup bucket is configured, restores the NEWEST production
+#      archive from S3 into a scratch database and sanity-checks it — proving
+#      last night's real backup exists, is recent, and restores.
+# A failure here is a page-worthy event: it means we may not be able to
+# recover (docs/RUNBOOK.md §5).
+#
+# Secrets for step 2 (all optional; missing → step skipped with a notice):
+#   BACKUP_S3_BUCKET, BACKUP_S3_PREFIX (default coboard/postgres/),
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+#   — a READ-ONLY key for the backup prefix.
+
+on:
+  schedule:
+    - cron: '41 4 * * *' # daily, after the 03:17 UTC host backup
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Restore drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: coboard
+          POSTGRES_PASSWORD: coboard
+          POSTGRES_DB: coboard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coboard -d coboard"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://coboard:coboard@localhost:5432/coboard
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Client tools matching the server major, so pg_dump never refuses a
+      # newer server.
+      - name: Install PostgreSQL 15 client
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -q postgresql-client-15
+          echo "/usr/lib/postgresql/15/bin" >> "$GITHUB_PATH"
+
+      - name: Apply migrations
+        run: pnpm --filter @coboard/server exec prisma migrate deploy
+
+      # Seeds the known board (the database is empty), backs it up, restores
+      # into a scratch database and diffs the fingerprints.
+      - name: Backup / restore round trip
+        run: pnpm db:test-restore
+
+      - name: Check production backup configuration
+        id: gate
+        env:
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        run: |
+          if [ -n "$BACKUP_S3_BUCKET" ] && [ -n "$AWS_ACCESS_KEY_ID" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Production restore skipped::BACKUP_S3_BUCKET / AWS credentials not set; only the round-trip drill ran."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore newest production backup
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX || 'coboard/postgres/' }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          latest="$(aws s3 ls "s3://${BACKUP_S3_BUCKET}/${BACKUP_S3_PREFIX}" | awk '{print $4}' | grep '\.dump$' | sort | tail -n 1)"
+          [ -n "$latest" ] || { echo "::error::No backups found in s3://${BACKUP_S3_BUCKET}/${BACKUP_S3_PREFIX}"; exit 1; }
+          echo "Newest archive: $latest"
+
+          # Archives are named <db>-YYYYmmddTHHMMSSZ.dump; older than 26 h
+          # means last night's backup did not happen.
+          stamp="$(echo "$latest" | grep -Eo '[0-9]{8}T[0-9]{6}Z')"
+          age_h=$(( ( $(date -u +%s) - $(date -u -d "$(echo "$stamp" | sed -E 's/(....)(..)(..)T(..)(..)(..)Z/\1-\2-\3 \4:\5:\6/')" +%s) ) / 3600 ))
+          echo "Age: ${age_h} h"
+          [ "$age_h" -le 26 ] || { echo "::error::Newest backup is ${age_h} h old (limit 26 h)"; exit 1; }
+
+          psql "$DATABASE_URL" -c 'CREATE DATABASE prod_restore_check'
+          bash scripts/restore.sh "s3://${BACKUP_S3_BUCKET}/${BACKUP_S3_PREFIX}${latest}" \
+            --target postgresql://coboard:coboard@localhost:5432/prod_restore_check
+
+          check=postgresql://coboard:coboard@localhost:5432/prod_restore_check
+          psql -X "$check" -c 'SELECT count(*) AS migrations FROM "_prisma_migrations"' \
+                           -c 'SELECT count(*) AS boards FROM "Board"' \
+                           -c 'SELECT count(*) AS operations, max(seq) AS max_seq FROM "Operation"'
+          # Every board's counter must equal its op log's max seq — the
+          # invariant the append transaction maintains (R-SYNC-013).
+          bad="$(psql -X -At "$check" -c 'SELECT count(*) FROM "Board" b LEFT JOIN (SELECT "boardId", max(seq) m FROM "Operation" GROUP BY 1) o ON o."boardId" = b.id WHERE b."currentSeq" <> coalesce(o.m, 0)')"
+          [ "$bad" = 0 ] || { echo "::error::$bad boards have currentSeq != max(op seq) in the restored backup"; exit 1; }
+          echo "Production backup $latest restores cleanly."

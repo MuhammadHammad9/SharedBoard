@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { DotsThreeVertical, Image as ImageIcon } from '@phosphor-icons/react'
+import { DotsThreeVertical } from '@phosphor-icons/react'
 import { Dropdown } from '../../components/ui/Dropdown.js'
+import { EmptyBoardGraphic } from './EmptyBoardGraphic.js'
 import { RenameInline } from './RenameInline.js'
 import { absoluteTime, relativeTime } from '../../lib/relativeTime.js'
-import { actions } from '../../lib/strings.js'
+import { actions, dashboard } from '../../lib/strings.js'
+import { useToast } from '../../components/ui/Toast.js'
 import type { BoardSummary } from './api.js'
 
 /**
@@ -35,8 +37,13 @@ export interface BoardCardProps {
   onRename: (name: string) => void
   onTrash: () => void
   onDuplicate: () => void
+  /** Owner only — opens S-12 for this board (FLOWS §6.4). */
+  onShare?: () => void
   onLeave?: () => void
 }
+
+/** The board's own URL — what "Copy link" copies and "Open in new tab" opens (D-35). */
+export const boardUrl = (id: string): string => `${window.location.origin}/board/${id}`
 
 export function BoardCard({
   board,
@@ -44,43 +51,88 @@ export function BoardCard({
   onRename,
   onTrash,
   onDuplicate,
+  onShare,
   onLeave,
 }: BoardCardProps) {
   const navigate = useNavigate()
+  const toast = useToast()
   const [renaming, setRenaming] = useState(false)
   const isOwner = board.ownerId === currentUserId
 
   const open = () => navigate(`/board/${board.id}`)
 
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(boardUrl(board.id))
+      toast.show({ message: dashboard.card.linkCopied })
+    } catch {
+      toast.show({ message: dashboard.card.linkCopyFailed, variant: 'danger' })
+    }
+  }
+
   /*
-   * FLOWS §6.4: Rename, Share and Move-to-trash are owner-only; Leave board is
-   * non-owner-only. The server enforces all of it (R-SEC-001); hiding the
-   * items is UX, so that a viewer is not offered an action that will 403.
+   * FLOWS §6.4, in its order. Rename, Share and Move-to-trash are owner-only;
+   * Leave board is non-owner-only. The server enforces all of it (R-SEC-001);
+   * hiding the items is UX, so that a viewer is not offered an action that
+   * will 403. Star / Unstar is FR-BOARD-008 [P2] and is not built (D-34).
    */
-  const items = isOwner
-    ? [
-        { label: 'Rename', onSelect: () => setRenaming(true), testId: 'card-rename' },
-        { label: 'Duplicate', onSelect: onDuplicate, testId: 'card-duplicate' },
-        {
-          label: actions.moveToTrash,
-          onSelect: onTrash,
-          danger: true,
-          testId: 'card-trash',
-        },
-      ]
-    : [
-        { label: 'Duplicate', onSelect: onDuplicate, testId: 'card-duplicate' },
-        ...(onLeave
-          ? [
-              {
-                label: 'Leave board',
-                onSelect: onLeave,
-                danger: true,
-                testId: 'card-leave',
-              },
-            ]
-          : []),
-      ]
+  const items = [
+    { label: dashboard.card.open, onSelect: open, testId: 'card-open' },
+    {
+      label: dashboard.card.openInNewTab,
+      // `noopener`: the new tab gets no handle back to this one.
+      onSelect: () => void window.open(boardUrl(board.id), '_blank', 'noopener'),
+      testId: 'card-open-new-tab',
+    },
+    ...(isOwner
+      ? [
+          {
+            label: dashboard.card.rename,
+            onSelect: () => setRenaming(true),
+            testId: 'card-rename',
+          },
+        ]
+      : []),
+    {
+      label: dashboard.card.duplicate,
+      onSelect: onDuplicate,
+      testId: 'card-duplicate',
+    },
+    ...(isOwner && onShare
+      ? [{ label: dashboard.card.share, onSelect: onShare, testId: 'card-share' }]
+      : []),
+    {
+      label: dashboard.card.copyLink,
+      onSelect: () => void copyLink(),
+      testId: 'card-copy-link',
+    },
+    {
+      label: dashboard.card.exportPng,
+      // D-35: rendering needs the board's objects and the renderer, which
+      // live in the board chunk. The board opens S-14 itself once loaded.
+      onSelect: () => navigate(`/board/${board.id}?export=1`),
+      testId: 'card-export',
+    },
+    ...(isOwner
+      ? [
+          {
+            label: actions.moveToTrash,
+            onSelect: onTrash,
+            danger: true,
+            testId: 'card-trash',
+          },
+        ]
+      : onLeave
+        ? [
+            {
+              label: dashboard.card.leave,
+              onSelect: onLeave,
+              danger: true,
+              testId: 'card-leave',
+            },
+          ]
+        : []),
+  ]
 
   return (
     <div
@@ -100,18 +152,8 @@ export function BoardCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          /*
-           * The empty-board placeholder — FLOWS §6.2. Thumbnails need object
-           * storage, which is Phase 13, so today every card shows this. It is
-           * a real specified state rather than a stand-in.
-           */
-          <ImageIcon
-            size={28}
-            weight="light"
-            aria-hidden="true"
-            className="text-muted/50"
-            data-testid="thumb-placeholder"
-          />
+          // FLOWS §6.2 / FR-BOARD-003: no thumbnail yet, or an empty board.
+          <EmptyBoardGraphic />
         )}
       </div>
 
@@ -142,11 +184,16 @@ export function BoardCard({
           )}
 
           <p className="mt-1 truncate text-xs text-muted">
-            <time dateTime={board.lastActivityAt} title={absoluteTime(board.lastActivityAt)}>
+            <time
+              dateTime={board.lastActivityAt}
+              title={absoluteTime(board.lastActivityAt)}
+            >
               {relativeTime(board.lastActivityAt)}
             </time>
             {!isOwner ? <span> · {board.ownerName}</span> : null}
           </p>
+
+          <MemberAvatars board={board} />
         </div>
 
         {/*
@@ -156,14 +203,14 @@ export function BoardCard({
          */}
         <div className="opacity-100 transition-opacity duration-fast sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
           <Dropdown
-            label={`Actions for ${board.name}`}
+            label={dashboard.card.actionsFor(board.name)}
             items={items}
             trigger={props => (
               <button
                 {...props}
                 type="button"
                 data-testid="card-menu"
-                aria-label={`Actions for ${board.name}`}
+                aria-label={dashboard.card.actionsFor(board.name)}
                 className="cursor-pointer rounded-sm p-1 text-muted outline-none transition-colors duration-fast hover:bg-subtle hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
                 <DotsThreeVertical size={18} weight="bold" aria-hidden="true" />
@@ -174,4 +221,82 @@ export function BoardCard({
       </div>
     </div>
   )
+}
+
+/**
+ * The avatar row — FLOWS §6.2 "(A)(B)(C) +2", FR-BOARD-002: the owner, then
+ * up to four collaborators, then "+N" for the rest. Static: no hover motion,
+ * nothing that moves the card's layout (A-70).
+ */
+function MemberAvatars({ board }: { board: BoardSummary }) {
+  const overflow = Math.max(0, board.memberCount - board.members.length)
+  const people = [
+    {
+      id: `owner-${board.ownerId}`,
+      displayName: board.ownerName,
+      avatarUrl: board.ownerAvatarUrl,
+    },
+    ...board.members,
+  ]
+  return (
+    <ul
+      className="mt-2 flex items-center"
+      aria-label={dashboard.card.membersLabel}
+      data-testid="card-avatars"
+    >
+      {people.map((person, i) => (
+        <li
+          key={person.id}
+          className={i > 0 ? '-ml-2' : ''}
+          title={person.displayName}
+          data-testid="card-avatar"
+        >
+          <Avatar name={person.displayName} url={person.avatarUrl} />
+        </li>
+      ))}
+      {overflow > 0 ? (
+        <li
+          className="-ml-2 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-app bg-subtle px-1 text-[10px] font-semibold text-primary"
+          aria-label={dashboard.card.moreMembersLabel(overflow)}
+          data-testid="card-avatar-overflow"
+        >
+          {dashboard.card.moreMembers(overflow)}
+        </li>
+      ) : null}
+    </ul>
+  )
+}
+
+function Avatar({ name, url }: { name: string; url: string | null }) {
+  // A picture that fails to load (a Google avatar the CSP's img-src does not
+  // list, a deleted object) falls back to initials rather than a broken icon.
+  const [failed, setFailed] = useState(false)
+  // The name is the accessible label; the picture or initials are decoration.
+  return (
+    <span
+      className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border-2 border-app bg-subtle text-[10px] font-semibold text-primary"
+      role="img"
+      aria-label={name}
+    >
+      {url && !failed ? (
+        <img
+          src={url}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        initials(name)
+      )}
+    </span>
+  )
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  const first = parts[0]?.[0] ?? ''
+  const second = parts.length > 1 ? (parts.at(-1)?.[0] ?? '') : ''
+  return (first + second).toUpperCase() || '?'
 }

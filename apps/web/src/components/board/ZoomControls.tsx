@@ -1,6 +1,8 @@
 import { Minus, Plus, CornersOut } from '@phosphor-icons/react'
 import { ZOOM_MAX, ZOOM_MIN } from '@coboard/shared'
 import { useBoardStore } from '../../stores/boardStore.js'
+import { boardChrome } from '../../lib/strings.js'
+import { useBreakpoint } from '../../lib/breakpoints.js'
 
 /**
  * Zoom controls — FLOWS §14.2. Bottom-right, 16 px margins, z-index: panel.
@@ -29,6 +31,8 @@ const BUTTON =
 export function ZoomControls({ getSize }: ZoomControlsProps) {
   // Narrow selector — R-ARCH-003.
   const zoom = useBoardStore(s => s.viewport.zoom)
+  // On mobile it sits above the 56 px bottom bar (FLOWS §14.5).
+  const breakpoint = useBreakpoint()
   const zoomAt = useBoardStore(s => s.zoomAt)
   const resetZoom = useBoardStore(s => s.resetZoom)
   const zoomToFit = useBoardStore(s => s.zoomToFit)
@@ -44,15 +48,15 @@ export function ZoomControls({ getSize }: ZoomControlsProps) {
 
   return (
     <div
-      className="pointer-events-auto absolute bottom-4 right-4 z-panel flex items-center gap-1 rounded-md border border-border bg-app p-1 shadow-panel"
+      className={`pointer-events-auto absolute ${breakpoint === 'mobile' ? 'bottom-20' : 'bottom-4'} right-4 z-panel flex items-center gap-1 rounded-md border border-border bg-app p-1 shadow-panel`}
       role="group"
-      aria-label="Zoom controls"
+      aria-label={boardChrome.zoom.label}
       data-testid="zoom-controls"
     >
       <button
         type="button"
         className={BUTTON}
-        aria-label="Zoom out"
+        aria-label={boardChrome.zoom.zoomOut}
         disabled={atMin}
         onClick={() => {
           const c = centre()
@@ -65,7 +69,7 @@ export function ZoomControls({ getSize }: ZoomControlsProps) {
       <button
         type="button"
         className="min-w-[3.5rem] rounded-sm px-2 py-1 text-center text-sm tabular-nums text-primary transition-colors duration-fast ease-standard cursor-pointer hover:bg-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-        aria-label={`Zoom ${percent} percent. Click to reset to 100 percent`}
+        aria-label={boardChrome.zoom.percent(percent)}
         data-testid="zoom-percent"
         onClick={() => {
           const c = centre()
@@ -78,7 +82,7 @@ export function ZoomControls({ getSize }: ZoomControlsProps) {
       <button
         type="button"
         className={BUTTON}
-        aria-label="Zoom in"
+        aria-label={boardChrome.zoom.zoomIn}
         disabled={atMax}
         onClick={() => {
           const c = centre()
@@ -93,7 +97,7 @@ export function ZoomControls({ getSize }: ZoomControlsProps) {
       <button
         type="button"
         className={BUTTON}
-        aria-label="Zoom to fit"
+        aria-label={boardChrome.zoom.zoomToFit}
         data-testid="zoom-to-fit"
         onClick={() => {
           const { width, height } = getSize()

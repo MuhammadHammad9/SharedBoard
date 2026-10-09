@@ -16,11 +16,9 @@ const INTEGRATION = '**/*.integration.test.ts'
  * rows mid-test, producing failures that depend on thread scheduling and
  * disappear when you re-run them — the worst possible kind.
  *
- * The integration project runs in ONE forked process (`singleFork`), which
- * serialises its files while the unit project keeps its full parallelism.
- * `fileParallelism: false` looks like the obvious knob and is not: Vitest 3
- * honours it only at the root, where it would serialise all 24 unit files too
- * and roughly double the suite's wall time.
+ * The integration project runs on ONE forked worker (`maxWorkers: 1`, Vitest
+ * 4's replacement for `singleFork`), which serialises its files while the
+ * unit project keeps its full parallelism. Each file is still isolated.
  */
 export default defineConfig({
   resolve: { alias },
@@ -40,7 +38,13 @@ export default defineConfig({
           environment: 'node',
           setupFiles: ['./vitest.setup.ts'],
           include: ['**/*.{test,spec}.{ts,tsx}'],
-          exclude: ['**/node_modules/**', '**/dist/**', 'tests/e2e/**', INTEGRATION],
+          exclude: [
+            '**/node_modules/**',
+            '**/dist/**',
+            '.claude/**',
+            'tests/e2e/**',
+            INTEGRATION,
+          ],
         },
       },
       {
@@ -51,9 +55,9 @@ export default defineConfig({
           environment: 'node',
           setupFiles: ['./vitest.setup.ts'],
           include: [INTEGRATION],
-          exclude: ['**/node_modules/**', '**/dist/**'],
+          exclude: ['**/node_modules/**', '**/dist/**', '.claude/**'],
           pool: 'forks',
-          poolOptions: { forks: { singleFork: true } },
+          maxWorkers: 1,
         },
       },
     ],

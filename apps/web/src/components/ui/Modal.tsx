@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useBreakpoint } from '../../lib/breakpoints.js'
 
 /**
  * Modal — FLOWS §6.7, `R-A11Y-004`.
@@ -23,7 +24,20 @@ import { createPortal } from 'react-dom'
  *
  * Rendered through a portal so no ancestor's `overflow` or `transform` can
  * clip it or break `position: fixed`.
+ *
+ * STACKING: a confirmation may open over another modal (Reset link over the
+ * share modal, FLOWS §10.2). Only the TOPMOST open modal answers Escape and
+ * traps Tab; without that, one Escape would close both, and Tab would be
+ * fought over by two traps.
  */
+
+/** Open modals, oldest first. Only the last one handles keys. */
+const openStack: symbol[] = []
+/** The body's overflow before the first modal opened. */
+let previousOverflow = ''
+
+/** True while any modal is open — the canvas shortcuts stand down (P14-1). */
+export const isModalOpen = (): boolean => openStack.length > 0
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -36,18 +50,51 @@ export interface ModalProps {
   /** Buttons. Rendered right-aligned; the primary action goes last. */
   footer?: ReactNode
   testId?: string
+  /** A wider panel — the share modal's three sections need the room. */
+  wide?: boolean
+  /**
+   * FLOWS §13.2: a destructive modal does not close on a backdrop click — a
+   * stray click must not be what decides whether a board is deleted.
+   */
+  destructive?: boolean
+  /**
+   * False while a destructive action is in flight: Escape and the backdrop
+   * do nothing until it settles (FLOWS §13.2).
+   */
+  dismissible?: boolean
+  /** FLOWS §14.5: on mobile, a full-screen sheet rather than a card. */
+  sheetOnMobile?: boolean
 }
 
-export function Modal({ open, onClose, title, children, footer, testId }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  testId,
+  wide = false,
+  destructive = false,
+  dismissible = true,
+  sheetOnMobile = false,
+}: ModalProps) {
+  const sheet = useBreakpoint() === 'mobile' && sheetOnMobile
   const panel = useRef<HTMLDivElement | null>(null)
   const returnFocusTo = useRef<HTMLElement | null>(null)
   const pointerDownInside = useRef(false)
   const titleId = useId()
+  // Read by the key handler without re-binding it on every busy change.
+  const dismissibleRef = useRef(dismissible)
+  dismissibleRef.current = dismissible
 
   const focusFirst = useCallback(() => {
     const node = panel.current
     if (!node) return
-    const target = node.querySelector<HTMLElement>(FOCUSABLE)
+    // FLOWS §13.2: the first interactive element — or, for a confirmation,
+    // the primary action, which marks itself `data-autofocus`.
+    const target =
+      node.querySelector<HTMLElement>('[data-autofocus]:not([disabled])') ??
+      node.querySelector<HTMLElement>(FOCUSABLE)
     // The panel itself is focusable as a fallback, so a dialog with no
     // controls still receives focus rather than leaving it outside.
     ;(target ?? node).focus()
@@ -58,11 +105,20 @@ export function Modal({ open, onClose, title, children, footer, testId }: ModalP
 
     returnFocusTo.current = document.activeElement as HTMLElement | null
     focusFirst()
+    const self = Symbol('modal')
+    openStack.push(self)
+    // FLOWS §13.2: the page behind does not scroll. Restored when the LAST
+    // open modal closes, so a stacked confirmation does not unlock it early.
+    if (openStack.length === 1) {
+      previousOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+    }
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (openStack[openStack.length - 1] !== self) return
       if (event.key === 'Escape') {
         event.stopPropagation()
-        onClose()
+        if (dismissibleRef.current) onClose()
         return
       }
       if (event.key !== 'Tab') return
@@ -90,6 +146,8 @@ export function Modal({ open, onClose, title, children, footer, testId }: ModalP
     document.addEventListener('keydown', onKeyDown, true)
     return () => {
       document.removeEventListener('keydown', onKeyDown, true)
+      openStack.splice(openStack.indexOf(self), 1)
+      if (openStack.length === 0) document.body.style.overflow = previousOverflow
       returnFocusTo.current?.focus?.()
     }
   }, [open, onClose, focusFirst])
@@ -99,13 +157,15 @@ export function Modal({ open, onClose, title, children, footer, testId }: ModalP
   return createPortal(
     <div
       data-modal-backdrop
-      className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 p-4"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-primary/40 ${sheet ? '' : 'p-4'}`}
       onPointerDown={event => {
         pointerDownInside.current = panel.current?.contains(event.target as Node) ?? false
       }}
       onClick={() => {
-        // Only a click that both started and ended on the backdrop closes.
-        if (!pointerDownInside.current) onClose()
+        // Only a click that both started and ended on the backdrop closes —
+        // and never on a destructive modal, or while one is busy.
+        if (!pointerDownInside.current && !destructive && dismissibleRef.current)
+          onClose()
         pointerDownInside.current = false
       }}
     >
@@ -117,7 +177,12 @@ export function Modal({ open, onClose, title, children, footer, testId }: ModalP
         aria-labelledby={titleId}
         tabIndex={-1}
         data-testid={testId}
-        className="w-full max-w-md rounded-lg border border-border bg-app p-6 shadow-panel outline-none"
+        data-sheet={sheet ? 'true' : undefined}
+        className={`w-full border border-border bg-app p-6 shadow-panel outline-none ${
+          sheet
+            ? 'h-[100dvh] max-w-none overflow-y-auto rounded-none'
+            : `${wide ? 'max-w-lg' : 'max-w-md'} rounded-lg`
+        }`}
         onClick={event => event.stopPropagation()}
       >
         <h2 id={titleId} className="text-base font-semibold text-primary">

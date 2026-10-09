@@ -123,6 +123,19 @@ export const STROKE_POINT_STRIDE = 3
 export const STROKE_POINTS_MIN = 6 // two points
 export const STROKE_POINTS_MAX = 30_000 // 10k points
 
+/**
+ * Serialized size cap for one op's payload, in UTF-8 bytes — CREATE and
+ * UPDATE alike. Every other object is a few hundred bytes; only a stroke's
+ * point array grows. 256 KB holds roughly 13,000–20,000 numbers at the full
+ * double precision the client sends — 4,500+ points AFTER the one RDP pass
+ * (R-CANVAS-032), which typically keeps about one raw sample in seven, so the
+ * 10,000-raw-point ceiling (STROKE_POINTS_MAX) lands far below it in
+ * practice. A 64 KB cap would refuse long but ordinary strokes, and a refused
+ * CREATE is rolled back on the author's screen. Below the 512 KB WebSocket
+ * frame cap, so the database and every broadcast are bounded per op.
+ */
+export const OP_PAYLOAD_MAX_BYTES = 256 * 1024
+
 /** Default sticky note size in canvas units (FR-CANVAS-008). */
 export const STICKY_DEFAULT_SIZE = 200
 
@@ -160,6 +173,8 @@ export const BROADCAST_BATCH_MS = 16
 /** Heartbeat — TRD §5.1, R-SYNC-032. */
 export const PING_INTERVAL_MS = 25_000
 export const PONG_TIMEOUT_MS = 10_000
+/** E-21: a board load gives up after this and offers an inline retry. */
+export const SNAPSHOT_TIMEOUT_MS = 30_000
 export const SERVER_SOCKET_IDLE_TIMEOUT_MS = 60_000
 
 /** Reconnection — TRD §10.2, R-SYNC-030 full jitter. */
@@ -206,6 +221,7 @@ export const ACCEPTED_IMAGE_TYPES = [
   'image/webp',
   'image/svg+xml',
 ] as const
+export type AcceptedImageType = (typeof ACCEPTED_IMAGE_TYPES)[number]
 
 export const PASSWORD_MIN_LENGTH = 8
 export const PASSWORD_MAX_LENGTH = 128
@@ -226,6 +242,8 @@ export const ACCESS_TOKEN_TTL = '15m'
 export const REFRESH_TOKEN_TTL = '30d'
 export const WS_TICKET_TTL_MS = 60_000
 export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1_000
+/** D-22: an emailed address-verification link lives this long, and works once. */
+export const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1_000
 
 /** Permission cache — R-SEC-020. */
 export const PERMISSION_CACHE_TTL_MS = 60_000
@@ -263,6 +281,10 @@ export const CLOSE_CODES = {
   NORMAL: 1000,
   GOING_AWAY: 1001,
   ABNORMAL: 1006,
+  /** A socket that never sent `join` within the grace period. Retryable. */
+  POLICY_VIOLATION: 1008,
+  /** The server failed while handling a message (a database error on join). Retryable. */
+  INTERNAL_ERROR: 1011,
   UNAUTHORIZED: 4001,
   FORBIDDEN: 4003,
   NOT_FOUND: 4004,

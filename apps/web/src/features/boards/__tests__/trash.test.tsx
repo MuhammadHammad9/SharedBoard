@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { ToastProvider } from '../../../components/ui/Toast.js'
 import { authStore } from '../../../stores/authStore.js'
 import Trash from '../../../routes/Trash.js'
@@ -40,6 +40,9 @@ const trashed = {
   lastActivityAt: '2026-08-14T09:00:00.000Z',
   deletedAt: '2026-08-14T09:00:00.000Z',
   daysUntilPurge: 26,
+  ownerAvatarUrl: null,
+  members: [],
+  memberCount: 0,
 }
 
 let calls: Array<{ url: string; method: string; body: unknown }> = []
@@ -117,10 +120,55 @@ describe('Trash — S-08', () => {
     await user.click(screen.getByTestId('restore'))
 
     await waitFor(() =>
-      expect(
-        calls.some(c => c.method === 'POST' && c.url.includes('/restore')),
-      ).toBe(true),
+      expect(calls.some(c => c.method === 'POST' && c.url.includes('/restore'))).toBe(
+        true,
+      ),
     )
+  })
+})
+
+describe('restoring the last board — FLOWS §6.8', () => {
+  function renderAt() {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    return render(
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <MemoryRouter initialEntries={['/dashboard/trash']}>
+            <Routes>
+              <Route path="/dashboard/trash" element={<Trash />} />
+              <Route path="/dashboard" element={<div data-testid="dashboard" />} />
+            </Routes>
+          </MemoryRouter>
+        </ToastProvider>
+      </QueryClientProvider>,
+    )
+  }
+
+  it('auto-navigates to S-07 once Trash is empty', async () => {
+    const user = userEvent.setup()
+    stub()
+    renderAt()
+    await screen.findByTestId('trash-row')
+    await user.click(screen.getByTestId('restore'))
+    expect(await screen.findByTestId('dashboard')).toBeTruthy()
+  })
+
+  it('stays on S-08 while other boards are still in it', async () => {
+    const user = userEvent.setup()
+    stub(200, { boards: [trashed, { ...trashed, id: 'board-2', name: 'Roadmap' }] })
+    renderAt()
+    await waitFor(() => expect(screen.getAllByTestId('trash-row')).toHaveLength(2))
+    await user.click(screen.getAllByTestId('restore')[0]!)
+    await waitFor(() =>
+      expect(calls.some(c => c.method === 'POST' && c.url.includes('/restore'))).toBe(
+        true,
+      ),
+    )
+    // Give the success handler its turn, then check nothing moved.
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(screen.queryByTestId('dashboard')).toBeNull()
   })
 })
 

@@ -34,7 +34,10 @@ function sticky(id?: string): BoardObject {
   } as BoardObject
 }
 
-const op = (seq: number, partial: Partial<ServerOp> & Pick<ServerOp, 'type' | 'objectId'>): ServerOp =>
+const op = (
+  seq: number,
+  partial: Partial<ServerOp> & Pick<ServerOp, 'type' | 'objectId'>,
+): ServerOp =>
   ({
     id: `op-${seq}`,
     payload: {},
@@ -231,6 +234,25 @@ describe('the concurrent edit matrix', () => {
     })
   })
 
+  it('E-03: a wrong client clock cannot reorder — seq decides, never updatedAt', () => {
+    const sync = engine()
+    sync.snapshotReady(0)
+    const a = sticky()
+    sync.receiveOps([createOp(1, a)])
+
+    // The seq-3 writer's clock is a year behind; the seq-2 writer's is ahead.
+    sync.receiveOps([
+      updateOp(3, a.id, { color: '#BBF7D0', updatedAt: Date.parse('2025-01-01') }),
+    ])
+    sync.receiveOps([
+      updateOp(2, a.id, { color: '#FECACA', updatedAt: Date.parse('2027-01-01') }),
+    ])
+
+    expect(boardStore.getState().objects.get(a.id as never)).toMatchObject({
+      color: '#BBF7D0',
+    })
+  })
+
   it('AT-04: delete beats a concurrent update, with no zombie', () => {
     const sync = engine()
     sync.snapshotReady(0)
@@ -348,7 +370,7 @@ describe('gap fill', () => {
 /* ── Server messages ──────────────────────────────────────────────────────── */
 
 describe('server messages', () => {
-  it('reports a nack so the board can roll back', () => {
+  it('leaves nacks to the outbox, so a refusal is reported once, not twice', () => {
     const onNack = vi.fn()
     const sync = new SyncEngine(
       'board-1',
@@ -356,7 +378,9 @@ describe('server messages', () => {
       { send: () => true, markSynced: noop },
     )
     sync.handle({ t: 'nack', id: 'op-9', code: 'FORBIDDEN', message: 'View-only' })
-    expect(onNack).toHaveBeenCalledWith(['op-9'], 'FORBIDDEN')
+    // The outbox's socket transport settles the nack, rolls the change back
+    // and reports it. The engine reporting too toasted every refusal twice.
+    expect(onNack).not.toHaveBeenCalled()
   })
 
   it('surfaces a deleted board and a revoked role as fatal', () => {
@@ -380,5 +404,133 @@ describe('server messages', () => {
     sync.join()
     // A reconnect asks for the gap, not for the whole board.
     expect(send).toHaveBeenCalledWith({ t: 'join', boardId: 'board-1', sinceSeq: 2 })
+  })
+})
+
+describe('E-13 — an op for an unknown object', () => {
+  const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  function withSnapshot(fetchSnapshot: () => Promise<unknown>) {
+    return new SyncEngine('board-1', callbacks, {
+      send: () => true,
+      markSynced: noop,
+      setTimer: fn => {
+        queueMicrotask(fn)
+        return 1
+      },
+      clearTimer: noop,
+      fetchOpsSince: () => Promise.resolve({ ops: [], currentSeq: 0 }),
+      fetchSnapshot: fetchSnapshot as never,
+    })
+  }
+
+  beforeEach(() => boardStore.getState().loadObjects([]))
+
+  it('does NOT count updates to a deleted object — delete-wins is not divergence', async () => {
+    const fetchSnapshot = vi.fn(() => Promise.resolve({ objects: [], seq: 0 }))
+    const sync = withSnapshot(fetchSnapshot)
+    sync.snapshotReady(0)
+    const s = sticky()
+    sync.receiveOps([createOp(1, s), deleteOp(2, s.id)])
+    // A teammate kept editing it before they saw the delete.
+    sync.receiveOps([3, 4, 5, 6].map(seq => updateOp(seq, s.id, { x: seq })))
+    await settle()
+    expect(fetchSnapshot).not.toHaveBeenCalled()
+    expect(sync.appliedSeq).toBe(6)
+  })
+
+  it('reloads from a SNAPSHOT after three truly unknown objects, and keeps ops that arrive mid-fetch', async () => {
+    const known = sticky()
+    let resolve!: (v: unknown) => void
+    const fetchSnapshot = vi.fn(() => new Promise(r => (resolve = r)))
+    const sync = withSnapshot(fetchSnapshot)
+    sync.snapshotReady(0)
+
+    sync.receiveOps([1, 2, 3].map(seq => updateOp(seq, `never-seen-${seq}`, { x: 1 })))
+    await settle()
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1)
+
+    // Arrives while the snapshot is in flight. It must not be lost.
+    const late = sticky()
+    sync.receiveOps([createOp(11, late)])
+
+    resolve({ objects: [known], seq: 10 })
+    await settle()
+
+    expect(ids().sort()).toEqual([known.id, late.id].sort())
+    expect(sync.appliedSeq).toBe(11)
+  })
+})
+
+/* ── Dispose ──────────────────────────────────────────────────────────────── */
+
+describe('dispose — async work never lands on the next board', () => {
+  it('a gap fill resolving after dispose writes nothing', async () => {
+    const leaked = sticky()
+    let resolve!: (v: unknown) => void
+    const fetchOpsSince = vi.fn(() => new Promise(r => (resolve = r)))
+    const sync = new SyncEngine('board-1', callbacks, {
+      send: () => true,
+      markSynced: noop,
+      setTimer: fn => {
+        queueMicrotask(fn)
+        return 1
+      },
+      clearTimer: noop,
+      fetchOpsSince: fetchOpsSince as never,
+    })
+    boardStore.getState().loadObjects([])
+    sync.snapshotReady(0)
+    sync.receiveOps([createOp(2, sticky())])
+    await new Promise(r => setTimeout(r, 5))
+    expect(fetchOpsSince).toHaveBeenCalledTimes(1)
+
+    sync.dispose()
+    // The next board is open now.
+    boardStore.getState().loadObjects([])
+    resolve({ ops: [createOp(1, leaked)], currentSeq: 2 })
+    await new Promise(r => setTimeout(r, 5))
+
+    expect(ids()).toEqual([])
+  })
+
+  it('a snapshot reload resolving after dispose does not replace the next board', async () => {
+    const next = sticky()
+    let resolve!: (v: unknown) => void
+    const fetchSnapshot = vi.fn(() => new Promise(r => (resolve = r)))
+    const sync = new SyncEngine('board-1', callbacks, {
+      send: () => true,
+      markSynced: noop,
+      setTimer: fn => {
+        queueMicrotask(fn)
+        return 1
+      },
+      clearTimer: noop,
+      fetchOpsSince: () => Promise.resolve({ ops: [], currentSeq: 0 }),
+      fetchSnapshot: fetchSnapshot as never,
+    })
+    boardStore.getState().loadObjects([])
+    sync.snapshotReady(0)
+    sync.receiveOps([1, 2, 3].map(seq => updateOp(seq, `never-seen-${seq}`, { x: 1 })))
+    await new Promise(r => setTimeout(r, 5))
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1)
+
+    sync.dispose()
+    boardStore.getState().loadObjects([next])
+    resolve({ objects: [sticky()], seq: 10 })
+    await new Promise(r => setTimeout(r, 5))
+
+    expect(ids()).toEqual([next.id])
+  })
+
+  it('ignores ops and acks delivered after dispose', () => {
+    const sync = engine()
+    boardStore.getState().loadObjects([])
+    sync.snapshotReady(0)
+    sync.dispose()
+    sync.receiveOps([createOp(1, sticky())])
+    sync.markOwn(2, 'op-mine')
+    expect(ids()).toEqual([])
+    expect(sync.appliedSeq).toBe(0)
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CLOSE_CODES } from '@coboard/shared'
-import { backoffFor, reactionTo } from '../SocketClient.js'
+import { reactionTo } from '../SocketClient.js'
 
 /**
  * Reconnection policy — TRD §5.6, §10.2, R-SYNC-030.
@@ -45,36 +45,4 @@ describe('close-code reactions — TRD §5.6', () => {
   })
 })
 
-describe('full-jitter backoff — R-SYNC-030', () => {
-  it('never exceeds the ceiling for the attempt', () => {
-    for (let attempt = 1; attempt <= 10; attempt++) {
-      const ceiling = Math.min(30_000, 1_000 * 2 ** Math.min(attempt, 5))
-      for (let i = 0; i < 50; i++) {
-        const delay = backoffFor(attempt)
-        expect(delay).toBeGreaterThanOrEqual(0)
-        expect(delay).toBeLessThanOrEqual(ceiling)
-      }
-    }
-  })
-
-  it('SPREADS the delays rather than returning the ceiling', () => {
-    /*
-     * The whole point. `random() * ceiling`, not the ceiling itself: a server
-     * that restarts with two hundred boards attached gets two hundred
-     * reconnects spread across the window instead of two hundred arriving in
-     * the same millisecond and killing it again.
-     */
-    const samples = Array.from({ length: 200 }, () => backoffFor(4))
-    const unique = new Set(samples)
-    expect(unique.size).toBeGreaterThan(150)
-
-    const ceiling = 16_000
-    // Roughly uniform: some well below half the ceiling, some well above.
-    expect(samples.some(d => d < ceiling * 0.25)).toBe(true)
-    expect(samples.some(d => d > ceiling * 0.75)).toBe(true)
-  })
-
-  it('caps the growth so a long outage does not mean an hour-long wait', () => {
-    expect(backoffFor(50)).toBeLessThanOrEqual(30_000)
-  })
-})
+// The backoff curve itself is tested in backoff.test.ts.

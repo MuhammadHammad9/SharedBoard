@@ -103,7 +103,12 @@ describe('emit', () => {
   it('does NOT send a remote op back to the server', () => {
     const object = sticky()
     applyRemoteOp([
-      { id: 'remote-1', type: 'CREATE', objectId: object.id, payload: object } as ClientOp,
+      {
+        id: 'remote-1',
+        type: 'CREATE',
+        objectId: object.id,
+        payload: object,
+      } as ClientOp,
     ])
     // Echoing would be an infinite loop between two clients, and it would put
     // a teammate's change into our outbox as if it were ours.

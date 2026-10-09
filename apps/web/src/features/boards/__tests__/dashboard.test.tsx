@@ -17,10 +17,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { ToastProvider } from '../../../components/ui/Toast.js'
 import { authStore } from '../../../stores/authStore.js'
 import Dashboard from '../../../routes/Dashboard.js'
+import { dashboard as dashboardStrings, emptyStates } from '../../../lib/strings.js'
 
 const USER = {
   id: 'user-1',
@@ -44,6 +45,9 @@ const board = (overrides: Record<string, unknown> = {}) => ({
   updatedAt: '2026-08-17T09:00:00.000Z',
   lastActivityAt: '2026-08-17T09:00:00.000Z',
   deletedAt: null,
+  ownerAvatarUrl: null,
+  members: [],
+  memberCount: 0,
   ...overrides,
 })
 
@@ -101,7 +105,10 @@ afterEach(() => {
 describe('the seven dashboard states — FLOWS §6.3', () => {
   it('1. LOADING: renders skeleton cards, never a spinner', async () => {
     // A promise that never settles, so the loading state is stable.
-    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    )
     renderDashboard()
 
     const grid = await screen.findByTestId('board-grid-loading')
@@ -149,7 +156,10 @@ describe('the seven dashboard states — FLOWS §6.3', () => {
   })
 
   it('6. ERROR: shows Retry, and the header and sidebar keep working', async () => {
-    stubFetch(() => ({ status: 500, body: { error: { code: 'INTERNAL', message: 'x', correlationId: 'a' } } }))
+    stubFetch(() => ({
+      status: 500,
+      body: { error: { code: 'INTERNAL', message: 'x', correlationId: 'a' } },
+    }))
     renderDashboard()
 
     await screen.findByTestId('dashboard-error')
@@ -222,7 +232,9 @@ describe('filter, sort and search', () => {
     const before = requests.length
     await user.type(screen.getByTestId('board-search'), 'pricing')
 
-    await waitFor(() => expect(requests.some(url => url.includes('q=pricing'))).toBe(true))
+    await waitFor(() =>
+      expect(requests.some(url => url.includes('q=pricing'))).toBe(true),
+    )
     // Seven characters must not be seven requests.
     expect(requests.length - before).toBeLessThan(7)
   })
@@ -236,7 +248,9 @@ describe('filter, sort and search', () => {
     await user.click(screen.getByTestId('sort-menu'))
     await user.click(await screen.findByTestId('sort-name'))
 
-    await waitFor(() => expect(requests.some(url => url.includes('sort=name'))).toBe(true))
+    await waitFor(() =>
+      expect(requests.some(url => url.includes('sort=name'))).toBe(true),
+    )
   })
 })
 
@@ -259,7 +273,9 @@ describe('the card menu — FLOWS §6.4', () => {
     const user = userEvent.setup()
     stubFetch(() => ({
       body: {
-        boards: [board({ ownerId: 'someone-else', myRole: 'EDITOR', ownerName: 'Marcus Feld' })],
+        boards: [
+          board({ ownerId: 'someone-else', myRole: 'EDITOR', ownerName: 'Marcus Feld' }),
+        ],
         nextCursor: null,
       },
     }))
@@ -315,5 +331,192 @@ describe('the card menu — FLOWS §6.4', () => {
     // the thing optimistic updates exist to avoid.
     await waitFor(() => expect(screen.getAllByText('Incident timeline')[0]).toBeTruthy())
     expect(resolveRename).not.toBeNull()
+  })
+})
+
+/* ── FLOWS §6.4's full menu, §6.2's avatar row, and the Starred tab ──────── */
+
+function Where() {
+  const location = useLocation()
+  return <div data-testid="where">{`${location.pathname}${location.search}`}</div>
+}
+
+function renderWithRoutes() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <ToastProvider>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="*" element={<Where />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>
+    </QueryClientProvider>,
+  )
+}
+
+const menuIds = () =>
+  screen
+    .getAllByRole('menuitem')
+    .map(item => item.getAttribute('data-testid'))
+    .filter(Boolean)
+
+describe('the full card menu — FLOWS §6.4 (D-35)', () => {
+  it('gives the owner every owner row, in the FLOWS order', async () => {
+    const user = userEvent.setup()
+    stubFetch(() => ({ body: { boards: [board()], nextCursor: null } }))
+    renderDashboard()
+    await screen.findByTestId('board-card')
+    await user.click(screen.getByTestId('card-menu'))
+
+    expect(menuIds()).toEqual([
+      'card-open',
+      'card-open-new-tab',
+      'card-rename',
+      'card-duplicate',
+      'card-share',
+      'card-copy-link',
+      'card-export',
+      'card-trash',
+    ])
+  })
+
+  it('gives an editor or viewer no Rename, Share or Move to trash', async () => {
+    const user = userEvent.setup()
+    stubFetch(() => ({
+      body: {
+        boards: [board({ ownerId: 'someone-else', myRole: 'VIEWER' })],
+        nextCursor: null,
+      },
+    }))
+    renderDashboard()
+    await screen.findByTestId('board-card')
+    await user.click(screen.getByTestId('card-menu'))
+
+    expect(menuIds()).toEqual([
+      'card-open',
+      'card-open-new-tab',
+      'card-duplicate',
+      'card-copy-link',
+      'card-export',
+    ])
+  })
+
+  it('Open goes to the board; Export as PNG goes there with the export intent', async () => {
+    const user = userEvent.setup()
+    stubFetch(() => ({ body: { boards: [board({ id: 'b-1' })], nextCursor: null } }))
+    renderWithRoutes()
+    await screen.findByTestId('board-card')
+    await user.click(screen.getByTestId('card-menu'))
+    await user.click(screen.getByTestId('card-export'))
+    expect(screen.getByTestId('where').textContent).toBe('/board/b-1?export=1')
+  })
+
+  it('Open in new tab opens the board URL with no opener', async () => {
+    const user = userEvent.setup()
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    stubFetch(() => ({ body: { boards: [board({ id: 'b-2' })], nextCursor: null } }))
+    renderDashboard()
+    await screen.findByTestId('board-card')
+    await user.click(screen.getByTestId('card-menu'))
+    await user.click(screen.getByTestId('card-open-new-tab'))
+    expect(open).toHaveBeenCalledWith(
+      `${window.location.origin}/board/b-2`,
+      '_blank',
+      'noopener',
+    )
+  })
+
+  it('Copy link puts the board URL on the clipboard and says "Copied!"', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    stubFetch(() => ({ body: { boards: [board({ id: 'b-3' })], nextCursor: null } }))
+    renderDashboard()
+    await screen.findByTestId('board-card')
+    await user.click(screen.getByTestId('card-menu'))
+    await user.click(screen.getByTestId('card-copy-link'))
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/board/b-3`)
+    expect(await screen.findByText(dashboardStrings.card.linkCopied)).toBeTruthy()
+  })
+
+  it('Share opens S-12 for that board', async () => {
+    const user = userEvent.setup()
+    stubFetch(url =>
+      url.includes('/members') || url.includes('/share')
+        ? { body: { members: [], link: null, invites: [] } }
+        : { body: { boards: [board({ name: 'Offsite agenda' })], nextCursor: null } },
+    )
+    renderDashboard()
+    await screen.findByTestId('board-card')
+    await user.click(screen.getByTestId('card-menu'))
+    await user.click(screen.getByTestId('card-share'))
+    const modal = await screen.findByTestId('share-modal')
+    expect(modal.textContent).toContain('Offsite agenda')
+  })
+})
+
+describe('the card avatar row — FLOWS §6.2, FR-BOARD-002', () => {
+  const person = (n: number) => ({
+    id: `m-${n}`,
+    displayName: `Member ${n}`,
+    avatarUrl: null,
+    guest: false,
+  })
+
+  it('shows the owner, up to four collaborators, then +N', async () => {
+    stubFetch(() => ({
+      body: {
+        boards: [
+          board({
+            members: [person(1), person(2), person(3), person(4)],
+            memberCount: 6,
+          }),
+        ],
+        nextCursor: null,
+      },
+    }))
+    renderDashboard()
+    await screen.findByTestId('board-card')
+
+    const avatars = screen.getAllByTestId('card-avatar')
+    expect(avatars).toHaveLength(5)
+    expect(avatars[0]!.getAttribute('title')).toBe('Priya Raman')
+    const overflow = screen.getByTestId('card-avatar-overflow')
+    expect(overflow.textContent).toBe('+2')
+    expect(overflow.getAttribute('aria-label')).toBe(
+      dashboardStrings.card.moreMembersLabel(2),
+    )
+  })
+
+  it('shows just the owner, with no overflow, on an unshared board', async () => {
+    stubFetch(() => ({ body: { boards: [board()], nextCursor: null } }))
+    renderDashboard()
+    await screen.findByTestId('board-card')
+    expect(screen.getAllByTestId('card-avatar')).toHaveLength(1)
+    expect(screen.queryByTestId('card-avatar-overflow')).toBeNull()
+  })
+})
+
+describe('filter labels and the Starred tab — FR-BOARD-002, D-34', () => {
+  it('labels the first tab "All"', async () => {
+    stubFetch(() => ({ body: { boards: [board()], nextCursor: null } }))
+    renderDashboard()
+    expect((await screen.findByTestId('filter-all')).textContent).toBe('All')
+  })
+
+  it('an empty Starred tab is the FILTER-empty state, not "Nothing here yet"', async () => {
+    stubFetch(() => ({ body: { boards: [], nextCursor: null } }))
+    renderDashboard('/dashboard?filter=starred')
+    const empty = await screen.findByTestId('empty-filter')
+    expect(empty.textContent).toContain(emptyStates.dashboardFilterEmpty.headline)
+    expect(screen.queryByTestId('dashboard-empty')).toBeNull()
   })
 })

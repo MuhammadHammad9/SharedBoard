@@ -1,4 +1,9 @@
-import { ERROR_CODES, type ErrorEnvelope } from '@coboard/shared'
+import {
+  ERROR_CODES,
+  newCorrelationId,
+  type ErrorEnvelope,
+  type PublicUser,
+} from '@coboard/shared'
 import { authStore, getAccessToken, setAccessToken } from '../stores/authStore.js'
 
 /**
@@ -33,12 +38,21 @@ export class ApiError extends Error {
 
 export const NETWORK_ERROR_CODE = 'NETWORK'
 
+/**
+ * Sent on every call so the server's log lines for it carry an id minted here
+ * (Phase 15e). One id per call, kept across the 401 replay, so both attempts
+ * are found together. The server echoes it back, or its own if it refused ours.
+ */
+export const REQUEST_ID_HEADER = 'x-request-id'
+
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   /** Internal: suppresses the refresh-and-replay, so refresh cannot recurse. */
   skipAuthRetry?: boolean
   signal?: AbortSignal
+  /** Outlive the page — a thumbnail sent as the tab closes (FR-BOARD-003). */
+  keepalive?: boolean
 }
 
 /**
@@ -51,20 +65,47 @@ interface RequestOptions {
  * for loading a page.
  *
  * So: the first 401 starts a refresh, everyone else awaits the same promise.
+ *
+ * The same race exists BETWEEN TABS, which share the refresh cookie but not
+ * this module: two tabs of one user refreshing in the same instant present
+ * the same cookie, and the loser signs both out. A Web Lock serializes the
+ * refresh across every tab of the origin; the second tab waits, then sends
+ * the cookie the first one was just given. Where Web Locks are unavailable
+ * the request goes unlocked, as before.
  */
+export const REFRESH_LOCK = 'coboard:auth-refresh'
+
+function acrossTabs<T>(task: () => Promise<T>): Promise<T> {
+  const locks = globalThis.navigator?.locks
+  // The lock callback returns a promise; `request` resolves with its value.
+  return locks ? (locks.request(REFRESH_LOCK, task) as Promise<T>) : task()
+}
+
 let refreshInFlight: Promise<boolean> | null = null
+/** The user named by the last refresh response, until the bootstrap takes it. */
+let refreshedUser: PublicUser | null = null
+
+/**
+ * The user the last successful refresh returned, once. Lets the session
+ * bootstrap skip a `/auth/me` round trip on every cold load.
+ */
+export function takeRefreshedUser(): PublicUser | null {
+  const user = refreshedUser
+  refreshedUser = null
+  return user
+}
 
 async function refreshSession(): Promise<boolean> {
   refreshInFlight ??= (async () => {
     try {
-      const response = await fetch(`${BASE}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      })
+      const response = await acrossTabs(() =>
+        fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' }),
+      )
       if (!response.ok) return false
 
-      const body = (await response.json()) as { accessToken: string; user?: never }
+      const body = (await response.json()) as { accessToken: string; user?: PublicUser }
       setAccessToken(body.accessToken)
+      refreshedUser = body.user ?? null
       return true
     } catch {
       // Network failure, not a rejected session. The caller decides.
@@ -84,6 +125,13 @@ export async function attemptSilentRefresh(): Promise<boolean> {
   return refreshSession()
 }
 
+// The two-tab race e2e drives the real refresh from two pages at once.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  ;(window as unknown as Record<string, unknown>).__coboardAuth = {
+    refresh: refreshSession,
+  }
+}
+
 async function toApiError(response: Response): Promise<ApiError> {
   let envelope: ErrorEnvelope | null = null
   try {
@@ -99,15 +147,34 @@ async function toApiError(response: Response): Promise<ApiError> {
     response.status,
     error?.details,
     error?.retryAfter,
-    error?.correlationId,
+    // The envelope's id is the server's request id (Phase 15e). The echoed
+    // header covers a body that is not our envelope.
+    error?.correlationId ?? response.headers.get(REQUEST_ID_HEADER) ?? undefined,
   )
+}
+
+/**
+ * The guest credential — FR-AUTH-006, decision D-1.
+ *
+ * Set by the board guard when the visitor is acting as a guest, and cleared
+ * when they are not. A user's bearer token always takes precedence: a
+ * signed-in person with an old guest identity in storage acts as themselves.
+ */
+let guestCredential: string | null = null
+
+export function setGuestCredential(guestId: string | null): void {
+  guestCredential = guestId
 }
 
 export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { method = 'GET', body, skipAuthRetry = false, signal } = options
+  const { method = 'GET', body, skipAuthRetry = false, signal, keepalive } = options
+  // A Blob goes as itself, with its own type (a thumbnail JPEG); anything
+  // else is JSON.
+  const raw = body instanceof Blob
+  const requestId = newCorrelationId()
 
   const send = async (): Promise<Response> => {
     const token = getAccessToken()
@@ -116,11 +183,21 @@ export async function apiRequest<T>(
       // Always, so the refresh cookie rides along on the auth routes.
       credentials: 'include',
       headers: {
-        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        [REQUEST_ID_HEADER]: requestId,
+        ...(body === undefined
+          ? {}
+          : { 'content-type': raw ? (body as Blob).type : 'application/json' }),
+        ...(token
+          ? { authorization: `Bearer ${token}` }
+          : guestCredential
+            ? { 'x-coboard-guest': guestCredential }
+            : {}),
       },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...(body !== undefined
+        ? { body: raw ? (body as Blob) : JSON.stringify(body) }
+        : {}),
       ...(signal ? { signal } : {}),
+      ...(keepalive ? { keepalive } : {}),
     })
   }
 
@@ -174,6 +251,8 @@ export const api = {
     apiRequest<T>(path, { ...options, method: 'POST', body }),
   patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     apiRequest<T>(path, { ...options, method: 'PATCH', body }),
+  put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    apiRequest<T>(path, { ...options, method: 'PUT', body }),
   del: <T>(path: string, options?: RequestOptions) =>
     apiRequest<T>(path, { ...options, method: 'DELETE' }),
 }

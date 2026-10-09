@@ -1,0 +1,200 @@
+# CoBoard production stack — TRD §15.1, on one host.
+#
+#   lb (nginx, ip_hash) ─┬─► server-1 ─┐
+#        :80             ├─► server-2 ─┼─► postgres, redis (pub/sub bridges instances)
+#                        └─► web (SPA) │
+#   prometheus ── scrapes /metrics ────┘   (optional: --profile monitoring)
+#
+# Two server instances on purpose: it proves the Redis pub/sub fan-out
+# (TRD §15.2) on every deploy instead of on the day we need a second box.
+#
+# Setup (docs/RUNBOOK.md §1):
+#   cp infra/env/server.env.example   infra/env/server.env     # fill in
+#   cp infra/env/postgres.env.example infra/env/postgres.env   # fill in
+#   mkdir -p infra/secrets && openssl rand -hex 24 > infra/secrets/metrics_token
+#
+# Commands (from the repo root):
+#   docker compose -f infra/docker-compose.prod.yml config                      # validate
+#   docker compose -f infra/docker-compose.prod.yml --profile release run --rm migrate
+#   docker compose -f infra/docker-compose.prod.yml up -d
+#   docker compose -f infra/docker-compose.prod.yml --profile monitoring up -d  # + prometheus
+#
+# Images default to GHCR (built by .github/workflows/deploy.yml). `build:`
+# lets `docker compose build` produce the same images locally.
+#
+# No secret appears in this file (R-SEC-016). They come from the git-ignored
+# env files and secret files named below.
+
+name: coboard
+
+x-server: &server
+  image: ghcr.io/${GHCR_OWNER:-muhammadhammad9}/coboard-server:${TAG:-latest}
+  build:
+    context: ..
+    dockerfile: apps/server/Dockerfile
+    target: runtime
+  restart: unless-stopped
+  init: true
+  env_file:
+    - path: ./env/server.env
+      required: false
+  environment:
+    NODE_ENV: production
+    PORT: '3000'
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  expose:
+    - '3000'
+  networks: [backend]
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: 50m
+      max-file: '5'
+
+services:
+  lb:
+    image: nginxinc/nginx-unprivileged:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - '${LB_PORT:-80}:8080'
+    volumes:
+      - ./nginx/lb.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      web:
+        condition: service_healthy
+      server-1:
+        condition: service_healthy
+      server-2:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/lb-health >/dev/null || exit 1']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    networks: [backend]
+    logging: *logging
+
+  web:
+    image: ghcr.io/${GHCR_OWNER:-muhammadhammad9}/coboard-web:${TAG:-latest}
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      # Origins of S3_PUBLIC_URL / S3_ENDPOINT, for the CSP (infra/nginx/web.conf).
+      CSP_IMG_ORIGINS: ${CSP_IMG_ORIGINS:-}
+      CSP_CONNECT_ORIGINS: ${CSP_CONNECT_ORIGINS:-}
+    expose:
+      - '8080'
+    networks: [backend]
+    logging: *logging
+
+  server-1:
+    <<: *server
+    hostname: server-1
+
+  server-2:
+    <<: *server
+    hostname: server-2
+
+  # Release command — run once per deploy, BEFORE rolling the servers.
+  # Never part of `up`: the profile keeps it out of the default set.
+  migrate:
+    image: ghcr.io/${GHCR_OWNER:-muhammadhammad9}/coboard-migrate:${TAG:-latest}
+    build:
+      context: ..
+      dockerfile: apps/server/Dockerfile
+      target: migrate
+    profiles: [release]
+    env_file:
+      - path: ./env/server.env
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+    networks: [backend]
+
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    env_file:
+      - path: ./env/postgres.env
+        required: false
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-coboard}
+      POSTGRES_DB: ${POSTGRES_DB:-coboard}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Not published. Backups run `docker compose exec postgres pg_dump` or
+    # scripts/backup.sh from a host that can reach it (docs/RUNBOOK.md §4).
+    networks: [backend]
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # maxmemory is required: the CoBoardRedisMemoryHigh alert is a ratio of
+    # it. volatile-lru evicts only keys with a TTL (presence, rate-limit
+    # buckets, caches) and never a key something expects to persist.
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--maxmemory',
+        '${REDIS_MAXMEMORY:-256mb}',
+        '--maxmemory-policy',
+        'volatile-lru',
+      ]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+    logging: *logging
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: [monitoring]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - promdata:/prometheus
+    secrets:
+      - metrics_token
+    # Bound to localhost: reach it through an SSH tunnel, never publicly.
+    ports:
+      - '127.0.0.1:9090:9090'
+    networks: [backend]
+    logging: *logging
+
+secrets:
+  # Same value as METRICS_TOKEN in env/server.env.
+  metrics_token:
+    file: ./secrets/metrics_token
+
+networks:
+  backend:
+
+volumes:
+  pgdata:
+  redisdata:
+  promdata:

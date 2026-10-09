@@ -1,6 +1,7 @@
-import type { AuthResponse, PublicUser } from '@coboard/shared'
+import { MAX_UPLOAD_BYTES, type AuthResponse, type PublicUser } from '@coboard/shared'
 import { api } from '../../lib/api.js'
 import { authStore } from '../../stores/authStore.js'
+import { track } from '../../lib/analytics.js'
 
 /**
  * Auth API calls — the thin layer between the screens and `api.ts`.
@@ -17,6 +18,7 @@ export async function register(input: {
 }): Promise<PublicUser> {
   const result = await api.post<AuthResponse>('/auth/register', input)
   authStore.getState().setSession(result.user, result.accessToken)
+  track('account_created', { method: 'password' })
   return result.user
 }
 
@@ -26,19 +28,21 @@ export async function login(input: {
 }): Promise<PublicUser> {
   const result = await api.post<AuthResponse>('/auth/login', input)
   authStore.getState().setSession(result.user, result.accessToken)
+  track('logged_in', { method: 'password' })
   return result.user
 }
 
 /**
  * Log out — FR-AUTH-007, task 19.
  *
- * The order is deliberate: disconnect the socket FIRST, then revoke the
- * session server-side, then clear local state. Reversed, the socket would
- * still be open with a session the server has already killed, and Phase 9's
- * gateway would be forced to handle a stream of ops from a logged-out user.
+ * No socket can be open here: logout is offered only off the board route
+ * (the dashboard chrome, Settings, and the S-19 "switch account" link, whose
+ * board session was already disposed by the failed load). Leaving a board
+ * disposes its session — and closes its socket — on unmount, so by the time
+ * the session is revoked server-side there is nothing left to stream ops
+ * under it. Then local state is cleared.
  */
 export async function logout(): Promise<void> {
-  // PHASE 9 SLOT: socketClient.disconnect() belongs here, before the revoke.
   try {
     await api.post<void>('/auth/logout')
   } catch {
@@ -59,9 +63,58 @@ export const resetPassword = (token: string, password: string) =>
 
 export async function updateProfile(patch: {
   displayName?: string
-  avatarUrl?: string | null
+  /** Null removes the avatar. Setting one is `uploadAvatar` (D-36). */
+  avatarUrl?: null
 }): Promise<PublicUser> {
   const { user } = await api.patch<{ user: PublicUser }>('/auth/me', patch)
+  authStore.getState().setUser(user)
+  return user
+}
+
+/** D-36: the raster types an avatar may be. SVG is a board image only. */
+export const AVATAR_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+] as const
+
+export class AvatarFileError extends Error {
+  constructor(readonly reason: 'unsupported' | 'too_large') {
+    super(reason)
+  }
+}
+
+/**
+ * Upload a new avatar — FR-SET-001, D-36.
+ *
+ * The file is checked HERE first (E-05: never upload 10 MB to be told no),
+ * then presign → PUT straight to storage → confirm. The confirm is what sets
+ * `avatarUrl`, server-side, after it has looked at the bytes; this function
+ * never sends a URL of its own.
+ */
+export async function uploadAvatar(file: File): Promise<PublicUser> {
+  if (!(AVATAR_TYPES as readonly string[]).includes(file.type)) {
+    throw new AvatarFileError('unsupported')
+  }
+  if (file.size > MAX_UPLOAD_BYTES) throw new AvatarFileError('too_large')
+
+  const signed = await api.post<{
+    uploadUrl: string
+    key: string
+    headers: Record<string, string>
+  }>('/uploads/avatar/presign', { contentType: file.type, size: file.size })
+
+  const put = await fetch(signed.uploadUrl, {
+    method: 'PUT',
+    body: file,
+    headers: signed.headers,
+  })
+  if (!put.ok) throw new Error(`avatar upload failed: ${put.status}`)
+
+  const { user } = await api.post<{ user: PublicUser }>('/uploads/avatar/confirm', {
+    key: signed.key,
+  })
   authStore.getState().setUser(user)
   return user
 }

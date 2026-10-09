@@ -1,7 +1,4 @@
-import {
-  PRESENCE_SWEEP_IDLE_MS,
-  type PresenceUser,
-} from '@coboard/shared'
+import { PRESENCE_SWEEP_IDLE_MS, type PresenceUser } from '@coboard/shared'
 import { redis } from '../lib/redis.js'
 import { logger } from '../lib/logger.js'
 
@@ -57,6 +54,25 @@ export class PresenceService {
       await client.expire(key(boardId), TTL_SECONDS)
     } catch (error) {
       logger.debug({ err: error, boardId }, 'presence touch failed')
+    }
+  }
+
+  /**
+   * The next round-robin colour slot for a board, shared by EVERY instance
+   * (R-UI-013): one counter in Redis, so two people on two processes never
+   * draw from separate rotations and land on the same colour. Null when
+   * Redis is unreachable — the caller falls back to its own room's rotation.
+   */
+  async nextColourSlot(boardId: string): Promise<number | null> {
+    try {
+      const client = redis()
+      const key = `presence:colour:${boardId}`
+      const slot = await client.incr(key)
+      await client.expire(key, 24 * 60 * 60)
+      return slot - 1
+    } catch (error) {
+      logger.debug({ err: error, boardId }, 'colour slot unavailable')
+      return null
     }
   }
 

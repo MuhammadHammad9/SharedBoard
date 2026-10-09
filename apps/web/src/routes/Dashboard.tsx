@@ -11,6 +11,8 @@ import {
 } from '../components/dashboard/DashboardChrome.js'
 import { BoardCard } from '../features/boards/BoardCard.js'
 import { BoardGrid, BoardGridSkeleton } from '../features/boards/BoardGrid.js'
+import { ShareModal } from '../features/sharing/ShareModal.js'
+import type { BoardSummary } from '../features/boards/api.js'
 import {
   useBoardList,
   useCreateBoard,
@@ -22,7 +24,14 @@ import {
   type BoardSort,
 } from '../features/boards/useBoards.js'
 import { useAuthStore } from '../stores/authStore.js'
-import { actions, boards as boardStrings, emptyStates, errors } from '../lib/strings.js'
+import {
+  actions,
+  boards as boardStrings,
+  dashboard,
+  emptyStates,
+} from '../lib/strings.js'
+import { serverErrorMessage } from '../lib/errorCopy.js'
+import { track } from '../lib/analytics.js'
 
 /**
  * S-07 Dashboard — FLOWS §6.
@@ -58,6 +67,8 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const toast = useToast()
   const userId = useAuthStore(s => s.user?.id)
+  // FLOWS §6.4 "Share" → S-12, one modal for the whole grid.
+  const [shareTarget, setShareTarget] = useState<BoardSummary | null>(null)
 
   const filter = (params.get('filter') ?? 'all') as BoardFilter
   const sort = (params.get('sort') ?? 'lastEdited') as BoardSort
@@ -113,13 +124,16 @@ export default function Dashboard() {
    */
   const creatingRef = useRef(false)
 
-  const onCreate = () => {
+  const onCreate = (from: 'dashboard' | 'empty_state') => {
     if (creatingRef.current) return
     creatingRef.current = true
     create.mutate(undefined, {
       // No optimistic navigation: routing to a board that then fails to be
       // created strands the user on a 404 they cannot explain (FLOWS §6.5).
-      onSuccess: ({ board }) => navigate(`/board/${board.id}?new=1`),
+      onSuccess: ({ board }) => {
+        track('board_created', { template: 'blank', from })
+        navigate(`/board/${board.id}?new=1`)
+      },
       onError: () => {
         creatingRef.current = false
         toast.show({ message: boardStrings.createFailed, variant: 'danger' })
@@ -141,8 +155,8 @@ export default function Dashboard() {
               }),
           },
         }),
-      onError: () =>
-        toast.show({ message: errors.genericServerError, variant: 'danger' }),
+      onError: error =>
+        toast.show({ message: serverErrorMessage(error), variant: 'danger' }),
     })
   }
 
@@ -156,7 +170,7 @@ export default function Dashboard() {
       <DashboardHeader
         search={typed}
         onSearch={setTyped}
-        onCreate={onCreate}
+        onCreate={() => onCreate('dashboard')}
         creating={create.isPending}
       />
 
@@ -180,7 +194,7 @@ export default function Dashboard() {
               className="flex flex-col items-center gap-3 rounded-lg border border-danger/30 bg-app px-6 py-16 text-center"
             >
               <p className="text-base font-medium text-primary">
-                {errors.genericServerError}
+                {serverErrorMessage(query.error)}
               </p>
               <Button variant="secondary" onClick={() => void query.refetch()}>
                 {actions.retry}
@@ -216,7 +230,10 @@ export default function Dashboard() {
                 headline={emptyStates.dashboardNoBoards.headline}
                 body={emptyStates.dashboardNoBoards.body}
                 action={
-                  <Button onClick={onCreate} loading={create.isPending}>
+                  <Button
+                    onClick={() => onCreate('empty_state')}
+                    loading={create.isPending}
+                  >
                     {emptyStates.dashboardNoBoards.cta}
                   </Button>
                 }
@@ -247,11 +264,17 @@ export default function Dashboard() {
                     )
                   }
                   onTrash={() => onTrash(board.id)}
+                  onShare={() => setShareTarget(board)}
                   onDuplicate={() =>
                     duplicate.mutate(board.id, {
-                      onError: () =>
+                      onSuccess: () =>
+                        track('board_created', {
+                          template: 'duplicate',
+                          from: 'dashboard',
+                        }),
+                      onError: error =>
                         toast.show({
-                          message: errors.genericServerError,
+                          message: serverErrorMessage(error),
                           variant: 'danger',
                         }),
                     })
@@ -269,12 +292,19 @@ export default function Dashboard() {
                 onClick={() => void query.fetchNextPage()}
                 data-testid="load-more"
               >
-                Load more
+                {dashboard.loadMore}
               </Button>
             </div>
           ) : null}
         </main>
       </div>
+
+      <ShareModal
+        open={shareTarget !== null}
+        onClose={() => setShareTarget(null)}
+        boardId={shareTarget?.id ?? ''}
+        boardName={shareTarget?.name ?? ''}
+      />
     </div>
   )
 }

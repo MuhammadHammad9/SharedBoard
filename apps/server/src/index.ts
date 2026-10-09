@@ -4,6 +4,7 @@ import { createApp } from './http/app.js'
 import { env } from './lib/env.js'
 import { logger } from './lib/logger.js'
 import { attachGateway } from './ws/gateway.js'
+import { startMaintenance } from './jobs/maintenance.js'
 
 /**
  * Phase 9 server: REST auth, boards, the op log, snapshots, and the WebSocket
@@ -26,6 +27,17 @@ import { attachGateway } from './ws/gateway.js'
  */
 loadDotenv({ path: resolve(import.meta.dirname, '../../../.env'), override: false })
 
+/*
+ * Last resort — finding 3. A promise rejection nobody handled is a bug, and
+ * it gets fixed where it happens; but on Node 20 the default is to crash the
+ * process, which turns one bug in one handler into an outage for every room
+ * on the instance. Logged loudly instead, so the alert fires and the rooms
+ * stay up.
+ */
+process.on('unhandledRejection', reason => {
+  logger.error({ err: reason }, 'unhandled promise rejection')
+})
+
 const app = createApp()
 
 // Only listen when run directly, so integration tests can build their own app
@@ -35,6 +47,7 @@ if (env().NODE_ENV !== 'test') {
     logger.info({ port: env().PORT }, 'CoBoard server listening')
   })
   attachGateway(server, { fanout: true })
+  startMaintenance()
 }
 
 export { app, createApp }

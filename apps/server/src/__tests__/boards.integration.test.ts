@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
 import type { Express } from 'express'
 import {
@@ -109,7 +109,10 @@ const deleteOp = (objectId: string): ClientOp => ({
 })
 
 async function appendOps(actor: Actor, boardId: string, ops: ClientOp[]) {
-  return request(app).post(`/api/boards/${boardId}/operations`).set(auth(actor)).send({ ops })
+  return request(app)
+    .post(`/api/boards/${boardId}/operations`)
+    .set(auth(actor))
+    .send({ ops })
 }
 
 beforeAll(async () => {
@@ -202,7 +205,10 @@ describe('GET /api/boards', () => {
 
     const all = await request(app).get('/api/boards').set(auth(priya))
     expect(all.body.boards).toHaveLength(1)
-    expect(all.body.boards[0]).toMatchObject({ myRole: 'EDITOR', ownerName: 'Marcus Feld' })
+    expect(all.body.boards[0]).toMatchObject({
+      myRole: 'EDITOR',
+      ownerName: 'Marcus Feld',
+    })
 
     const owned = await request(app).get('/api/boards?filter=owned').set(auth(priya))
     expect(owned.body.boards).toHaveLength(0)
@@ -269,6 +275,91 @@ describe('GET /api/boards', () => {
   })
 })
 
+describe('GET /api/boards — the card avatar row (FLOWS §6.2, FR-BOARD-002)', () => {
+  it('returns the owner avatar, the first four collaborators and the full count', async () => {
+    const priya = await signUp()
+    const id = await createBoard(priya, 'Pricing page — v3')
+    const people = []
+    for (const name of ['Ana Ruiz', 'Ben Okafor', 'Cleo Park', 'Dev Shah', 'Eli Moss']) {
+      people.push(await signUp(name))
+    }
+    for (const [i, person] of people.entries()) {
+      await prisma.boardMember.create({
+        data: {
+          boardId: id,
+          userId: person.userId,
+          role: 'EDITOR',
+          createdAt: new Date(Date.now() + i * 1000),
+        },
+      })
+    }
+    await prisma.boardMember.create({
+      data: {
+        boardId: id,
+        guestId: randomUUID(),
+        guestName: 'Marcus',
+        role: 'VIEWER',
+        createdAt: new Date(Date.now() + 10_000),
+      },
+    })
+
+    const response = await request(app).get('/api/boards').set(auth(priya))
+    const card = response.body.boards[0]
+    expect(card.ownerAvatarUrl).toBeNull()
+    // Five users and one guest besides the owner; the owner is not in the row.
+    expect(card.memberCount).toBe(6)
+    expect(card.members.map((m: { displayName: string }) => m.displayName)).toEqual([
+      'Ana Ruiz',
+      'Ben Okafor',
+      'Cleo Park',
+      'Dev Shah',
+    ])
+    // Minimal, and never a guest id or an email (decision D-1, D-38).
+    expect(Object.keys(card.members[0]).sort()).toEqual([
+      'avatarUrl',
+      'displayName',
+      'guest',
+      'id',
+    ])
+    expect(JSON.stringify(response.body)).not.toContain('@example.com')
+  })
+
+  it('names a guest by their guest name, and marks them as a guest', async () => {
+    const priya = await signUp()
+    const id = await createBoard(priya, 'Retro')
+    const guestId = randomUUID()
+    await prisma.boardMember.create({
+      data: { boardId: id, guestId, guestName: 'Marcus', role: 'EDITOR' },
+    })
+    const response = await request(app).get('/api/boards').set(auth(priya))
+    expect(response.body.boards[0].members).toEqual([
+      expect.objectContaining({ displayName: 'Marcus', guest: true, avatarUrl: null }),
+    ])
+    expect(JSON.stringify(response.body)).not.toContain(guestId)
+  })
+
+  it('reads every card on a page with ONE extra query, not one per board', async () => {
+    const priya = await signUp()
+    for (let i = 0; i < 6; i++) await createBoard(priya, `Board ${i}`)
+    const raw = vi.spyOn(prisma, '$queryRaw')
+    try {
+      const response = await request(app).get('/api/boards').set(auth(priya))
+      expect(response.body.boards).toHaveLength(6)
+      expect(raw).toHaveBeenCalledTimes(1)
+    } finally {
+      raw.mockRestore()
+    }
+  })
+
+  it('answers the Starred tab with nothing, since starring is not built — D-34', async () => {
+    const priya = await signUp()
+    await createBoard(priya, 'Mine')
+    const response = await request(app).get('/api/boards?filter=starred').set(auth(priya))
+    expect(response.status).toBe(200)
+    expect(response.body).toEqual({ boards: [], nextCursor: null })
+  })
+})
+
 describe('PATCH /api/boards/:id', () => {
   it('renames a board the caller owns', async () => {
     const priya = await signUp()
@@ -318,14 +409,16 @@ describe('a board the caller has no access to', () => {
     expect(JSON.stringify(response.body)).not.toContain('Acquisition')
   })
 
-  it('reports role none from /access without revealing anything else', async () => {
+  it('answers /access with 403 no_access and reveals nothing else — FLOWS §2.3 STEP 4', async () => {
     const priya = await signUp()
     const marcus = await signUp('Marcus Feld')
     const id = await createBoard(marcus, 'Acquisition target shortlist')
 
     const response = await request(app).get(`/api/boards/${id}/access`).set(auth(priya))
-    expect(response.status).toBe(200)
-    expect(response.body).toEqual({ role: 'none', joinable: false })
+    expect(response.status).toBe(403)
+    expect(response.body.error.details).toEqual({ reason: 'no_access' })
+    // R-SEC-018: the name must not travel on the refusal path.
+    expect(JSON.stringify(response.body)).not.toContain('Acquisition')
   })
 
   it('answers 404 for a malformed id rather than a 500 from the driver', async () => {
@@ -604,7 +697,9 @@ describe('GET /api/boards/:id/snapshot', () => {
     })
     await appendOps(priya, id, [createOp(sticky())])
 
-    const response = await request(app).get(`/api/boards/${id}/snapshot`).set(auth(marcus))
+    const response = await request(app)
+      .get(`/api/boards/${id}/snapshot`)
+      .set(auth(marcus))
     expect(response.status).toBe(200)
     expect(response.body.myRole).toBe('VIEWER')
     expect(response.body.objects).toHaveLength(1)
@@ -798,7 +893,9 @@ describe('POST /api/boards/:id/duplicate', () => {
     // automatically would leak it to people the user may have meant to drop.
     expect(await prisma.boardMember.count({ where: { boardId: copyId } })).toBe(1)
 
-    const state = await request(app).get(`/api/boards/${copyId}/snapshot`).set(auth(priya))
+    const state = await request(app)
+      .get(`/api/boards/${copyId}/snapshot`)
+      .set(auth(priya))
     expect(state.body.objects).toHaveLength(1)
     expect(state.body.objects[0].text).toBe('Blocked on the migration')
     // Fresh ids: two documents must never share an object id.
@@ -824,8 +921,68 @@ describe('POST /api/boards/:id/duplicate', () => {
     // Four source ops, one surviving object, so ONE op in the copy. Replaying
     // the log would have reproduced the deleted object's whole life.
     expect(await prisma.operation.count({ where: { boardId: copyId } })).toBe(1)
-    const state = await request(app).get(`/api/boards/${copyId}/snapshot`).set(auth(priya))
+    const state = await request(app)
+      .get(`/api/boards/${copyId}/snapshot`)
+      .set(auth(priya))
     expect(state.body.objects).toHaveLength(1)
     expect(state.body.objects[0]).toMatchObject({ x: 50 })
+  })
+})
+
+/* ── Security review — findings 1 and 4 over REST ─────────────────────────── */
+
+describe('POST /operations hardening', () => {
+  it('rate-limits REST op writes per identity, costed per op, with the error envelope — finding 4', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const batch = () => Array.from({ length: 200 }, () => createOp(sticky()))
+
+    // The bucket holds one full 200-op batch; the next one, immediately, is
+    // over budget — a script cannot write faster than a socket can.
+    expect((await appendOps(priya, boardId, batch())).status).toBe(200)
+    const refused = await appendOps(priya, boardId, batch())
+    expect(refused.status).toBe(429)
+    expect(refused.body.error.code).toBe(ERROR_CODES.RATE_LIMITED)
+    expect(await prisma.operation.count({ where: { boardId } })).toBe(200)
+  })
+
+  it('refuses an oversized payload (OP_PAYLOAD_MAX_BYTES) — finding 1', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const id = randomUUID()
+    // 30,000 numbers is within STROKE_POINTS_MAX, but at ~18 bytes each the
+    // payload is far past the 256 KB cap.
+    const points = Array.from({ length: 30_000 }, (_, i) => 123_456.123456789 + i / 7)
+    const stroke = {
+      ...sticky(),
+      id,
+      type: 'stroke',
+      points,
+      color: '#18181B',
+      strokeWidth: 2,
+      simplified: true,
+    } as unknown as BoardObject
+    const response = await appendOps(priya, boardId, [createOp(stroke)])
+    expect(response.status).toBe(422)
+    expect(await prisma.operation.count({ where: { boardId } })).toBe(0)
+  })
+
+  it('omits a type-invalid UPDATE from `applied` and lists it in `rejected` — finding 1', async () => {
+    const priya = await signUp()
+    const boardId = await createBoard(priya)
+    const note = sticky()
+    await appendOps(priya, boardId, [createOp(note)])
+
+    const bad = updateOp(note.id, { color: '#123456' })
+    const good = updateOp(note.id, { x: 90 })
+    const response = await appendOps(priya, boardId, [bad, good])
+    expect(response.status).toBe(200)
+    expect(response.body.applied.map((a: { id: string }) => a.id)).toEqual([good.id])
+    expect(response.body.rejected).toEqual([{ id: bad.id, reason: expect.any(String) }])
+
+    const state = await request(app)
+      .get(`/api/boards/${boardId}/snapshot`)
+      .set(auth(priya))
+    expect(state.body.objects[0]).toMatchObject({ x: 90, color: '#FEF08A' })
   })
 })

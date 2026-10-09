@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { FrameMetrics } from '../../features/canvas/renderer/Renderer.js'
+import { readSync, type SyncReading } from '../../features/sync/probe.js'
 
 /**
  * Dev debug overlay — `?debug=1`.
  *
- * Shows viewport, zoom, object counts and live frame timing. This is NOT the
- * convergence panel from TRD §6.5 — that one shows lastAppliedSeq and a state
- * hash and arrives in Phase 11 (R-CONV-011). This is just enough to make the
- * viewport maths and the frame budget visible while building the canvas.
+ * Shows viewport, zoom, object counts and live frame timing, and — when a
+ * real board session is live — the convergence readout from TRD §6.5
+ * (R-CONV-011): `lastAppliedSeq`, the object count and the state hash. Two
+ * windows at the same seq must show the same hash; that comparison is the
+ * fastest divergence check there is.
  *
  * Polls on an interval rather than subscribing per frame: this is a debug
  * readout, and re-rendering React at 60 Hz to display a frame counter would
@@ -27,11 +29,24 @@ interface Props {
 
 export function CanvasDebugOverlay({ read }: Props) {
   const [snap, setSnap] = useState<DebugSnapshot | null>(null)
+  const [sync, setSync] = useState<SyncReading | null>(null)
 
   useEffect(() => {
     const id = setInterval(() => setSnap(read()), 250)
     return () => clearInterval(id)
   }, [read])
+
+  /*
+   * Slower than the frame readout on purpose: the hash walks every object,
+   * and on the 10,000-object stress board doing that four times a second
+   * would show up in the very frame numbers this panel reports.
+   */
+  useEffect(() => {
+    const tick = () => setSync(readSync())
+    tick()
+    const id = setInterval(tick, 1_000)
+    return () => clearInterval(id)
+  }, [])
 
   if (!snap) return null
 
@@ -80,6 +95,15 @@ export function CanvasDebugOverlay({ read }: Props) {
         value={`obj ${metrics.objectPaints}  int ${metrics.interactionPaints}`}
         testId="dbg-paints"
       />
+      {sync && (
+        <div className="mt-2 border-t border-border pt-2" data-testid="dbg-sync">
+          <Row label="seq" value={String(sync.seq)} testId="dbg-seq" />
+          <Row label="hash" value={sync.hash} testId="dbg-hash" />
+          <Row label="count" value={String(sync.objects)} testId="dbg-count" />
+          <Row label="outbox" value={String(sync.pending)} testId="dbg-outbox" />
+          <Row label="conn" value={sync.connection} testId="dbg-conn" />
+        </div>
+      )}
     </div>
   )
 }

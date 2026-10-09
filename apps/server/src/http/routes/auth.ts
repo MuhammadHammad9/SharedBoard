@@ -4,6 +4,7 @@ import { z } from 'zod'
 import {
   ChangePasswordSchema,
   DeleteAccountSchema,
+  EMAIL_VERIFICATION_TTL_MS,
   ERROR_CODES,
   ForgotPasswordSchema,
   LoginSchema,
@@ -16,6 +17,8 @@ import { AuthError, authService, toPublicUser } from '../../services/AuthService
 import { buildAuthUrl, getExchanger, redirectUri } from '../../lib/google.js'
 import { env } from '../../lib/env.js'
 import { getMailer } from '../../lib/mailer.js'
+import { logger } from '../../lib/logger.js'
+import { ownAvatarKey, storage } from '../../lib/s3.js'
 import { assertAuthenticated, requireAuth } from '../middleware/auth.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
 import { validateBody } from '../middleware/validate.js'
@@ -25,6 +28,7 @@ import {
   clientIp,
   limitByIp,
 } from '../middleware/rateLimit.js'
+import { memberService } from '../../services/MemberService.js'
 
 /**
  * Auth endpoints — TRD §4.1, FLOWS §3, §4, §5.
@@ -94,6 +98,27 @@ function respondWithSession(
 const readCookie = (req: Request, name: string): string | undefined =>
   (req.cookies as Record<string, string> | undefined)?.[name]
 
+const VerifyEmailSchema = z.object({ token: z.string().min(1).max(512) })
+
+/**
+ * D-22: a password registration whose address has invites waiting gets a
+ * verification link. No invites, no email — there is nothing to unlock.
+ */
+async function sendVerificationIfInvited(userId: string): Promise<void> {
+  const user = await authService.findById(userId)
+  if (!user || user.emailVerifiedAt) return
+  if (!(await memberService.hasPendingInvites(user.emailLower))) return
+  const token = await authService.createEmailVerification(user)
+  const url = new URL('/verify-email', env().CLIENT_ORIGIN)
+  url.searchParams.set('token', token)
+  await getMailer().sendEmailVerification({
+    to: user.email,
+    displayName: user.displayName,
+    verifyUrl: url.toString(),
+    expiresInHours: EMAIL_VERIFICATION_TTL_MS / 3_600_000,
+  })
+}
+
 export function createAuthRouter(): Router {
   const router = Router()
 
@@ -101,13 +126,26 @@ export function createAuthRouter(): Router {
 
   router.post(
     '/register',
-    limitByIp('register', 10),
+    limitByIp('register', env().REGISTER_RATE_LIMIT),
     validateBody(RegisterSchema),
     ah(async (req, res) => {
       const session = await authService.register({
         ...(req.body as { email: string; password: string; displayName: string }),
         userAgent: req.headers['user-agent'],
       })
+      /*
+       * D-22: invites are NOT claimed here. Typing an address into a signup
+       * form proves nothing about owning it, and claiming at registration let
+       * anyone who knew an invitee's address take their seat on the board.
+       * When invites are waiting, the address gets a verification link; the
+       * invites are claimed when it is opened (POST /verify-email).
+       *
+       * In the background, like forgot-password: the response must not take
+       * longer for an address with pending invites than for one without.
+       */
+      void sendVerificationIfInvited(session.user.id).catch(err =>
+        logger.error({ err, userId: session.user.id }, 'verification email failed'),
+      )
       respondWithSession(res, session, 201, {
         user: session.user,
         accessToken: session.accessToken,
@@ -202,9 +240,17 @@ export function createAuthRouter(): Router {
     validateBody(ForgotPasswordSchema),
     ah(async (req, res) => {
       const { email } = req.body as { email: string }
-      const created = await authService.createPasswordReset(email)
 
-      if (created) {
+      /*
+       * Finding 12: the work happens AFTER the response, for both branches.
+       * Awaited, an existing account cost a token insert plus an SMTP round
+       * trip and a missing one cost a single SELECT — an enumeration oracle
+       * readable with a stopwatch, whatever the body said. Failures are
+       * logged; the caller was never going to be told either way.
+       */
+      void (async () => {
+        const created = await authService.createPasswordReset(email)
+        if (!created) return
         const url = new URL('/reset-password', env().CLIENT_ORIGIN)
         url.searchParams.set('token', created.token)
         await getMailer().sendPasswordReset({
@@ -213,7 +259,7 @@ export function createAuthRouter(): Router {
           resetUrl: url.toString(),
           expiresInMinutes: PASSWORD_RESET_TTL_MS / 60_000,
         })
-      }
+      })().catch(err => logger.error({ err }, 'password reset email failed'))
 
       /*
        * 200 either way — R-SEC-008. The response must be identical whether or
@@ -221,6 +267,26 @@ export function createAuthRouter(): Router {
        * oracle for anyone with a word list.
        */
       res.status(200).json({ ok: true })
+    }),
+  )
+
+  /* ── Email verification — D-22 ──────────────────────────────────────── */
+
+  /**
+   * Open the emailed link: the address is proven, THEN the invites waiting
+   * for it are claimed — in that order, so a claim never happens for an
+   * address nobody has shown they own. No session is issued; the token proves
+   * a mailbox, not a password.
+   */
+  router.post(
+    '/verify-email',
+    limitByIp('verify-email', 20),
+    validateBody(VerifyEmailSchema),
+    ah(async (req, res) => {
+      const { token } = req.body as z.infer<typeof VerifyEmailSchema>
+      const user = await authService.verifyEmail(token)
+      const claimed = await memberService.claimInvites(user.id, user.emailLower)
+      res.status(200).json({ ok: true, claimed })
     }),
   )
 
@@ -293,7 +359,17 @@ export function createAuthRouter(): Router {
       try {
         const profile = await getExchanger()(code, redirectUri())
         const user = await authService.upsertGoogleUser(profile)
+        // Claimed for a brand-new Google account and for an existing one
+        // alike — but only when Google vouched for the address (D-22). An
+        // unverified Google email proves no more than a typed one.
+        if (user.emailVerifiedAt) {
+          await memberService.claimInvites(user.id, user.emailLower)
+        }
         const session = await authService.issueSession(user, req.headers['user-agent'])
+        // `?created=1` only tells the client which PRD §9 event to send
+        // (account_created vs logged_in). Nothing personal in the URL.
+        const callback = new URL('/auth/callback', env().CLIENT_ORIGIN)
+        if (user.created) callback.searchParams.set('created', '1')
 
         res
           .cookie(
@@ -301,7 +377,7 @@ export function createAuthRouter(): Router {
             session.refreshToken,
             refreshCookieOptions(session.refreshExpiresAt),
           )
-          .redirect(new URL('/auth/callback', env().CLIENT_ORIGIN).toString())
+          .redirect(callback.toString())
       } catch {
         // Never put the underlying reason in a redirect parameter — it lands
         // in browser history and in referrer headers.
@@ -317,10 +393,20 @@ export function createAuthRouter(): Router {
     requireAuth,
     validateBody(UpdateProfileSchema),
     ah(async (req, res) => {
-      const user = await authService.updateProfile(
-        assertAuthenticated(req),
-        req.body as { displayName?: string; avatarUrl?: string | null },
-      )
+      const userId = assertAuthenticated(req)
+      const patch = req.body as { displayName?: string; avatarUrl?: null }
+      const previous =
+        patch.avatarUrl === null ? (await authService.findById(userId))?.avatarUrl : null
+      const user = await authService.updateProfile(userId, patch)
+      // D-36: removing an uploaded avatar removes its bytes too.
+      const stale = ownAvatarKey(previous, userId)
+      if (stale) {
+        await storage
+          .remove(stale)
+          .catch(err =>
+            logger.warn({ err, key: stale }, 'could not delete an old avatar'),
+          )
+      }
       res.json({ user: toPublicUser(user) })
     }),
   )
@@ -350,7 +436,16 @@ export function createAuthRouter(): Router {
     validateBody(DeleteAccountSchema),
     ah(async (req, res) => {
       const { confirm } = req.body as { confirm: string }
-      await authService.deleteAccount(assertAuthenticated(req), confirm)
+      const userId = assertAuthenticated(req)
+      const avatar = (await authService.findById(userId))?.avatarUrl
+      await authService.deleteAccount(userId, confirm)
+      // D-36: an uploaded avatar belongs to nobody once its account is gone.
+      const stale = ownAvatarKey(avatar, userId)
+      if (stale) {
+        await storage
+          .remove(stale)
+          .catch(err => logger.warn({ err, key: stale }, 'could not delete an avatar'))
+      }
       res.clearCookie(REFRESH_COOKIE, clearOptions()).status(204).end()
     }),
   )

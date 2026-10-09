@@ -11,7 +11,11 @@
 // outbox replay, ordering authority and auditability (anti-pattern A-07).
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // Phase 15e: `prisma.$metrics` exposes the connection-pool gauges that the
+  // TRD §15.4 "Postgres pool utilization" signal is computed from. Preview in
+  // Prisma 5; it reads counters the engine already keeps, and changes no query.
+  previewFeatures = ["metrics"]
 }
 
 datasource db {
@@ -22,28 +26,34 @@ datasource db {
 // ── Phase 7 — authentication ─────────────────────────────────────────────────
 
 model User {
-  id            String   @id @default(uuid())
-  email         String   @unique
+  id              String    @id @default(uuid())
+  email           String    @unique
   /// Lower-cased copy of `email`, so lookup is case-insensitive without
   /// forcing a functional index or a citext extension. Both columns are
   /// unique: `email` preserves what the user typed, `emailLower` is what we
   /// match on.
-  emailLower    String   @unique
+  emailLower      String    @unique
   /// Null for OAuth-only accounts — TRD §3.1. An account created through
   /// Google has no password until the user sets one.
-  passwordHash  String?
-  displayName   String   @db.VarChar(40)
-  avatarUrl     String?
-  googleId      String?  @unique
-  emailVerified Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  passwordHash    String?
+  displayName     String    @db.VarChar(40)
+  avatarUrl       String?
+  googleId        String?   @unique
+  emailVerified   Boolean   @default(false)
+  /// D-22: when this address was PROVEN to belong to the account — by a
+  /// verified Google identity, or by opening an emailed verification link.
+  /// Board invites are claimed only for a proven address. Null for a plain
+  /// password registration until the link is opened.
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  refreshTokens  RefreshToken[]
-  passwordResets PasswordResetToken[]
-  ownedBoards    Board[]              @relation("BoardOwner")
-  memberships    BoardMember[]
-  operations     Operation[]
+  refreshTokens      RefreshToken[]
+  passwordResets     PasswordResetToken[]
+  emailVerifications EmailVerificationToken[]
+  ownedBoards        Board[]                  @relation("BoardOwner")
+  memberships        BoardMember[]
+  operations         Operation[]
 
   @@index([emailLower])
 }
@@ -89,6 +99,22 @@ model PasswordResetToken {
   @@index([expiresAt])
 }
 
+/// D-22: proof of address ownership for a password registration, mirroring
+/// PasswordResetToken — hashed at rest, single-use, 24 h expiry.
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 // ── Phase 8 — boards, the op log, and snapshots ──────────────────────────────
 
 model Board {
@@ -114,6 +140,8 @@ model Board {
   members    BoardMember[]
   operations Operation[]
   snapshots  Snapshot[]
+  shareLinks ShareLink[]
+  invites    BoardInvite[]
 
   @@index([ownerId, deletedAt])
   @@index([lastActivityAt])
@@ -123,19 +151,69 @@ model Board {
 /// because `GET /boards/:id` must report `myRole`, and because the owner
 /// needs a membership row from the moment the board is created.
 model BoardMember {
-  id        String   @id @default(uuid())
-  boardId   String
-  userId    String
-  role      Role
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  boardId     String
+  /// Null for a guest — FR-AUTH-006.
+  userId      String?
+  /// A guest's client-generated id. A BEARER SECRET (decision D-1 in
+  /// docs/REMAINING-WORK.md): it authenticates the guest, so it is never sent
+  /// to anyone but its owner — not in presence, not in member lists.
+  guestId     String?
+  guestName   String?  @db.VarChar(40)
+  role        Role
+  /// The link a guest came in through. Turning that link off or resetting it
+  /// removes these members (FLOWS §10.2).
+  shareLinkId String?
+  addedById   String?
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
 
-  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  board     Board      @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shareLink ShareLink? @relation(fields: [shareLinkId], references: [id], onDelete: SetNull)
 
   /// One membership per person per board. The unique constraint is the
   /// enforcement — an invite race must not produce two rows with two roles.
   @@unique([boardId, userId])
+  @@unique([boardId, guestId])
   @@index([userId])
+  @@index([shareLinkId])
+}
+
+/// FR-SHARE-002/003. At most one live link per board; old ones keep a
+/// `revokedAt` so a stale token answers "turned off" rather than "invalid".
+model ShareLink {
+  id          String    @id @default(uuid())
+  boardId     String
+  /// 32 bytes from the CSPRNG, base64url — R-SEC-009. Never sequential.
+  token       String    @unique
+  /// EDITOR or VIEWER. Never OWNER.
+  role        Role
+  revokedAt   DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+
+  board   Board         @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  members BoardMember[]
+
+  @@index([boardId])
+}
+
+/// FR-SHARE-004: an invite to an address with no account yet. Claimed — turned
+/// into a membership — when that email signs up.
+model BoardInvite {
+  id          String    @id @default(uuid())
+  boardId     String
+  email       String    @db.VarChar(254)
+  role        Role
+  invitedById String
+  createdAt   DateTime  @default(now())
+  claimedAt   DateTime?
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, email])
+  @@index([email])
 }
 
 enum Role {

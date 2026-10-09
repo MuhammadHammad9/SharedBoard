@@ -1,10 +1,12 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
+import { randomUUID } from 'node:crypto'
+import type { PrismaClient } from '@prisma/client'
 import {
   SNAPSHOT_INTERVAL_OPS,
   SNAPSHOT_RETENTION,
   type BoardObject,
 } from '@coboard/shared'
 import { logger } from '../lib/logger.js'
+import { jobFailures } from '../lib/metrics.js'
 import { prisma as defaultPrisma } from '../lib/prisma.js'
 
 /**
@@ -144,7 +146,38 @@ export class SnapshotService {
    * and nobody notices. Propagating the error would fail an op that was
    * already durably persisted and acknowledged.
    */
-  async maybeSnapshot(boardId: string): Promise<boolean> {
+  async maybeSnapshot(boardId: string, currentSeq?: number): Promise<boolean> {
+    /*
+     * Two guards, both found by the Phase 15 load test (50 sockets, 100 ops/s
+     * on one board), where ack p95 was 590 ms against a p50 of 11 ms, with
+     * the spikes landing exactly every 500 ops:
+     *
+     * 1. ONE SNAPSHOT IN FLIGHT PER BOARD. This runs after every op, and a
+     *    materialisation takes hundreds of milliseconds on a big board. Every
+     *    op appended in that window also saw "500 behind" and started its own
+     *    full materialisation; the log held snapshots at seq 1507 AND 1508.
+     *    Each one competed with the op appends for the pool and the loop.
+     *
+     * 2. NO QUERY WHEN THE BOARD IS CLEARLY NOT DUE. The caller already knows
+     *    `currentSeq` from the append, and the last snapshot seq is
+     *    remembered per board, so the two-query check is skipped until the
+     *    remembered gap reaches the interval. The memory is only a hint: a
+     *    snapshot written by another instance makes it stale-LOW, which costs
+     *    an extra check, and one deleted elsewhere makes it stale-HIGH, which
+     *    delays a snapshot by under one interval. Either way a snapshot is a
+     *    cache and the op log stays the truth.
+     */
+    if (this.inFlight.has(boardId)) return false
+    const known = this.lastSnapshotSeq.get(boardId)
+    if (
+      currentSeq !== undefined &&
+      known !== undefined &&
+      currentSeq - known < SNAPSHOT_INTERVAL_OPS
+    ) {
+      return false
+    }
+
+    this.inFlight.add(boardId)
     try {
       const [board, latest] = await Promise.all([
         this.db.board.findUnique({
@@ -157,16 +190,36 @@ export class SnapshotService {
           select: { seq: true },
         }),
       ])
-      if (!board) return false
+      if (!board) {
+        this.lastSnapshotSeq.delete(boardId)
+        return false
+      }
 
-      const since = board.currentSeq - (latest?.seq ?? 0)
-      if (since < SNAPSHOT_INTERVAL_OPS) return false
+      const lastSeq = latest?.seq ?? 0
+      this.remember(boardId, lastSeq)
+      if (board.currentSeq - lastSeq < SNAPSHOT_INTERVAL_OPS) return false
 
       await this.snapshotNow(boardId, board.currentSeq)
       return true
     } catch (error) {
+      jobFailures.inc({ task: 'snapshot' })
       logger.error({ err: error, boardId }, 'snapshot failed')
       return false
+    } finally {
+      this.inFlight.delete(boardId)
+    }
+  }
+
+  private readonly inFlight = new Set<string>()
+  private readonly lastSnapshotSeq = new Map<string, number>()
+
+  /** Bounded: a long-lived process must not grow one entry per board forever. */
+  private remember(boardId: string, seq: number): void {
+    this.lastSnapshotSeq.delete(boardId)
+    this.lastSnapshotSeq.set(boardId, seq)
+    if (this.lastSnapshotSeq.size > 10_000) {
+      const oldest = this.lastSnapshotSeq.keys().next().value
+      if (oldest !== undefined) this.lastSnapshotSeq.delete(oldest)
     }
   }
 
@@ -174,13 +227,20 @@ export class SnapshotService {
   async snapshotNow(boardId: string, seq: number): Promise<void> {
     const { objects } = await this.materialise(boardId, seq)
 
-    await this.db.snapshot.create({
-      data: {
-        boardId,
-        seq,
-        state: { objects } as unknown as Prisma.InputJsonValue,
-      },
-    })
+    /*
+     * Raw SQL with the JSON stringified once, here, and cast to jsonb by
+     * Postgres. `snapshot.create` with the object as a Json field took 650 ms
+     * for a 6,000-object board (1.7 MB) against 150 ms for this, measured in
+     * the Phase 15 load test: Prisma re-encodes a large Json value inside its
+     * engine, holding a pool connection and a CPU core while the board's
+     * op appends queue behind it. Same row, same column types.
+     */
+    const state = JSON.stringify({ objects })
+    await this.db.$executeRaw`
+      INSERT INTO "Snapshot" ("id", "boardId", "seq", "state")
+      VALUES (${randomUUID()}, ${boardId}, ${seq}, ${state}::jsonb)
+    `
+    this.remember(boardId, seq)
 
     await this.prune(boardId)
   }

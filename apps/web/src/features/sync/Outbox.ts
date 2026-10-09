@@ -1,4 +1,9 @@
-import type { ClientOp } from '@coboard/shared'
+import {
+  OUTBOX_FLUSH_BATCH_SIZE,
+  RATE_LIMIT_OPS_PER_SEC,
+  type ClientOp,
+} from '@coboard/shared'
+import { backoffFor } from './backoff.js'
 
 /**
  * The outbox — TRD §5.5, FR-SYNC-004/005, R-SYNC-010.
@@ -43,35 +48,52 @@ export interface OutboxTransport {
    * the rest, and a decision is not a network error: those ops are dropped
    * from the queue and reported through `onNack` (R-SYNC-011).
    */
-  (ops: readonly ClientOp[]): Promise<{ acked: string[]; nacked: string[] }>
+  (ops: readonly ClientOp[]): Promise<{
+    acked: string[]
+    nacked: string[]
+    /** The seq the server gave each acked op, aligned with `acked`, when known. */
+    seqs?: ReadonlyArray<number | undefined>
+    /** The server's refusal code per nacked op id, when known (PRD §9 op_rejected). */
+    reasons?: Readonly<Record<string, string>>
+  }>
 }
 
 export interface OutboxOptions {
   boardId: string
   send: OutboxTransport
-  /** Ops the server refused. The caller rolls them back locally. */
-  onNack?: (ops: readonly ClientOp[]) => void
+  /** Ops the server stored, with their seqs where the transport knows them. */
+  onAck?: (ids: readonly string[], seqs?: ReadonlyArray<number | undefined>) => void
+  /** Ops trimmed off the front of an over-long queue. They will never be sent. */
+  onDrop?: (ops: readonly ClientOp[]) => void
+  /**
+   * Ops the server refused. The caller rolls them back locally. `reasons` maps
+   * op id → the server's refusal code where the transport knows it.
+   */
+  onNack?: (ops: readonly ClientOp[], reasons?: Readonly<Record<string, string>>) => void
   onStatus?: (status: OutboxStatus, pending: number) => void
+  /** The queue length changed — "Syncing {N} changes…", and the drain check. */
+  onPending?: (pending: number) => void
   /** Injected in tests so backoff does not make the suite wait. */
   now?: () => number
   setTimer?: (fn: () => void, ms: number) => unknown
   clearTimer?: (handle: unknown) => void
 }
 
-/** Batch size per request. Matches the server's `ops` array cap. */
-const BATCH = 100
+/** Batch size per send — TRD §10.1. Under the server's 100-op array cap. */
+const BATCH = OUTBOX_FLUSH_BATCH_SIZE
 
 /**
- * Full-jitter backoff — R-SYNC-030.
+ * The client's own op budget — F-4 in docs/REMAINING-WORK.md.
  *
- * `random() * ceiling`, not `ceiling`. A server that restarts with 200 clients
- * attached gets 200 retries spread across the window instead of 200 arriving
- * in the same millisecond, killing it again. Without the jitter the reconnect
- * storm is self-sustaining.
+ * The server allows 100 ops/s per socket (R-SEC-013) and NACKS the excess,
+ * and a nack is never retried (R-SYNC-011). An outbox that replays ten
+ * minutes of offline work as fast as acks come back would therefore have
+ * most of it refused and thrown away — silent data loss on exactly the path
+ * that exists to prevent it. So the outbox spends from a bucket of its own,
+ * kept at 80% of the server's so that clock drift and arrival jitter never
+ * tip a batch over the line. Live drawing never comes near it.
  */
-const BACKOFF_CEILING_MS = 30_000
-const backoffFor = (attempt: number): number =>
-  Math.random() * Math.min(BACKOFF_CEILING_MS, 500 * 2 ** Math.min(attempt, 6))
+export const PACE_OPS_PER_SEC = Math.floor(RATE_LIMIT_OPS_PER_SEC * 0.8)
 
 export class Outbox {
   private queue: ClientOp[] = []
@@ -80,6 +102,8 @@ export class Outbox {
   private timer: unknown = null
   private status: OutboxStatus = 'idle'
   private closed = false
+  private tokens = PACE_OPS_PER_SEC
+  private refilledAt: number
 
   private readonly key: string
   private readonly now: () => number
@@ -91,6 +115,7 @@ export class Outbox {
     this.now = options.now ?? Date.now
     this.setTimer = options.setTimer ?? ((fn, ms) => globalThis.setTimeout(fn, ms))
     this.clearTimer = options.clearTimer ?? (h => globalThis.clearTimeout(h as number))
+    this.refilledAt = this.now()
     this.queue = this.restore()
   }
 
@@ -122,7 +147,9 @@ export class Outbox {
      * offline path exists to protect.
      */
     if (this.queue.length > OUTBOX_MAX) {
+      const dropped = this.queue.slice(0, this.queue.length - OUTBOX_MAX)
       this.queue = this.queue.slice(this.queue.length - OUTBOX_MAX)
+      this.options.onDrop?.(dropped)
     }
 
     this.persist()
@@ -148,7 +175,9 @@ export class Outbox {
     try {
       while (this.queue.length > 0 && !this.closed) {
         const batch = this.queue.slice(0, BATCH)
-        const { acked, nacked } = await this.options.send(batch)
+        await this.pace(batch.length)
+        if (this.closed) break
+        const { acked, nacked, seqs, reasons } = await this.options.send(batch)
 
         const settled = new Set([...acked, ...nacked])
         const refused = batch.filter(op => nacked.includes(op.id))
@@ -161,9 +190,11 @@ export class Outbox {
         this.queue = this.queue.filter(op => !settled.has(op.id))
         this.persist()
 
+        if (acked.length > 0) this.options.onAck?.(acked, seqs)
+
         // A nack is a DECISION, not a network error, so it is never retried —
         // R-SYNC-011. The caller undoes it locally and tells the user.
-        if (refused.length > 0) this.options.onNack?.(refused)
+        if (refused.length > 0) this.options.onNack?.(refused, reasons)
 
         // Neither acked nor nacked: the server answered without settling
         // anything. Treat it as a failure rather than looping forever.
@@ -179,6 +210,25 @@ export class Outbox {
     } finally {
       this.inFlight = false
     }
+  }
+
+  /** Wait until `n` ops fit the budget, then spend them. */
+  private async pace(n: number): Promise<void> {
+    const refill = () => {
+      const now = this.now()
+      this.tokens = Math.min(
+        PACE_OPS_PER_SEC,
+        this.tokens + ((now - this.refilledAt) * PACE_OPS_PER_SEC) / 1_000,
+      )
+      this.refilledAt = now
+    }
+    refill()
+    if (this.tokens < n) {
+      const waitMs = Math.ceil(((n - this.tokens) * 1_000) / PACE_OPS_PER_SEC)
+      await new Promise<void>(resolve => this.setTimer(resolve, waitMs))
+      refill()
+    }
+    this.tokens -= n
   }
 
   private scheduleRetry(): void {
@@ -226,6 +276,7 @@ export class Outbox {
   /* ── Persistence ────────────────────────────────────────────────────────── */
 
   private persist(): void {
+    this.options.onPending?.(this.queue.length)
     try {
       if (this.queue.length === 0) {
         globalThis.localStorage?.removeItem(this.key)

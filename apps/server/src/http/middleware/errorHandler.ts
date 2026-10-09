@@ -1,8 +1,8 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express'
 import { ZodError } from 'zod'
-import { ERROR_CODES, newCorrelationId, type ErrorEnvelope } from '@coboard/shared'
+import { ERROR_CODES, type ErrorEnvelope } from '@coboard/shared'
 import { AuthError } from '../../services/AuthService.js'
-import { logger } from '../../lib/logger.js'
+import { requestId, requestLog } from './requestContext.js'
 
 /**
  * The single place an error becomes a response — TRD §4.
@@ -44,8 +44,14 @@ export class HttpError extends Error {
   }
 }
 
+/*
+ * The envelope's `correlationId` IS the request id (Phase 15e), so the
+ * "Ref: …" a user reads out matches the `requestId` on every log line the
+ * request wrote — not just the one written here.
+ */
+
 export const notFoundHandler: RequestHandler = (req, res) => {
-  const correlationId = newCorrelationId()
+  const correlationId = requestId(req)
   res
     .status(404)
     .json(
@@ -58,11 +64,12 @@ export const notFoundHandler: RequestHandler = (req, res) => {
 }
 
 export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
-  const correlationId = newCorrelationId()
+  const correlationId = requestId(req)
+  const log = requestLog(req)
 
   if (err instanceof AuthError || err instanceof HttpError) {
     const retryAfter = err instanceof HttpError ? err.retryAfter : undefined
-    logger.info({ correlationId, code: err.code, path: req.path }, 'request rejected')
+    log.info({ correlationId, code: err.code, path: req.path }, 'request rejected')
     res
       .status(err.status)
       .json(envelope(err.code, err.message, correlationId, err.details, retryAfter))
@@ -95,7 +102,7 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
    * stack and returned WITHOUT it, so support can join the two without the
    * response ever carrying internals (PRD §8.1).
    */
-  logger.error({ correlationId, err, path: req.path }, 'unhandled error')
+  log.error({ correlationId, err, path: req.path }, 'unhandled error')
   res
     .status(500)
     .json(envelope(ERROR_CODES.INTERNAL, 'Internal server error', correlationId))

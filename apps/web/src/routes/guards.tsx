@@ -1,9 +1,10 @@
 import { useEffect, type ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router'
 import { getAccessToken, useAuthStore } from '../stores/authStore.js'
-import { api, attemptSilentRefresh } from '../lib/api.js'
+import { api, attemptSilentRefresh, takeRefreshedUser } from '../lib/api.js'
 import { FullScreenSpinner } from '../components/ui/Spinner.js'
 import { loginUrlFor } from './nextParam.js'
+import { loading } from '../lib/strings.js'
 import type { PublicUser } from '@coboard/shared'
 
 /**
@@ -52,42 +53,57 @@ export function resetSessionBootstrap(): void {
   bootstrapStarted = false
 }
 
-function useSessionBootstrap(): void {
-  const setStatus = useAuthStore(s => s.setStatus)
-  const setSession = useAuthStore(s => s.setSession)
-  const clear = useAuthStore(s => s.clear)
+/**
+ * Start the page's one silent refresh — idempotent.
+ *
+ * Called at BOOT from main.tsx as well as from the guards. Started from a
+ * guard's effect it waited for the first render and every lazy chunk in front
+ * of it; on a slow-4G dashboard load that put the refresh last in the
+ * waterfall (PRD §7.1, "Dashboard interactive ≤ 2.0 s"). The guards still
+ * call it, so a test or a path that skips main.tsx behaves exactly as before.
+ */
+export function startSessionBootstrap(): void {
+  if (bootstrapStarted) return
+  bootstrapStarted = true
+  const { setStatus, setSession, clear } = useAuthStore.getState()
 
-  useEffect(() => {
-    if (bootstrapStarted) return
-    bootstrapStarted = true
+  setStatus('refreshing')
 
-    setStatus('refreshing')
+  void (async () => {
+    const refreshed = await attemptSilentRefresh()
+    if (!refreshed) {
+      clear()
+      return
+    }
 
-    void (async () => {
-      const refreshed = await attemptSilentRefresh()
-      if (!refreshed) {
-        clear()
-        return
-      }
+    // The refresh response names its user, so the common path needs no
+    // second round trip. `/auth/me` remains the fallback for a response
+    // without one.
+    const known = takeRefreshedUser()
+    if (known) {
+      setSession(known, getAccessToken() ?? '')
+      return
+    }
 
-      /*
-       * The refresh gave us a token but the store still has no user, so ask
-       * who it belongs to. Without this the dashboard renders with a valid
-       * session and an empty avatar.
-       */
-      try {
-        const { user } = await api.get<{ user: PublicUser }>('/auth/me')
-        // `attemptSilentRefresh` already stored the token; read it back rather
-        // than threading it through, so there is one writer.
-        setSession(user, getAccessToken() ?? '')
-      } catch {
-        clear()
-      }
-    })()
-    // Deliberately empty: this must run once for the page, not once per
-    // status change. See the note above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    /*
+     * The refresh gave us a token but the store still has no user, so ask
+     * who it belongs to. Without this the dashboard renders with a valid
+     * session and an empty avatar.
+     */
+    try {
+      const { user } = await api.get<{ user: PublicUser }>('/auth/me')
+      // `attemptSilentRefresh` already stored the token; read it back rather
+      // than threading it through, so there is one writer.
+      setSession(user, getAccessToken() ?? '')
+    } catch {
+      clear()
+    }
+  })()
+}
+
+export function useSessionBootstrap(): void {
+  // Once for the page, not once per status change. See the note above.
+  useEffect(() => startSessionBootstrap(), [])
 }
 
 interface GuardProps {
@@ -101,7 +117,7 @@ export function RequireAuth({ children }: GuardProps) {
 
   // Steps 1–2. A spinner, never the login screen.
   if (status === 'unknown' || status === 'refreshing') {
-    return <FullScreenSpinner label="Loading your boards" />
+    return <FullScreenSpinner label={loading.boards} />
   }
 
   if (status === 'anonymous') {
@@ -124,10 +140,26 @@ export function RedirectIfAuthed({ children }: GuardProps) {
   const status = useAuthStore(s => s.status)
 
   if (status === 'unknown' || status === 'refreshing') {
-    return <FullScreenSpinner label="Checking your session" />
+    return <FullScreenSpinner label={loading.session} />
   }
 
   if (status === 'authenticated') return <Navigate to="/dashboard" replace />
 
+  return <>{children}</>
+}
+
+/**
+ * S-01's guard — FLOWS §1.2 "Load with valid session → S-07".
+ *
+ * OPTIMISTIC, unlike `RedirectIfAuthed`: the page renders while the silent
+ * refresh is in flight and redirects only if it comes back authenticated.
+ * Blocking on a spinner would put a network round trip in front of the
+ * landing page's LCP (PRD §7.1, ≤ 1.5 s on 4G) for every anonymous visitor —
+ * the people the page is for — to spare a returning user a brief glimpse.
+ */
+export function RedirectIfAuthedOptimistic({ children }: GuardProps) {
+  useSessionBootstrap()
+  const status = useAuthStore(s => s.status)
+  if (status === 'authenticated') return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }

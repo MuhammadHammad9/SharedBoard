@@ -30,3 +30,8 @@ export const emitStrokeProgress = (strokeId: string, points: readonly number[]):
   emitter?.strokeProgress(strokeId, points)
 
 export const emitStrokeDone = (strokeId: string): void => emitter?.strokeDone(strokeId)
+
+export const emitTransform = (ids: readonly ObjectId[], dx: number, dy: number): void =>
+  emitter?.transform(ids, dx, dy)
+
+export const emitTransformEnd = (): void => emitter?.transformEnd()

@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '../components/ui/Button.js'
 import { EmptyState } from '../components/ui/EmptyState.js'
 import { Modal } from '../components/ui/Modal.js'
@@ -8,10 +10,24 @@ import {
   DashboardHeader,
   DashboardSidebar,
 } from '../components/dashboard/DashboardChrome.js'
-import { usePermanentlyDelete, useRestoreBoard, useTrash } from '../features/boards/useBoards.js'
+import {
+  usePermanentlyDelete,
+  useRestoreBoard,
+  useTrash,
+  trashKey,
+} from '../features/boards/useBoards.js'
 import { absoluteTime, relativeTime } from '../lib/relativeTime.js'
-import { actions, boards as boardStrings, emptyStates, errors } from '../lib/strings.js'
+import {
+  actions,
+  boards as boardStrings,
+  dashboard,
+  emptyStates,
+} from '../lib/strings.js'
 import type { BoardSummary } from '../features/boards/api.js'
+import { EmptyBoardGraphic } from '../features/boards/EmptyBoardGraphic.js'
+import { serverErrorMessage } from '../lib/errorCopy.js'
+
+const RESTORE_FADE_MS = 200
 
 /**
  * S-08 Trash — FR-BOARD-006, FLOWS §6.
@@ -32,8 +48,46 @@ export default function Trash() {
   const restore = useRestoreBoard()
   const destroy = usePermanentlyDelete()
   const toast = useToast()
+  const navigate = useNavigate()
+  const client = useQueryClient()
+  // Boards restored from this screen, so "is Trash empty now?" does not wait
+  // on the refetch — or get it wrong when two restores overlap.
+  const restored = useRef(new Set<string>())
 
   const [target, setTarget] = useState<BoardSummary | null>(null)
+  // Rows fading out after Restore — Phase 13 motion: 200 ms, --ease-out.
+  const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set())
+
+  const onRestore = (id: string) => {
+    setLeaving(s => new Set(s).add(id))
+    // The fade runs first; the list refetch then removes the row for real.
+    window.setTimeout(() => {
+      restore.mutate(id, {
+        onSuccess: () => {
+          toast.show({ message: boardStrings.restored })
+          restored.current.add(id)
+          // FLOWS §6.8: "S-08 (or auto-navigate to S-07 if the trash is now
+          // empty)". Restore only — "Delete forever" returns to S-08 (§1.2).
+          // The cache, not this render's `query.data`: the timer above closed
+          // over a render that may be several refetches old.
+          const cached = client.getQueryData<{ boards: BoardSummary[] }>(trashKey)
+          const left = (cached?.boards ?? []).filter(
+            board => !restored.current.has(board.id),
+          )
+          if (left.length === 0) navigate('/dashboard', { replace: true })
+        },
+        onError: error => {
+          // Back into view: it is still in Trash.
+          setLeaving(s => {
+            const next = new Set(s)
+            next.delete(id)
+            return next
+          })
+          toast.show({ message: serverErrorMessage(error), variant: 'danger' })
+        },
+      })
+    }, RESTORE_FADE_MS)
+  }
   const [confirmName, setConfirmName] = useState('')
 
   const closeModal = () => {
@@ -48,14 +102,21 @@ export default function Trash() {
       {/* Search and create are meaningless here, so they are inert rather
           than absent — removing the header entirely would make Trash feel
           like a different application. */}
-      <DashboardHeader search="" onSearch={() => {}} onCreate={() => {}} creating={false} />
+      <DashboardHeader
+        search=""
+        onSearch={() => {}}
+        onCreate={() => {}}
+        creating={false}
+      />
 
       <div className="mx-auto flex w-full max-w-7xl gap-8 px-4 py-6">
         <DashboardSidebar />
 
         <main className="min-w-0 flex-1">
-          <h1 className="mb-1 text-lg font-semibold text-primary">Trash</h1>
-          <p className="mb-6 text-sm text-muted">{emptyStates.trashEmpty.body}</p>
+          <h1 className="mb-1 text-lg font-semibold text-primary">
+            {dashboard.trashTitle}
+          </h1>
+          <p className="mb-6 text-sm text-primary">{emptyStates.trashEmpty.body}</p>
 
           {query.isPending ? (
             <div className="flex flex-col gap-2" aria-busy="true">
@@ -71,7 +132,7 @@ export default function Trash() {
               data-testid="trash-error"
               className="flex flex-col items-center gap-3 rounded-lg border border-danger/30 bg-app px-6 py-12 text-center"
             >
-              <p className="text-sm text-primary">{errors.genericServerError}</p>
+              <p className="text-sm text-primary">{serverErrorMessage(query.error)}</p>
               <Button variant="secondary" onClick={() => void query.refetch()}>
                 {actions.retry}
               </Button>
@@ -92,8 +153,23 @@ export default function Trash() {
                 <li
                   key={board.id}
                   data-testid="trash-row"
-                  className="flex items-center gap-4 rounded-lg border border-border bg-app px-4 py-3"
+                  data-trash-row
+                  data-leaving={leaving.has(board.id) ? 'true' : 'false'}
+                  className="flex flex-wrap items-center gap-4 rounded-lg border border-border bg-app px-4 py-3"
                 >
+                  {/* Phase 13 UI: the row carries the board's thumbnail. */}
+                  <div className="flex h-12 w-20 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-subtle">
+                    {board.thumbnailUrl ? (
+                      <img
+                        src={board.thumbnailUrl}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <EmptyBoardGraphic />
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-primary">
                       {board.name}
@@ -101,40 +177,39 @@ export default function Trash() {
                     <p className="text-xs text-muted">
                       <time
                         dateTime={board.deletedAt ?? undefined}
-                        title={board.deletedAt ? absoluteTime(board.deletedAt) : undefined}
+                        title={
+                          board.deletedAt ? absoluteTime(board.deletedAt) : undefined
+                        }
                       >
-                        Deleted {board.deletedAt ? relativeTime(board.deletedAt) : ''}
+                        {boardStrings.deletedAgo(
+                          board.deletedAt ? relativeTime(board.deletedAt) : '',
+                        )}
                       </time>
                       {' · '}
                       <span data-testid="days-remaining">
-                        {board.daysUntilPurge ?? 0} days left
+                        {boardStrings.daysLeft(board.daysUntilPurge ?? 0)}
                       </span>
                     </p>
                   </div>
 
-                  <Button
-                    variant="secondary"
-                    data-testid="restore"
-                    onClick={() =>
-                      restore.mutate(board.id, {
-                        onSuccess: () => toast.show({ message: boardStrings.restored }),
-                        onError: () =>
-                          toast.show({
-                            message: errors.genericServerError,
-                            variant: 'danger',
-                          }),
-                      })
-                    }
-                  >
-                    {actions.restore}
-                  </Button>
-                  <Button
-                    variant="danger"
-                    data-testid="delete-forever"
-                    onClick={() => setTarget(board)}
-                  >
-                    {actions.deleteForever}
-                  </Button>
+                  {/* < 768 px the actions take their own line, so the name
+                      keeps the width it needs to be read (PRD §7.7). */}
+                  <div className="flex w-full justify-end gap-2 md:w-auto">
+                    <Button
+                      variant="secondary"
+                      data-testid="restore"
+                      onClick={() => onRestore(board.id)}
+                    >
+                      {actions.restore}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      data-testid="delete-forever"
+                      onClick={() => setTarget(board)}
+                    >
+                      {actions.deleteForever}
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -145,8 +220,12 @@ export default function Trash() {
       <Modal
         open={target !== null}
         onClose={closeModal}
-        title={`Delete '${target?.name ?? ''}' forever?`}
+        title={boardStrings.deleteForeverTitle(target?.name ?? '')}
         testId="permanent-delete-modal"
+        // FLOWS §13.2: no backdrop dismissal on a destructive modal, and no
+        // dismissal at all while the delete is in flight.
+        destructive
+        dismissible={!destroy.isPending}
         footer={
           <>
             <Button variant="secondary" onClick={closeModal}>
@@ -163,9 +242,9 @@ export default function Trash() {
                   { id: target.id, confirmName },
                   {
                     onSuccess: closeModal,
-                    onError: () =>
+                    onError: error =>
                       toast.show({
-                        message: errors.genericServerError,
+                        message: serverErrorMessage(error),
                         variant: 'danger',
                       }),
                   },
@@ -177,12 +256,10 @@ export default function Trash() {
           </>
         }
       >
-        <p>
-          This cannot be undone. Every stroke, note and shape on this board will be
-          removed permanently.
-        </p>
+        <p>{boardStrings.deleteForeverBody}</p>
         <label className="mt-4 block text-sm text-primary">
-          Type <span className="font-medium">{target?.name}</span> to confirm
+          {boardStrings.deleteForeverPrompt}:{' '}
+          <span className="font-medium">{target?.name}</span>
           <input
             value={confirmName}
             onChange={event => setConfirmName(event.target.value)}

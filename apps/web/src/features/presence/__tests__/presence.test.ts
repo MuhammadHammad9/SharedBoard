@@ -335,3 +335,59 @@ describe('avatar rules', () => {
     expect(truncateName('x'.repeat(30))).toHaveLength(20)
   })
 })
+
+describe('drag presence — FLOWS E-07', () => {
+  beforeEach(() => vi.useFakeTimers())
+
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `id-${i}` as never)
+
+  /** Messages sent over one second of a drag moving every 5 ms. */
+  function sentPerSecond(selected: number): number {
+    const send = vi.fn((_m: ClientMessage) => true)
+    const emitter = createPresenceEmitter(send)
+    for (let t = 0; t < 1_000; t += 5) {
+      emitter.transform(ids(selected), t, t)
+      vi.advanceTimersByTime(5)
+    }
+    emitter.dispose()
+    return send.mock.calls.length
+  }
+
+  it('sends 20 Hz for a small selection', () => {
+    expect(sentPerSecond(10)).toBeGreaterThanOrEqual(19)
+    expect(sentPerSecond(10)).toBeLessThanOrEqual(21)
+    vi.useRealTimers()
+  })
+
+  it('drops to 10 Hz above 100 selected objects', () => {
+    expect(sentPerSecond(500)).toBeGreaterThanOrEqual(9)
+    expect(sentPerSecond(500)).toBeLessThanOrEqual(11)
+    vi.useRealTimers()
+  })
+
+  it('ends with a flushed, empty xform that clears the preview', () => {
+    const send = vi.fn((_m: ClientMessage) => true)
+    const emitter = createPresenceEmitter(send)
+    emitter.transform(ids(3), 10, 10)
+    emitter.transform(ids(3), 20, 20) // inside the window: pending
+    emitter.transformEnd()
+    vi.advanceTimersByTime(200)
+    // The pending sample is dropped, not sent after the end.
+    expect(send.mock.calls.at(-1)?.[0]).toEqual({ t: 'xform', ids: [], dx: 0, dy: 0 })
+    vi.useRealTimers()
+  })
+
+  it('offsets the remote selection while a drag is in flight, and clears it', () => {
+    const store = new PresenceStore()
+    store.setOwnSession('me')
+    store.setTransform('them', ['a' as never], 30, -10)
+    expect(store.allSelections()).toEqual([
+      { sessionId: 'them', ids: ['a'], offset: { dx: 30, dy: -10 } },
+    ])
+    store.setTransform('them', [], 0, 0)
+    expect(store.allSelections()).toEqual([{ sessionId: 'them', ids: ['a'] }])
+    // Your own drag is never echoed back as a remote one.
+    store.setTransform('me', ['b' as never], 5, 5)
+    expect(store.allSelections()).toHaveLength(1)
+  })
+})

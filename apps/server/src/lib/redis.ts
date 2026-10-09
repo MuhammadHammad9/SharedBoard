@@ -12,13 +12,17 @@ import { logger } from './logger.js'
 let client: Redis | null = null
 
 export function redis(): Redis {
-  client ??= new Redis(env().REDIS_URL, {
+  if (client) return client
+  client = new Redis(env().REDIS_URL, {
     maxRetriesPerRequest: 2,
     // Without this a dropped Redis makes every request hang until the socket
     // timeout rather than failing fast into the degraded path below.
     enableOfflineQueue: false,
     lazyConnect: false,
   })
+  // Once, at construction. It used to be attached on EVERY call, so each op's
+  // rate-limit check added a listener: a leak of one closure per op, found in
+  // Phase 15 by the MaxListenersExceededWarning under the load test.
   client.on('error', err => logger.warn({ err: err.message }, 'redis error'))
   return client
 }
@@ -96,5 +100,25 @@ export async function clearCounter(key: string): Promise<void> {
   } catch {
     // A failed clear only means the user keeps a stale strike. Not worth
     // failing the login that just succeeded.
+  }
+}
+
+/**
+ * Take back one hit from a counter, never below zero — a successful login
+ * returning the per-IP hit `assertLoginAllowed` charged it (finding 9).
+ * Atomic, so two concurrent successes cannot drive it negative.
+ */
+const RELEASE = `
+local v = tonumber(redis.call('GET', KEYS[1]))
+if v and v > 0 then return redis.call('DECR', KEYS[1]) end
+return 0
+`
+
+export async function releaseCounter(key: string): Promise<void> {
+  try {
+    await redis().eval(RELEASE, 1, key)
+  } catch {
+    // Same reasoning as clearCounter: a stale strike is not worth failing a
+    // login that just succeeded.
   }
 }

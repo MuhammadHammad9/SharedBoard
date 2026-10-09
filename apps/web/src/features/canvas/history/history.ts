@@ -2,6 +2,7 @@ import type { ClientOp, ObjectId } from '@coboard/shared'
 import { boardStore } from '../../../stores/boardStore.js'
 import { emitOps } from '../../sync/persistence.js'
 import { HistoryManager } from './HistoryManager.js'
+import { buildInverse } from './inverseOps.js'
 
 /**
  * The application's single history stack, wired to the board store.
@@ -19,6 +20,10 @@ import { HistoryManager } from './HistoryManager.js'
 
 export const history = new HistoryManager(
   ops => {
+    // Viewer mode: undo and redo would write too. HistoryManager has already
+    // moved the entry between stacks; with nothing applied that is harmless,
+    // because a viewer's stacks hold nothing of their own to begin with.
+    if (boardStore.getState().readOnly) return
     /*
      * R-UNDO-003: an undo is applied and emitted as an ORDINARY op. There is
      * no "undo" message type, and remote clients see a normal change.
@@ -27,8 +32,11 @@ export const history = new HistoryManager(
      * server like any other local change or the undone work reappears on the
      * next reload.
      */
-    boardStore.getState().applyOps(ops)
-    emitOps(withFreshIds(ops))
+    const fresh = withFreshIds(ops)
+    // Read BEFORE applying: the sync layer needs each field's prior value.
+    const inverse = buildInverse(fresh, id => boardStore.getState().objects.get(id))
+    boardStore.getState().applyOps(fresh)
+    emitOps(fresh, inverse)
   },
   objectId => boardStore.getState().objects.has(objectId as ObjectId),
 )

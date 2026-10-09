@@ -78,7 +78,14 @@ export function classify(file: string): 'board' | 'initial' {
  * rather than silently reporting a budget of zero.
  */
 export function initialChunks(distDir: string): Set<string> | null {
-  const html = join(distDir, 'index.html')
+  /*
+   * app.html is the untouched SPA shell (apps/web/scripts/prerender.ts).
+   * index.html holds the prerendered landing page, which loads the same
+   * entry after first paint through an inline loader — no <script src> or
+   * modulepreload for this parser to find. The initial set is identical.
+   */
+  const shell = join(distDir, 'app.html')
+  const html = existsSync(shell) ? shell : join(distDir, 'index.html')
   if (!existsSync(html)) return null
 
   const source = readFileSync(html, 'utf8')
@@ -173,8 +180,12 @@ if (isMain) {
     // and seeing them keeps a lazy chunk from quietly becoming enormous just
     // because nothing measures it.
     const total = result.async.reduce((n, c) => n + c.gzipBytes, 0)
-    console.log(`  --   async chunks (not in either budget): ${(total / 1024).toFixed(1)} KB`)
-    for (const c of [...result.async].sort((a, b) => b.gzipBytes - a.gzipBytes).slice(0, 5)) {
+    console.log(
+      `  --   async chunks (not in either budget): ${(total / 1024).toFixed(1)} KB`,
+    )
+    for (const c of [...result.async]
+      .sort((a, b) => b.gzipBytes - a.gzipBytes)
+      .slice(0, 5)) {
       console.log(`         ${basename(c.file)} ${(c.gzipBytes / 1024).toFixed(1)} KB`)
     }
   }

@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "CoBoard \u2014 real-time collaborative whiteboard",
+  "description": "CoBoard — real-time collaborative whiteboard",
   "engines": {
     "node": ">=20"
   },
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev": "pnpm --parallel --filter \"./apps/*\" run \"/^dev(:s3)?$/\"",
     "dev:web": "pnpm --filter @coboard/web dev",
     "dev:server": "pnpm --filter @coboard/server dev",
     "build": "pnpm --filter @coboard/shared build && pnpm --filter @coboard/web build && pnpm --filter @coboard/server build",
@@ -20,29 +20,49 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
+    "test:e2e": "bash scripts/e2e.sh",
     "analyze": "pnpm --filter @coboard/web build && tsx scripts/check-bundle-size.ts",
     "check:board-chunk": "tsx scripts/check-board-chunk-imports.ts",
+    "load-test": "tsx scripts/load-test.ts",
     "services:up": "bash scripts/dev-services.sh",
     "db:migrate": "pnpm --filter @coboard/server db:migrate",
     "db:studio": "pnpm --filter @coboard/server db:studio",
     "db:reset": "pnpm --filter @coboard/server db:reset",
     "db:seed": "pnpm --filter @coboard/server db:seed",
-    "fixtures:generate": "tsx scripts/generate-stress-board.ts"
+    "db:backup": "bash scripts/backup.sh",
+    "db:restore": "bash scripts/restore.sh",
+    "db:test-restore": "bash scripts/test-restore.sh",
+    "fixtures:generate": "tsx scripts/generate-stress-board.ts",
+    "dev:s3": "pnpm --filter @coboard/server dev:s3",
+    "lighthouse": "tsx scripts/lighthouse.ts"
   },
   "pnpm": {
-    "_comment:overrides": "Security overrides. R-SEC-019 blocks the build on high/critical advisories, and R-PREC-001 puts security at Tier 1 \u2014 above the TRD \u00a71.1 version pin. GHSA-fx2h-pf6j-xcff (vite server.fs.deny bypass) is patched only in >=6.4.3, so every transitive copy is forced there.",
+    "_comment:overrides": "Security overrides. R-SEC-019 blocks the build on high/critical advisories, and R-PREC-001 puts security at Tier 1 — above the TRD §1.1 version pin. GHSA-fx2h-pf6j-xcff (vite server.fs.deny bypass) is patched only in >=6.4.3, so every transitive copy is forced there. js-yaml, undici and brace-expansion are forced to their patched releases for the same reason. qs is forced to >=6.16.0 for GHSA-x5fp-wj9c-mxmx / GHSA-4mjr-xmp4-gh2g (moderate; a semver-minor bump for express and supertest). proxy-addr >=2.0.8 (IPv4-mapped IP spoofing, critical; express pins ^2.0.7) and source-map-js >=1.2.2 (event-loop DoS via jsdom>css-tree) are patch bumps.",
     "overrides": {
-      "vite": "^6.4.3"
+      "vite": "^6.4.3",
+      "js-yaml@>=4.0.0 <4.3.2": "^4.3.2",
+      "undici@>=8.0.0 <8.10.2": "^8.10.2",
+      "brace-expansion@<1.1.20": "^1.1.20",
+      "brace-expansion@>=4.0.0 <5.0.11": "^5.0.11",
+      "qs": ">=6.16.0",
+      "proxy-addr": ">=2.0.8",
+      "source-map-js": ">=1.2.2"
     },
     "onlyBuiltDependencies": [
       "@prisma/client",
       "@prisma/engines",
       "esbuild",
       "prisma"
-    ]
+    ],
+    "_comment:auditConfig": "D-20 (RULES.md §2.4): GHSA-vfj7-8cjw-p6xm, braces <=3.0.3 with NO patched release, reached only through tailwindcss → chokidar at build time; nothing ships to the browser or the server. Scoped to that one advisory id, not a severity. Remove when a fixed braces is published.",
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-vfj7-8cjw-p6xm"
+      ]
+    }
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^9.15.0",
     "@playwright/test": "^1.49.0",
     "@testing-library/react": "^16.3.2",
@@ -58,6 +78,6 @@
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.16.0",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.11"
   }
 }

@@ -1,19 +1,44 @@
-import { Router } from 'express'
-import { z } from 'zod'
+import express, { Router } from 'express'
+import { z, ZodError } from 'zod'
 import {
   ClientOpSchema,
   CreateBoardSchema,
   ERROR_CODES,
   ListBoardsQuerySchema,
+  NACK_CODES,
   PermanentDeleteSchema,
   UpdateBoardSchema,
+  type ServerOp,
 } from '@coboard/shared'
 import { boardService } from '../../services/BoardService.js'
 import { opService } from '../../services/OpService.js'
 import { permissionService } from '../../services/PermissionService.js'
 import { snapshotService } from '../../services/SnapshotService.js'
-import { assertAuthenticated, requireAuth } from '../middleware/auth.js'
+import { THUMBNAIL_MAX_BYTES, thumbnailService } from '../../services/ThumbnailService.js'
+import { liveRooms } from '../../ws/RoomManager.js'
+import {
+  assertAuthenticated,
+  assertIdentified,
+  identify,
+  identifyOptional,
+  identityOf,
+} from '../middleware/auth.js'
+import { SHARE_TOKEN, shareService } from '../../services/ShareService.js'
+import {
+  boardDeletedLive,
+  boardRenamedLive,
+  pushRoleChanged,
+  revokeLive,
+} from '../../ws/live.js'
+import type { AccessChange } from '../../services/ShareService.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
+import { requestId, requestLog } from '../middleware/requestContext.js'
+import { AuthError } from '../../services/AuthService.js'
+import { env } from '../../lib/env.js'
+import { identityKey } from '../../lib/identity.js'
+import { opsAccepted } from '../../lib/metrics.js'
+import { consume } from '../../lib/tokenBucket.js'
+import { recordOpRejection } from '../../lib/opRejection.js'
 import { validateBody, validatedQuery, validateQuery } from '../middleware/validate.js'
 
 /**
@@ -25,8 +50,10 @@ import { validateBody, validatedQuery, validateQuery } from '../middleware/valid
  * is all it is for.
  */
 
+const MAX_OPS_PER_REQUEST = 200
+
 const AppendOpsSchema = z.object({
-  ops: z.array(ClientOpSchema).min(1).max(200),
+  ops: z.array(ClientOpSchema).min(1).max(MAX_OPS_PER_REQUEST),
 })
 
 const SinceQuerySchema = z.object({
@@ -35,6 +62,76 @@ const SinceQuerySchema = z.object({
 })
 
 const BoardIdSchema = z.string().uuid()
+
+/** A refusal's HTTP status, in the socket path's nack vocabulary. */
+function rejectionCode(error: unknown): string | null {
+  if (error instanceof ZodError) return NACK_CODES.INVALID_OP
+  const status =
+    error instanceof HttpError || error instanceof AuthError ? error.status : null
+  if (status === null || status >= 500) return null // a failure, not a refusal
+  if (status === 403) return NACK_CODES.FORBIDDEN
+  if (status === 404) return NACK_CODES.BOARD_GONE
+  if (status === 422) return NACK_CODES.INVALID_OP
+  if (status === 429) return NACK_CODES.RATE_LIMITED
+  return (error as HttpError | AuthError).code
+}
+
+/**
+ * Log and count every op in a refused REST batch — TRD §15.4. The ids are
+ * read from the RAW body, because a batch refused for being malformed never
+ * produced a parsed one; anything that is not a short string is logged as
+ * "unknown" rather than echoed into the logs.
+ */
+function logRestOpRejection(req: express.Request, error: unknown): void {
+  const code = rejectionCode(error)
+  if (code === null) return
+  const identity = identityOf(req)
+  const actor =
+    identity?.kind === 'user' ? identity.userId : identity ? 'guest' : 'anonymous'
+  const rawOps = (req.body as { ops?: unknown } | null)?.ops
+  const ids = Array.isArray(rawOps)
+    ? rawOps.slice(0, 200).map(op => {
+        const opId = (op as { id?: unknown } | null)?.id
+        return typeof opId === 'string' && opId.length <= 64 ? opId : 'unknown'
+      })
+    : []
+  const boardIdParam = req.params.id ?? ''
+  const board = BoardIdSchema.safeParse(boardIdParam).success ? boardIdParam : 'invalid'
+  for (const opId of ids.length > 0 ? ids : ['unknown']) {
+    recordOpRejection(requestLog(req), {
+      transport: 'rest',
+      code,
+      opId,
+      correlationId: requestId(req),
+      boardId: board,
+      actor,
+      reason: error instanceof Error ? error.message.slice(0, 200) : 'rejected',
+    })
+  }
+}
+
+const AccessQuerySchema = z.object({
+  share: z.string().regex(SHARE_TOKEN).optional(),
+})
+
+const LinkRoleSchema = z.object({ role: z.enum(['EDITOR', 'VIEWER']) })
+
+/** Push the effects of a sharing change to the sockets it affected. */
+function pushAccessChange(
+  boardId: string,
+  change: AccessChange,
+  role?: 'EDITOR' | 'VIEWER',
+) {
+  for (const guestId of change.revokedGuests)
+    revokeLive(boardId, { kind: 'guest', guestId })
+  if (role) {
+    for (const guestId of change.changedGuests) {
+      pushRoleChanged(boardId, { kind: 'guest', guestId }, role)
+    }
+  }
+}
+
+const linkUrl = (token: string) => `/join/${token}`
 
 /**
  * Reject a malformed id before it reaches Prisma.
@@ -54,9 +151,78 @@ function boardId(raw: string | undefined): string {
 export function createBoardsRouter(): Router {
   const router = Router()
 
-  // Every route below requires a signed-in user. Guest access to a shared
-  // board arrives with share links in Phase 12.
-  router.use(requireAuth)
+  /*
+   * A signed-in user OR a guest (FR-AUTH-006). Routes a guest may not use —
+   * the dashboard, creating, renaming, deleting, sharing — call
+   * `assertAuthenticated`, which refuses a guest exactly as it refuses an
+   * anonymous request. Only the board's own read and write paths take
+   * `assertIdentified`, and those still go through the permission service.
+   */
+  /**
+   * The guard's own endpoint — FLOWS §2.3 STEP 4. Registered BEFORE
+   * `identify`, because an anonymous visitor holding a share link must be
+   * able to ask too.
+   *
+   * It never returns the board's name — R-SEC-018 forbids showing it on the
+   * refusal screens, and the surest way not to leak it is not to send it.
+   *
+   *   200 { role, objectCount }                         member → STEP 5
+   *   200 { role: 'none', joinable, requiresName }     live link, no account
+   *   403 { reason: 'no_access' | 'link_revoked' }     S-17
+   *   404                                              S-18
+   *   410 { reason: 'deleted' }                        S-18, "deleted" copy
+   */
+  router.get(
+    '/:id/access',
+    identifyOptional,
+    validateQuery(AccessQuerySchema),
+    ah(async (req, res) => {
+      const id = boardId(req.params.id)
+      const identity = identityOf(req)
+      const access = await permissionService.resolve(id, identity ?? undefined)
+      if (!access) throw new HttpError(ERROR_CODES.NOT_FOUND, 'Board not found', 404)
+      if (access.deletedAt) {
+        throw new HttpError(ERROR_CODES.NOT_FOUND, 'Board deleted', 410, {
+          reason: 'deleted',
+        })
+      }
+      /*
+       * `objectCount` rides along for a member only: FLOWS §8.1 wants
+       * "Loading 4,312 objects…" under the spinner after 2 s, and this is the
+       * one response the board has before the snapshot. It is not the name
+       * (R-SEC-018), and a refusal below still carries nothing.
+       */
+      if (access.role !== 'none') {
+        res.json({ role: access.role, objectCount: access.objectCount })
+        return
+      }
+
+      // Not a member. The share token, if the visitor came through /join,
+      // decides the rest.
+      const { share } = validatedQuery<z.infer<typeof AccessQuerySchema>>(req)
+      const lookup = share ? await shareService.lookup(share) : null
+      if (lookup?.status === 'ok' && lookup.boardId === id) {
+        if (identity?.kind === 'user') {
+          // A signed-in person with a live link just becomes a member.
+          const role = await shareService.joinAsUser(lookup.link, id, identity.userId)
+          res.json({ role, objectCount: access.objectCount })
+          return
+        }
+        res.json({ role: 'none', joinable: true, requiresName: true })
+        return
+      }
+      if (lookup?.status === 'revoked') {
+        throw new HttpError(ERROR_CODES.FORBIDDEN, 'Link revoked', 403, {
+          reason: 'link_revoked',
+        })
+      }
+      throw new HttpError(ERROR_CODES.FORBIDDEN, 'No access', 403, {
+        reason: 'no_access',
+      })
+    }),
+  )
+
+  router.use(identify)
 
   /* ── Collection ───────────────────────────────────────────────────────── */
 
@@ -101,28 +267,6 @@ export function createBoardsRouter(): Router {
     }),
   )
 
-  /**
-   * The guard's own endpoint — FLOWS §2.3 STEP 4.
-   *
-   * Separate from `GET /:id` on purpose. The guard needs to know whether the
-   * user may enter BEFORE the board route mounts, and it must be able to ask
-   * without receiving the board's name — R-SEC-018 forbids showing that on the
-   * 403 screen, and the surest way not to leak it is not to send it.
-   */
-  router.get(
-    '/:id/access',
-    ah(async (req, res) => {
-      const userId = assertAuthenticated(req)
-      const id = boardId(req.params.id)
-      const access = await permissionService.resolve(id, userId)
-      if (!access || access.deletedAt) {
-        res.json({ role: 'none', joinable: false })
-        return
-      }
-      res.json({ role: access.role, joinable: false })
-    }),
-  )
-
   router.patch(
     '/:id',
     validateBody(UpdateBoardSchema),
@@ -134,7 +278,10 @@ export function createBoardsRouter(): Router {
       if (name === undefined) {
         throw new HttpError(ERROR_CODES.VALIDATION_FAILED, 'Nothing to update', 422)
       }
-      res.json({ board: await boardService.rename(id, userId, name) })
+      const board = await boardService.rename(id, userId, name)
+      // FLOWS §9.5: the header updates live for everyone, no toast.
+      boardRenamedLive(id, board.name)
+      res.json({ board })
     }),
   )
 
@@ -145,7 +292,71 @@ export function createBoardsRouter(): Router {
       const userId = assertAuthenticated(req)
       const id = boardId(req.params.id)
       await permissionService.requireOwner(id, userId)
-      res.json({ board: await boardService.trash(id, userId) })
+      const board = await boardService.trash(id, userId)
+      // Every cached role on it is now wrong — the next op from anyone must
+      // see a deleted board, not a 60-second-old grant.
+      await permissionService.invalidate(id)
+      // AT-23: everyone connected sees S-19, and the sockets close. The
+      // outbox is not synced — the target is gone (FLOWS §9.5).
+      boardDeletedLive(id)
+      res.json({ board })
+    }),
+  )
+
+  /* ── The share link — FR-SHARE-002/003, owner only ──────────────────────── */
+
+  router.get(
+    '/:id/share-link',
+    ah(async (req, res) => {
+      const userId = assertAuthenticated(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireOwner(id, userId)
+      const link = await shareService.live(id)
+      res.json({
+        link: link
+          ? { token: link.token, role: link.role, url: linkUrl(link.token) }
+          : null,
+      })
+    }),
+  )
+
+  /** Turn the link on, or change what it grants. */
+  router.put(
+    '/:id/share-link',
+    validateBody(LinkRoleSchema),
+    ah(async (req, res) => {
+      const userId = assertAuthenticated(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireOwner(id, userId)
+      const { role } = req.body as z.infer<typeof LinkRoleSchema>
+      const { link, change } = await shareService.enable(id, role, userId)
+      pushAccessChange(id, change, role)
+      res.json({ link: { token: link.token, role: link.role, url: linkUrl(link.token) } })
+    }),
+  )
+
+  /** "Restricted": the link stops working; its guests are ejected. */
+  router.delete(
+    '/:id/share-link',
+    ah(async (req, res) => {
+      const userId = assertAuthenticated(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireOwner(id, userId)
+      pushAccessChange(id, await shareService.disable(id))
+      res.json({ link: null })
+    }),
+  )
+
+  /** A new token; anyone on the old link loses access. */
+  router.post(
+    '/:id/share-link/reset',
+    ah(async (req, res) => {
+      const userId = assertAuthenticated(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireOwner(id, userId)
+      const { link, change } = await shareService.reset(id, userId)
+      pushAccessChange(id, change)
+      res.json({ link: { token: link.token, role: link.role, url: linkUrl(link.token) } })
     }),
   )
 
@@ -155,7 +366,9 @@ export function createBoardsRouter(): Router {
       const userId = assertAuthenticated(req)
       const id = boardId(req.params.id)
       await permissionService.requireOwner(id, userId)
-      res.json({ board: await boardService.restore(id, userId) })
+      const board = await boardService.restore(id, userId)
+      await permissionService.invalidate(id)
+      res.json({ board })
     }),
   )
 
@@ -175,7 +388,18 @@ export function createBoardsRouter(): Router {
       const id = boardId(req.params.id)
       await permissionService.requireOwner(id, userId)
       const { confirmName } = req.body as z.infer<typeof PermanentDeleteSchema>
+      const thumbnail = await boardService.thumbnailOf(id)
       await boardService.destroy(id, userId, confirmName)
+      void thumbnailService.discard(thumbnail)
+      /*
+       * Finding 16: the same aftermath as trashing. A board deleted straight
+       * from the dashboard, never trashed, still has people on it: drop every
+       * cached role, so nothing is authorized against a board that no longer
+       * exists, and show everyone connected S-19 and close their sockets.
+       * Harmless for a board that was trashed first — its room is empty.
+       */
+      await permissionService.invalidate(id)
+      boardDeletedLive(id)
       res.status(204).end()
     }),
   )
@@ -191,7 +415,42 @@ export function createBoardsRouter(): Router {
       const board = await boardService.duplicate(id, userId, source =>
         snapshotService.materialise(source),
       )
-      res.status(201).json({ board })
+      // The copy looks like its source on the dashboard straight away.
+      await thumbnailService.copy(id, board.id)
+      res.status(201).json({
+        board: { ...board, thumbnailUrl: await boardService.thumbnailOf(board.id) },
+      })
+    }),
+  )
+
+  /* ── Thumbnail — FR-BOARD-003, D13-4 ──────────────────────────────────── */
+
+  /**
+   * A client-rendered 640×400 JPEG (raw body, not JSON). Editors only: a
+   * viewer could otherwise replace a board's dashboard face with anything.
+   */
+  router.put(
+    '/:id/thumbnail',
+    express.raw({ type: 'image/jpeg', limit: THUMBNAIL_MAX_BYTES }),
+    ah(async (req, res) => {
+      const identity = assertIdentified(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireEdit(id, identity)
+      const body = Buffer.isBuffer(req.body) ? new Uint8Array(req.body) : new Uint8Array()
+      const thumbnailUrl = await thumbnailService.store(id, body)
+      res.json({ thumbnailUrl })
+    }),
+  )
+
+  /** The board became empty: back to the placeholder graphic. */
+  router.delete(
+    '/:id/thumbnail',
+    ah(async (req, res) => {
+      const identity = assertIdentified(req)
+      const id = boardId(req.params.id)
+      await permissionService.requireEdit(id, identity)
+      await thumbnailService.clear(id)
+      res.status(204).end()
     }),
   )
 
@@ -208,9 +467,9 @@ export function createBoardsRouter(): Router {
   router.get(
     '/:id/snapshot',
     ah(async (req, res) => {
-      const userId = assertAuthenticated(req)
+      const identity = assertIdentified(req)
       const id = boardId(req.params.id)
-      const access = await permissionService.requireRead(id, userId)
+      const access = await permissionService.requireRead(id, identity)
       const state = await snapshotService.materialise(id)
       res.json({
         objects: state.objects,
@@ -230,9 +489,9 @@ export function createBoardsRouter(): Router {
     '/:id/operations',
     validateQuery(SinceQuerySchema),
     ah(async (req, res) => {
-      const userId = assertAuthenticated(req)
+      const identity = assertIdentified(req)
       const id = boardId(req.params.id)
-      await permissionService.requireRead(id, userId)
+      await permissionService.requireRead(id, identity)
       const { sinceSeq, limit } = validatedQuery<z.infer<typeof SinceQuerySchema>>(req)
       const ops = await opService.since(id, sinceSeq, limit)
       res.json({ ops, currentSeq: await opService.currentSeq(id) })
@@ -249,26 +508,114 @@ export function createBoardsRouter(): Router {
    */
   router.post(
     '/:id/operations',
-    validateBody(AppendOpsSchema),
     ah(async (req, res) => {
-      const userId = assertAuthenticated(req)
-      const id = boardId(req.params.id)
-      // Step 1 of §5.4: AUTHORIZE. A viewer is refused here, before a single
-      // row is written — test AT-20.
-      await permissionService.requireEdit(id, userId)
+      /*
+       * Validation is done here rather than by `validateBody` so that a
+       * malformed batch is logged as an op rejection like every other refusal
+       * (TRD §15.4). Same order as before: body first, then identity, then
+       * the permission check.
+       */
+      let result: Awaited<ReturnType<typeof opService.append>>
+      let identity: ReturnType<typeof assertIdentified>
+      let id: string
+      try {
+        req.body = AppendOpsSchema.parse(req.body)
+        identity = assertIdentified(req)
+        id = boardId(req.params.id)
+        // Step 1 of §5.4: AUTHORIZE. A viewer is refused here, before a single
+        // row is written — test AT-20. The same cached check as the socket path.
+        await permissionService.assertCanEdit(id, identity)
 
-      const { ops } = req.body as z.infer<typeof AppendOpsSchema>
-      const result = await opService.append(id, ops, { userId })
+        const { ops } = req.body as z.infer<typeof AppendOpsSchema>
+
+        /*
+         * Step 3: RATE LIMIT — finding 4. The same token bucket as the socket
+         * (R-SEC-013), costed per op, keyed by WHO is writing rather than by a
+         * session: there is no session here, and keying by request would let a
+         * script that never opens a socket write as fast as Postgres accepts.
+         * The client's outbox treats a 429 as "wait and retry", not a refusal.
+         */
+        const rate = env().REST_OPS_RATE_LIMIT
+        if (
+          !(await consume(`rest-ops:${identityKey(identity)}`, ops.length, {
+            rate,
+            // Never below the largest batch the schema admits, or a full
+            // 200-op batch could not pass even on a full bucket.
+            capacity: Math.max(rate, MAX_OPS_PER_REQUEST),
+          }))
+        ) {
+          throw new HttpError(ERROR_CODES.RATE_LIMITED, 'Slow down', 429)
+        }
+
+        result = await opService.append(
+          id,
+          ops,
+          identity.kind === 'user'
+            ? { userId: identity.userId }
+            : { guestId: identity.guestId },
+        )
+      } catch (error) {
+        logRestOpRejection(req, error)
+        throw error
+      }
+      opsAccepted.inc({ transport: 'rest' }, result.applied.length)
+      const actorTag = identity.kind === 'user' ? identity.userId : 'guest'
+
+      /*
+       * Ops refused by the board-dependent checks (wrong field for the
+       * target's type, a foreign image url, a reused op id) are absent from
+       * `applied`, which the client's REST transport reads as a nack for
+       * exactly those ops (persistence.ts). Listed in `rejected` as well, and
+       * logged like every other refusal (TRD §15.4).
+       */
+      for (const refused of result.rejected) {
+        recordOpRejection(requestLog(req), {
+          transport: 'rest',
+          code: NACK_CODES.INVALID_OP,
+          opId: refused.id,
+          correlationId: requestId(req),
+          boardId: id,
+          actor: actorTag,
+          reason: refused.reason,
+        })
+      }
 
       // Persisted, so it is safe to acknowledge — R-SYNC-012.
-      res.json({ applied: result.applied, currentSeq: result.currentSeq })
+      res.json({
+        applied: result.applied,
+        rejected: result.rejected,
+        currentSeq: result.currentSeq,
+      })
+
+      /*
+       * BROADCAST, exactly as the socket path does (§5.4 step 7). The outbox
+       * falls back to this route while its socket is down, and an op that is
+       * stored but never broadcast is invisible to everyone else in the room
+       * until they reload — and, if nothing is written after it, never
+       * detected as a gap at all (F-8 in docs/REMAINING-WORK.md).
+       *
+       * There is no socket session here, so the author is not excluded: their
+       * own socket receives the op too, in seq order, which the client treats
+       * as the in-order echo of its own write.
+       */
+      const fresh = result.applied
+        .filter(op => !op.duplicate)
+        .map(op => ({
+          id: op.id,
+          type: op.type,
+          objectId: op.objectId,
+          payload: op.payload,
+          seq: op.seq,
+          actorSessionId: `rest:${actorTag}`,
+        })) as ServerOp[]
+      liveRooms().queueOps(id, fresh, `rest:${actorTag}`)
 
       /*
        * Snapshot AFTER responding, and deliberately un-awaited. It is a cache
        * refresh, not part of the write, and making the 500th op wait tens of
        * milliseconds for it would be a visible stutter for one unlucky user.
        */
-      void snapshotService.maybeSnapshot(id)
+      void snapshotService.maybeSnapshot(id, result.currentSeq)
     }),
   )
 

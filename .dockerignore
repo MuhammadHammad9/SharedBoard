@@ -1,0 +1,24 @@
+# Build context for apps/server/Dockerfile and apps/web/Dockerfile (both use
+# the repo root as context, because the pnpm workspace and lockfile live here).
+#
+# Everything is rebuilt inside the image, so local build output and installs
+# are excluded — a stale dist/ copied in would mask a broken build.
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+**/stats.html
+.git
+.github
+.env
+.env.*
+!.env.example
+infra/env/*.env
+infra/secrets
+backups
+coverage
+playwright-report
+test-results
+tests
+fixtures
+docs
+*.log

@@ -4,6 +4,7 @@ import { drawInteraction, type DraftStroke } from './drawInteraction.js'
 import { drawOverlay } from './drawOverlay.js'
 import { drawPresence, type PresenceView } from '../../presence/drawPresence.js'
 import type { Guide } from '../geometry/alignmentGuides.js'
+import { markFirstPaintIfArmed } from './firstPaint.js'
 
 /**
  * THE render loop. TRD §7.2.
@@ -195,6 +196,7 @@ export class Renderer {
       })
       this.dirty.objects = false
       this.objectPaints++
+      markFirstPaintIfArmed()
     }
     if (this.dirty.interaction) {
       drawInteraction(this.targets.interaction, {

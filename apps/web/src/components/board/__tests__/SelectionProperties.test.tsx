@@ -185,3 +185,47 @@ describe('editing a selection', () => {
     expect(screen.getByTestId('selection-properties').textContent).toContain('2 objects')
   })
 })
+
+describe('re-render budget during a drag — R-ARCH-003', () => {
+  it('does not re-render per pointermove, and catches up when the gesture ends', async () => {
+    const { Profiler } = await import('react')
+    const { act } = await import('@testing-library/react')
+    const { beginDrag, updateDrag, endDrag } =
+      await import('../../../features/canvas/interaction/handlers/transform.js')
+    const a = stroke({ color: '#18181B' })
+    seed([a], [a.id])
+    let renders = 0
+    render(
+      <Profiler id="panel" onRender={() => (renders += 1)}>
+        <PropertiesPanel />
+      </Profiler>,
+    )
+    const before = renders
+
+    act(() => {
+      beginDrag(1, 0, 0)
+    })
+    for (let i = 1; i <= 30; i++) act(() => updateDrag(i * 5, 0))
+    // A gesture start may render once; thirty moves must not render thirty times.
+    expect(renders - before).toBeLessThanOrEqual(2)
+
+    // A remote recolour mid-drag shows once the drag ends.
+    act(() => {
+      boardStore.getState().applyOps([
+        {
+          id: 'r',
+          type: 'UPDATE',
+          objectId: a.id,
+          payload: { color: '#EF4444' },
+          seq: 9,
+        } as never,
+      ])
+    })
+    const mid = renders
+    act(() => endDrag(null))
+    expect(renders).toBeGreaterThan(mid)
+    expect(
+      screen.getByRole('button', { name: 'Colour #EF4444' }).getAttribute('aria-pressed'),
+    ).toBe('true')
+  })
+})

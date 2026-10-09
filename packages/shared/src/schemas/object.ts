@@ -61,8 +61,15 @@ export const BaseObjectSchema = z.object({
 
 export const StrokeObjectSchema = BaseObjectSchema.extend({
   type: z.literal('stroke'),
-  /** Flat array with stride 3: [x0,y0,p0, x1,y1,p1, ...]. TRD D-9. */
-  points: z.array(z.number().finite()).min(STROKE_POINTS_MIN).max(STROKE_POINTS_MAX),
+  /**
+   * Flat array with stride 3: [x0,y0,p0, x1,y1,p1, ...]. TRD D-9.
+   *
+   * Bounded like every other coordinate (R-SEC-004): points are canvas
+   * coordinates, clamped on creation, and pressure sits in [0, 1] — inside
+   * the same range. `.finite()` alone let `1e300` through, which survives
+   * validation and then overflows every path the renderer builds from it.
+   */
+  points: z.array(coord).min(STROKE_POINTS_MIN).max(STROKE_POINTS_MAX),
   color: hexColour,
   strokeWidth: z.number().finite().min(STROKE_WIDTH_MIN).max(STROKE_WIDTH_MAX),
   simplified: z.boolean(),

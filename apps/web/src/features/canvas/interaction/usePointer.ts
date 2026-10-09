@@ -1,4 +1,6 @@
 import { useEffect } from 'react'
+import { currentBreakpoint } from '../../../lib/breakpoints.js'
+import { createTouchTracker } from './touchGestures.js'
 import { emitCursor } from '../../presence/bus.js'
 import { boardStore } from '../../../stores/boardStore.js'
 import { beginPan, endPan, updatePan } from './handlers/pan.js'
@@ -79,6 +81,8 @@ export function usePointer(
 
   useEffect(() => {
     if (!element) return
+    // Pinch, and long-press multi-select — FLOWS §14.5.
+    const touches = createTouchTracker()
 
     const localPoint = (e: PointerEvent) => {
       const rect = element.getBoundingClientRect()
@@ -98,7 +102,12 @@ export function usePointer(
      * Route a Select-tool pointerdown. Order mirrors `probe`: handles, then
      * objects, then empty canvas.
      */
-    const beginSelectGesture = (e: PointerEvent, cx: number, cy: number): boolean => {
+    const beginSelectGesture = (
+      e: PointerEvent,
+      cx: number,
+      cy: number,
+      screen: { x: number; y: number },
+    ): boolean => {
       const coarse = e.pointerType !== 'mouse'
       const target = probe(cx, cy, coarse)
 
@@ -109,11 +118,21 @@ export function usePointer(
       }
 
       if (target.kind === 'object') {
+        // A touch press may become a long-press, which ADDS to the selection
+        // the press found — so remember it before this press replaces it.
+        touches.notePress(e, target.id, boardStore.getState().selection, screen)
         selectObject(target.id, e.shiftKey)
         // Shift+click is a selection EDIT, not the start of a drag — dragging
         // from it would move the group the user is still assembling.
         if (e.shiftKey) return false
         return beginDrag(e.pointerId, cx, cy)
+      }
+
+      // Mobile (FLOWS §14.5, PRD §7.7): no marquee — a finger on empty canvas
+      // pans, after deselecting as a tap on empty canvas always does.
+      if (e.pointerType === 'touch' && currentBreakpoint() === 'mobile') {
+        boardStore.getState().clearSelection()
+        return beginPan(e.pointerId, screen.x, screen.y)
       }
 
       // Empty canvas: marquee. beginMarquee also clears the selection, so a
@@ -122,6 +141,16 @@ export function usePointer(
     }
 
     const onPointerDown = (e: PointerEvent) => {
+      // A second finger turns whatever the first started into a pinch: the
+      // first gesture is cancelled (nothing commits), and both fingers now
+      // zoom and pan (FLOWS §14.5).
+      if (touches.down(e, localPoint(e))) {
+        onCancel()
+        e.preventDefault()
+        return
+      }
+      if (touches.pinching) return
+
       const { activeTool, editingTextId } = boardStore.getState()
 
       // A press anywhere on the canvas ends an open text edit first — the
@@ -132,7 +161,15 @@ export function usePointer(
 
       // Pan outranks everything. Middle-mouse and Space are explicit "move the
       // paper" gestures and must work regardless of which tool is selected.
-      const wantsPan = e.button === MIDDLE_BUTTON || activeTool === 'hand' || spaceHeld()
+      //
+      // A viewer's every drag is a pan (FR-SHARE-006): the canvas is theirs to
+      // look around, never to change.
+      const { readOnly } = boardStore.getState()
+      const wantsPan =
+        e.button === MIDDLE_BUTTON ||
+        activeTool === 'hand' ||
+        spaceHeld() ||
+        (readOnly && e.button === 0)
       if (wantsPan) {
         const p = localPoint(e)
         if (!beginPan(e.pointerId, p.x, p.y)) return
@@ -154,15 +191,20 @@ export function usePointer(
         started = beginDraw(e.pointerId, p.x, p.y, e.pressure)
       } else if (isShapeTool(activeTool)) {
         started = beginCreate(e.pointerId, activeTool, c.x, c.y)
-      } else if (activeTool === 'sticky' || activeTool === 'text') {
-        // Click-placed and straight into edit mode — FR-CANVAS-008's "click
-        // and type without a second action". No pointer capture: there is no
-        // drag to track.
+      } else if (activeTool === 'sticky') {
+        // FR-CANVAS-008: "click to place a fixed 200×200 note; or drag to
+        // define a custom size". The press starts a CREATING gesture either
+        // way; `endCreate` tells a click from a drag on release, and both go
+        // straight into edit mode.
+        started = beginCreate(e.pointerId, 'sticky', c.x, c.y)
+      } else if (activeTool === 'text') {
+        // Click-placed and straight into edit mode — FR-CANVAS-009. No pointer
+        // capture: there is no drag to track.
         placeAndEdit(activeTool, c.x, c.y)
         e.preventDefault()
         return
       } else if (activeTool === 'select') {
-        started = beginSelectGesture(e, c.x, c.y)
+        started = beginSelectGesture(e, c.x, c.y, p)
       }
 
       if (!started) return
@@ -174,6 +216,7 @@ export function usePointer(
     const onPointerMove = (e: PointerEvent) => {
       const { interaction, activeTool } = boardStore.getState()
       const p = localPoint(e)
+      if (touches.move(e, p)) return
 
       // Remember where the pointer is, in CANVAS space, so Cmd+V can paste
       // "at the pointer position" (FR-CANVAS-015) — a keyboard event has none
@@ -279,7 +322,16 @@ export function usePointer(
     }
 
     /** pointerup: each state commits its own way. */
-    const onPointerUp = () => {
+    const onPointerUp = (e: PointerEvent) => {
+      if (touches.up(e)) return
+      // Long-press (touch has no Shift): toggle into the selection the press
+      // found. Only after the drag it started has ended, moving nothing.
+      const longPress = touches.takeLongPress(e)
+      if (longPress) {
+        if (boardStore.getState().interaction.type === 'DRAGGING') endDrag(element)
+        boardStore.getState().setSelection(longPress)
+        return
+      }
       switch (boardStore.getState().interaction.type) {
         case 'DRAWING':
           commitDraw(element)
@@ -354,6 +406,7 @@ export function usePointer(
      * Otherwise every attempt to drag a note would drop the user into typing.
      */
     const onDoubleClick = (e: MouseEvent) => {
+      if (boardStore.getState().readOnly) return
       if (boardStore.getState().activeTool !== 'select') return
       const rect = element.getBoundingClientRect()
       const c = toCanvas(e.clientX - rect.left, e.clientY - rect.top)
@@ -368,7 +421,11 @@ export function usePointer(
     element.addEventListener('pointerdown', onPointerDown)
     element.addEventListener('pointermove', onPointerMove)
     element.addEventListener('pointerup', onPointerUp)
-    element.addEventListener('pointercancel', onCancel)
+    const onPointerCancel = (e: PointerEvent) => {
+      touches.up(e)
+      onCancel()
+    }
+    element.addEventListener('pointercancel', onPointerCancel)
     // Safety net: if the browser drops capture for any reason, exit cleanly
     // rather than stranding the machine mid-interaction.
     element.addEventListener('lostpointercapture', onCancel)
@@ -378,7 +435,7 @@ export function usePointer(
       element.removeEventListener('pointerdown', onPointerDown)
       element.removeEventListener('pointermove', onPointerMove)
       element.removeEventListener('pointerup', onPointerUp)
-      element.removeEventListener('pointercancel', onCancel)
+      element.removeEventListener('pointercancel', onPointerCancel)
       element.removeEventListener('lostpointercapture', onCancel)
       // R-CANVAS-053: release on unmount too — an error path counts.
       onCancel()

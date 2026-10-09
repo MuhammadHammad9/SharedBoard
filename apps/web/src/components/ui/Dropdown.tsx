@@ -60,20 +60,18 @@ export function Dropdown({ trigger, items, align = 'right', label }: DropdownPro
 
   const enabled = items.filter(item => !item.disabled)
 
-  const close = useCallback(
-    (returnFocus = true) => {
-      setOpen(false)
-      if (returnFocus) triggerRef.current?.focus()
-    },
-    [],
-  )
+  const close = useCallback((returnFocus = true) => {
+    setOpen(false)
+    if (returnFocus) triggerRef.current?.focus()
+  }, [])
 
   useEffect(() => {
     if (!open) return
 
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node
-      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return
+      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target))
+        return
       // No focus return here: the user clicked somewhere else on purpose, and
       // yanking the caret back to the trigger would fight them.
       close(false)

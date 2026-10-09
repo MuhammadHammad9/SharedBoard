@@ -48,11 +48,23 @@ const BOARDS: Array<{
   { name: 'Q3 Retrospective — Platform', owner: 0, editors: [1, 2], agedDays: 0 },
   { name: 'Onboarding flow rewrite', owner: 0, editors: [1], agedDays: 1 },
   { name: 'Pricing page — v3 exploration', owner: 1, editors: [0], agedDays: 2 },
-  { name: 'Incident 2026-07-14 timeline', owner: 1, editors: [], viewers: [0, 2], agedDays: 6 },
+  {
+    name: 'Incident 2026-07-14 timeline',
+    owner: 1,
+    editors: [],
+    viewers: [0, 2],
+    agedDays: 6,
+  },
   { name: 'Hiring loop: staff frontend', owner: 2, editors: [0], agedDays: 11 },
   { name: 'Mobile gestures — open questions', owner: 0, editors: [2], agedDays: 24 },
   { name: 'Architecture: presence fan-out', owner: 2, editors: [0, 1], agedDays: 40 },
-  { name: 'Offsite agenda (old)', owner: 0, editors: [], agedDays: 61, trashedDaysAgo: 4 },
+  {
+    name: 'Offsite agenda (old)',
+    owner: 0,
+    editors: [],
+    agedDays: 61,
+    trashedDaysAgo: 4,
+  },
 ]
 
 async function main() {

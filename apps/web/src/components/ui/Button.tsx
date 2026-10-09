@@ -65,14 +65,14 @@ export function Button({
       {/* Holds the width so the button cannot resize when the label leaves. */}
       <span
         aria-hidden={loading || undefined}
-        className="transition-[opacity,filter] duration-200 ease-out"
+        className="transition-[opacity,filter] duration-base ease-out"
         style={loading ? { opacity: 0, filter: 'blur(2px)' } : { opacity: 1 }}
       >
         {children}
       </span>
 
       <span
-        className="absolute inset-0 flex items-center justify-center transition-[opacity,filter] duration-200 ease-out"
+        className="absolute inset-0 flex items-center justify-center transition-[opacity,filter] duration-base ease-out"
         style={loading ? { opacity: 1 } : { opacity: 0, filter: 'blur(2px)' }}
         aria-hidden={!loading || undefined}
       >

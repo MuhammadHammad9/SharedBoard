@@ -1,9 +1,9 @@
 import {
   POLYLINE_ZOOM_THRESHOLD,
   type BoardObject,
-  type ObjectType,
   type ShapeObject,
   type StickyObject,
+  type ImageObject,
   type StrokeObject,
   type TextObject,
   type Viewport,
@@ -12,14 +12,14 @@ import { collectVisible, getViewRect } from '../geometry/culling.js'
 import { applyStrokeStyle, strokePath, strokeStyleKey } from './shapes/stroke.js'
 import { applyShapeStyle, drawShape, shapeStyleKey } from './shapes/shapes.js'
 import { drawSticky, drawText } from './shapes/textual.js'
+import { drawImageObject } from './shapes/image.js'
+import { imageCache, type ImageSource } from '../imageCache.js'
 
 /**
  * Layer 1 — committed objects.
  *
- * PHASE 5 SCOPE: strokes, shapes, sticky notes and text all render for real.
- * Only images still draw as a tinted bounding box — the last survivor of the
- * transitional BLOCKOUT renderer Phase 2 added so the 10,000-object frame-rate
- * gate could be measured honestly. FR-CANVAS-010 retires it in Phase 12.
+ * Every object type renders for real. Images (FR-CANVAS-010, Phase 13) were
+ * the last to draw as a tinted blockout box; that branch is gone.
  *
  * R-CANVAS-021: apply the viewport transform ONCE per frame, not per object.
  * R-CANVAS-024: never allocate inside the draw loop.
@@ -55,28 +55,26 @@ export interface DrawObjectsArgs {
   scratch: BoardObject[]
   /** Object under the eraser, drawn in --color-danger — FR-CANVAS-006. */
   eraseCandidate?: string | null
+  /** Decoded bitmaps for image objects. The shared LRU cache by default. */
+  images?: ImageSource
+  /**
+   * False to draw on top of what is already there — the chunked export draws
+   * a large board in several calls onto one canvas. The live canvas always
+   * clears.
+   */
+  clear?: boolean
 }
 
 /** PRD §15 --color-danger. The eraser's "this is what you are about to lose". */
 const DANGER = '#DC2626'
 
-/**
- * Blockout tint for the ONE type still without a real renderer.
- *
- * Phase 5 replaced shapes, sticky notes and text; images are FR-CANVAS-010
- * [P1] and land in Phase 12, so the placeholder rectangle survives for them
- * alone. When that goes, so does this and the whole blockout branch below.
- */
-const TINTS: Partial<Record<ObjectType, string>> = {
-  image: '#E4E4E7',
-}
-
 export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs): void {
   const { viewport, width, height, dpr, objects, scratch, eraseCandidate } = args
+  const images = args.images ?? imageCache
 
   ctx.save()
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  ctx.clearRect(0, 0, width, height)
+  if (args.clear !== false) ctx.clearRect(0, 0, width, height)
 
   const visible = collectVisible(objects, getViewRect(viewport, width, height), scratch)
   if (visible.length === 0) {
@@ -95,98 +93,111 @@ export function drawObjects(ctx: CanvasRenderingContext2D, args: DrawObjectsArgs
   // Run-length batching state. Empty string can never equal a real key, which
   // always contains two pipes.
   let styleKey = ''
-  let blockoutTint = ''
 
   for (let i = 0; i < visible.length; i++) {
     const o = visible[i]!
 
     /*
-     * FR-CANVAS-006: the object under the eraser renders in --color-danger.
-     * Drawn outside the batch — it is exactly one object per frame at most, so
-     * paying one extra pair of context writes is cheaper than threading a
-     * conditional through the batching state, and it keeps the run-length
-     * logic below honest about what it is comparing.
+     * FR-CANVAS-012 rotation, about the object's centre, in degrees. Hit
+     * testing and the rotate handle have always honoured it; the renderer
+     * did not, so a rotated object was drawn upright inside a rotated hit
+     * box. Only rotated objects pay for the save/restore.
      */
-    const erasing = eraseCandidate != null && o.id === eraseCandidate
+    const rotated = o.rotation !== 0
+    if (rotated) {
+      const cx = o.x + o.width / 2
+      const cy = o.y + o.height / 2
+      ctx.save()
+      ctx.translate(cx, cy)
+      ctx.rotate((o.rotation * Math.PI) / 180)
+      ctx.translate(-cx, -cy)
+    }
+    try {
+      /*
+       * FR-CANVAS-006: the object under the eraser renders in --color-danger.
+       * Drawn outside the batch — it is exactly one object per frame at most, so
+       * paying one extra pair of context writes is cheaper than threading a
+       * conditional through the batching state, and it keeps the run-length
+       * logic below honest about what it is comparing.
+       */
+      const erasing = eraseCandidate != null && o.id === eraseCandidate
 
-    if (o.type === 'stroke') {
-      const s = o as StrokeObject
-      if (erasing) {
-        ctx.save()
-        applyStrokeStyle(ctx, { ...s, color: DANGER })
+      if (o.type === 'stroke') {
+        const s = o as StrokeObject
+        if (erasing) {
+          ctx.save()
+          applyStrokeStyle(ctx, { ...s, color: DANGER })
+          strokePath(ctx, s.points, coarse)
+          ctx.restore()
+          // The batch's cached style is still whatever it was before the save,
+          // so nothing needs invalidating here.
+          continue
+        }
+        const key = strokeStyleKey(s)
+        if (key !== styleKey) {
+          applyStrokeStyle(ctx, s)
+          styleKey = key
+        }
         strokePath(ctx, s.points, coarse)
-        ctx.restore()
-        // The batch's cached style is still whatever it was before the save,
-        // so nothing needs invalidating here.
         continue
       }
-      const key = strokeStyleKey(s)
-      if (key !== styleKey) {
-        applyStrokeStyle(ctx, s)
-        styleKey = key
-        // A fill-styled blockout may follow; force it to re-set its own state.
-        blockoutTint = ''
+
+      if (erasing) {
+        ctx.save()
+        ctx.fillStyle = DANGER
+        ctx.globalAlpha = 0.85
+        ctx.fillRect(o.x, o.y, o.width, o.height)
+        ctx.restore()
+        continue
       }
-      strokePath(ctx, s.points, coarse)
-      continue
-    }
 
-    if (erasing) {
-      ctx.save()
-      ctx.fillStyle = DANGER
-      ctx.globalAlpha = 0.85
-      ctx.fillRect(o.x, o.y, o.width, o.height)
-      ctx.restore()
-      continue
-    }
-
-    if (
-      o.type === 'rect' ||
-      o.type === 'ellipse' ||
-      o.type === 'line' ||
-      o.type === 'arrow'
-    ) {
-      const s = o as ShapeObject
-      const key = shapeStyleKey(s)
-      if (key !== styleKey) {
-        applyShapeStyle(ctx, s)
-        styleKey = key
-        blockoutTint = ''
+      if (
+        o.type === 'rect' ||
+        o.type === 'ellipse' ||
+        o.type === 'line' ||
+        o.type === 'arrow'
+      ) {
+        const s = o as ShapeObject
+        const key = shapeStyleKey(s)
+        if (key !== styleKey) {
+          applyShapeStyle(ctx, s)
+          styleKey = key
+        }
+        drawShape(ctx, s)
+        continue
       }
-      drawShape(ctx, s)
-      continue
-    }
 
-    /*
-     * Sticky notes and text each save/restore their own context. They set
-     * font, alignment, baseline, clip regions and gradients — far more state
-     * than a style key can usefully describe, and leaking any of it into the
-     * next object would be a rendering bug that only shows up on boards with a
-     * particular ordering. Batching is for the cheap uniform cases.
-     */
-    if (o.type === 'sticky') {
-      drawSticky(ctx, o as StickyObject)
-      styleKey = ''
-      blockoutTint = ''
-      continue
-    }
+      /*
+       * Sticky notes and text each save/restore their own context. They set
+       * font, alignment, baseline, clip regions and gradients — far more state
+       * than a style key can usefully describe, and leaking any of it into the
+       * next object would be a rendering bug that only shows up on boards with a
+       * particular ordering. Batching is for the cheap uniform cases.
+       */
+      if (o.type === 'sticky') {
+        drawSticky(ctx, o as StickyObject)
+        styleKey = ''
+        continue
+      }
 
-    if (o.type === 'text') {
-      drawText(ctx, o as TextObject)
-      styleKey = ''
-      blockoutTint = ''
-      continue
-    }
+      if (o.type === 'text') {
+        drawText(ctx, o as TextObject)
+        styleKey = ''
+        continue
+      }
 
-    const tint = TINTS[o.type]
-    if (!tint) continue
-    if (tint !== blockoutTint) {
-      ctx.fillStyle = tint
-      ctx.globalAlpha = coarse ? 0.7 : 0.85
-      blockoutTint = tint
-      styleKey = ''
+      if (o.type === 'image') {
+        drawImageObject(ctx, o as ImageObject, images)
+        styleKey = ''
+      }
+    } finally {
+      // `finally` runs on every `continue` above too.
+      if (rotated) {
+        ctx.restore()
+        // The restore rewound context state; the batch must re-apply.
+        styleKey = ''
+      }
     }
-    ctx.fillRect(o.x, o.y, o.width, o.height)
   }
 
   ctx.globalAlpha = 1

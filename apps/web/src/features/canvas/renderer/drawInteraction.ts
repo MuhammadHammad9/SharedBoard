@@ -1,6 +1,7 @@
 import type { BoardObject, Rect, ShapeObject, Viewport } from '@coboard/shared'
 import { drawStroke } from './shapes/stroke.js'
 import { applyShapeStyle, drawShape } from './shapes/shapes.js'
+import { drawSticky } from './shapes/textual.js'
 import type { Guide } from '../geometry/alignmentGuides.js'
 
 /**
@@ -110,9 +111,15 @@ export function drawInteraction(
     ctx.save()
     ctx.translate(viewport.x, viewport.y)
     ctx.scale(viewport.zoom, viewport.zoom)
-    const s = creating as ShapeObject
-    applyShapeStyle(ctx, s)
-    drawShape(ctx, s)
+    if (creating.type === 'sticky') {
+      // A sticky dragged to size (FR-CANVAS-008) previews as the note it will
+      // be, through the same renderer.
+      drawSticky(ctx, creating)
+    } else {
+      const s = creating as ShapeObject
+      applyShapeStyle(ctx, s)
+      drawShape(ctx, s)
+    }
     ctx.restore()
   }
 

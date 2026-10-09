@@ -14,7 +14,11 @@ import {
 } from '@coboard/shared'
 import { useBoardStore } from '../../../stores/boardStore.js'
 import { ColorSwatch } from '../../ui/ColorSwatch.js'
+import { StickyFontControl } from './controls.js'
 import { Slider } from '../../ui/Slider.js'
+import { boardChrome } from '../../../lib/strings.js'
+
+const p = boardChrome.properties
 
 /**
  * Sticky-note and text tool properties — FLOWS §14.4.
@@ -24,9 +28,9 @@ import { Slider } from '../../ui/Slider.js'
  */
 
 const ALIGNMENTS = [
-  { value: 'left' as const, icon: TextAlignLeft, label: 'Align left' },
-  { value: 'center' as const, icon: TextAlignCenter, label: 'Align centre' },
-  { value: 'right' as const, icon: TextAlignRight, label: 'Align right' },
+  { value: 'left' as const, icon: TextAlignLeft, label: p.alignLeft },
+  { value: 'center' as const, icon: TextAlignCenter, label: p.alignCentre },
+  { value: 'right' as const, icon: TextAlignRight, label: p.alignRight },
 ]
 
 const TOGGLE =
@@ -44,13 +48,13 @@ export function StickyProperties() {
   return (
     <div className="flex flex-col gap-4" data-testid="sticky-properties">
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-muted">Colour</h3>
+        <h3 className="text-xs font-medium text-muted">{p.colour}</h3>
         {/*
           The 8 FROZEN sticky colours — R-UI-014. A sticky's colour is a
           persisted object property, so this palette is not a styling choice
           and cannot be extended without changing stored data.
         */}
-        <div className="grid grid-cols-4 gap-2" role="group" aria-label="Sticky colour">
+        <div className="grid grid-cols-4 gap-2" role="group" aria-label={p.stickyColour}>
           {Object.entries(STICKY_COLOURS).map(([name, value]) => (
             <ColorSwatch
               key={value}
@@ -63,9 +67,12 @@ export function StickyProperties() {
         </div>
       </section>
 
-      <p className="text-xs text-muted">
-        Click the board to place a note and start typing.
-      </p>
+      <StickyFontControl
+        value={sticky.fontSize}
+        onChange={fontSize => setSticky({ fontSize })}
+      />
+
+      <p className="text-xs text-muted">{p.stickyHint}</p>
     </div>
   )
 }
@@ -77,8 +84,8 @@ export function TextProperties() {
   return (
     <div className="flex flex-col gap-4" data-testid="text-properties">
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-muted">Colour</h3>
-        <div className="grid grid-cols-5 gap-2" role="group" aria-label="Text colour">
+        <h3 className="text-xs font-medium text-muted">{p.colour}</h3>
+        <div className="grid grid-cols-5 gap-2" role="group" aria-label={p.textColour}>
           {PEN_COLOURS.map(c => (
             <ColorSwatch
               key={c}
@@ -91,7 +98,7 @@ export function TextProperties() {
       </section>
 
       <Slider
-        label="Font size"
+        label={p.fontSize}
         value={text.fontSize}
         min={FONT_SIZE_MIN}
         max={FONT_SIZE_MAX}
@@ -101,11 +108,11 @@ export function TextProperties() {
       />
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-muted">Style</h3>
-        <div className="flex gap-1" role="group" aria-label="Text style">
+        <h3 className="text-xs font-medium text-muted">{p.style}</h3>
+        <div className="flex gap-1" role="group" aria-label={p.textStyle}>
           <button
             type="button"
-            aria-label="Bold"
+            aria-label={p.bold}
             aria-pressed={text.bold}
             data-testid="text-bold"
             onClick={() => setText({ bold: !text.bold })}
@@ -115,7 +122,7 @@ export function TextProperties() {
           </button>
           <button
             type="button"
-            aria-label="Italic"
+            aria-label={p.italic}
             aria-pressed={text.italic}
             data-testid="text-italic"
             onClick={() => setText({ italic: !text.italic })}
@@ -127,8 +134,8 @@ export function TextProperties() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-muted">Alignment</h3>
-        <div className="flex gap-1" role="group" aria-label="Text alignment">
+        <h3 className="text-xs font-medium text-muted">{p.alignment}</h3>
+        <div className="flex gap-1" role="group" aria-label={p.textAlignment}>
           {ALIGNMENTS.map(({ value, icon: Icon, label }) => (
             <button
               key={value}
@@ -147,7 +154,7 @@ export function TextProperties() {
 
       <p className="flex items-center gap-2 text-xs text-muted">
         <TextAa size={14} weight="light" aria-hidden="true" />
-        Click the board to place text.
+        {p.textHint}
       </p>
     </div>
   )

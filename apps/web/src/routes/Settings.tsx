@@ -1,20 +1,24 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { DISPLAY_NAME_MAX, ERROR_CODES } from '@coboard/shared'
 import { PasswordStrength, checkPassword } from '../features/auth/PasswordStrength.js'
 import { useForm } from '../features/auth/useForm.js'
 import {
+  AVATAR_TYPES,
+  AvatarFileError,
   changePassword,
   deleteAccount,
   logout,
   updateProfile,
+  uploadAvatar,
 } from '../features/auth/api.js'
 import { ApiError } from '../lib/api.js'
 import { useAuthStore } from '../stores/authStore.js'
 import { Button } from '../components/ui/Button.js'
 import { FormError } from '../components/ui/FormError.js'
 import { Input } from '../components/ui/Input.js'
-import { auth, validation } from '../lib/strings.js'
+import { auth, errors, validation } from '../lib/strings.js'
 
 /**
  * S-16 Profile settings — FR-SET-001.
@@ -27,6 +31,7 @@ import { auth, validation } from '../lib/strings.js'
 export default function Settings() {
   const user = useAuthStore(s => s.user)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   if (!user) return null
 
@@ -37,7 +42,15 @@ export default function Settings() {
         <Button
           variant="secondary"
           onClick={() => {
-            void logout().then(() => navigate('/login', { replace: true }))
+            // PRD FR-AUTH-007: logout "clears in-memory board caches, and
+            // returns to the landing page". The header's logout gets the first
+            // half for free from a full page load; this one is a client-side
+            // navigation, so the cached board lists must be dropped by hand —
+            // or the next person to log in on this tab sees them.
+            void logout().then(() => {
+              queryClient.clear()
+              navigate('/', { replace: true })
+            })
           }}
           data-testid="logout"
         >
@@ -46,6 +59,7 @@ export default function Settings() {
       </header>
 
       <ProfileSection displayName={user.displayName} email={user.email} />
+      <AvatarSection displayName={user.displayName} avatarUrl={user.avatarUrl} />
       <PasswordSection hasPassword={user.hasPassword} />
       <DangerSection displayName={user.displayName} />
     </main>
@@ -120,8 +134,125 @@ function ProfileSection({ displayName, email }: { displayName: string; email: st
   )
 }
 
+/**
+ * FR-SET-001 "change … avatar" — D-36. Upload or remove; the preview is the
+ * same circle the dashboard cards draw.
+ */
+function AvatarSection({
+  displayName,
+  avatarUrl,
+}: {
+  displayName: string
+  avatarUrl: string | null
+}) {
+  const input = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const run = async (work: () => Promise<unknown>) => {
+    setBusy(true)
+    setError(null)
+    setSaved(false)
+    try {
+      await work()
+      setSaved(true)
+    } catch (err) {
+      setError(
+        err instanceof AvatarFileError
+          ? err.reason === 'too_large'
+            ? errors.uploadTooLarge
+            : auth.settings.avatarUnsupported
+          : auth.settings.avatarFailed,
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card title={auth.settings.avatar}>
+      <div className="flex flex-wrap items-center gap-4">
+        <span
+          className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-subtle text-sm font-semibold text-primary"
+          data-testid="settings-avatar"
+        >
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={auth.settings.avatarAlt(displayName)}
+              referrerPolicy="no-referrer"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <span aria-hidden="true">{initials(displayName)}</span>
+          )}
+        </span>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              loading={busy}
+              onClick={() => input.current?.click()}
+              data-testid="avatar-upload"
+            >
+              {auth.settings.avatarChange}
+            </Button>
+            {avatarUrl ? (
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() => void run(() => updateProfile({ avatarUrl: null }))}
+                data-testid="avatar-remove"
+              >
+                {auth.settings.avatarRemove}
+              </Button>
+            ) : null}
+          </div>
+          <p className="text-xs text-muted">{auth.settings.avatarHint}</p>
+        </div>
+
+        <input
+          ref={input}
+          type="file"
+          accept={AVATAR_TYPES.join(',')}
+          className="hidden"
+          data-testid="avatar-file"
+          onChange={event => {
+            const file = event.target.files?.[0]
+            // Cleared, so choosing the same file again still fires a change.
+            event.target.value = ''
+            if (file) void run(() => uploadAvatar(file))
+          }}
+        />
+      </div>
+
+      {error ? (
+        <div className="mt-4">
+          <FormError message={error} />
+        </div>
+      ) : null}
+      {saved ? (
+        <p role="status" className="mt-4 text-sm text-success">
+          {auth.settings.avatarSaved}
+        </p>
+      ) : null}
+    </Card>
+  )
+}
+
+/** Two letters, as on the dashboard's avatar button. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  const first = parts[0]?.[0] ?? ''
+  const second = parts.length > 1 ? (parts.at(-1)?.[0] ?? '') : ''
+  return (first + second).toUpperCase() || '?'
+}
+
 function PasswordSection({ hasPassword }: { hasPassword: boolean }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const form = useForm({ currentPassword: '', newPassword: '' }, values => ({
     // An OAuth-only account is SETTING a first password, so there is nothing
@@ -142,7 +273,9 @@ function PasswordSection({ hasPassword }: { hasPassword: boolean }) {
         newPassword: values.newPassword,
       })
       // Every session was revoked, this one included, so there is nowhere to
-      // stay — send them to log in with the new password.
+      // stay — send them to log in with the new password. The session is
+      // over, so its cached boards go with it (FR-AUTH-007).
+      queryClient.clear()
       navigate('/login?reset=success', { replace: true })
     } catch (err) {
       if (err instanceof ApiError && err.code === ERROR_CODES.INVALID_CREDENTIALS) {
@@ -202,6 +335,7 @@ function PasswordSection({ hasPassword }: { hasPassword: boolean }) {
 
 function DangerSection({ displayName }: { displayName: string }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const form = useForm({ confirm: '' }, values => ({
     // Typing the exact display name — FR-SET-001. Checked here for feedback
@@ -213,6 +347,7 @@ function DangerSection({ displayName }: { displayName: string }) {
   const onSubmit = form.submit(async values => {
     try {
       await deleteAccount(values.confirm.trim())
+      queryClient.clear()
       navigate('/', { replace: true })
     } catch {
       form.setFormError(auth.signup.genericFailure)
@@ -220,7 +355,7 @@ function DangerSection({ displayName }: { displayName: string }) {
   })
 
   return (
-    <section className="rounded-lg border border-danger/30 bg-danger/5 p-6">
+    <section className="rounded-lg border border-danger/30 bg-app p-6">
       <h2 className="text-base font-medium text-danger">{auth.settings.dangerZone}</h2>
       <p className="mt-1 text-sm text-primary">{auth.settings.dangerBody}</p>
 

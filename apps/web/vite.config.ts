@@ -30,10 +30,35 @@ function devFixtures(): Plugin {
   }
 }
 
+/**
+ * `vite preview` falls back to dist/index.html for every route, but that file
+ * is the PRERENDERED landing page (scripts/prerender.ts). Production serves
+ * dist/app.html for everything except `/` (infra/nginx/web.conf), so preview
+ * does too — otherwise the dashboard's Lighthouse budget would measure a
+ * document production never sends.
+ */
+const previewAppShell = (): Plugin => ({
+  name: 'coboard-preview-app-shell',
+  configurePreviewServer(server) {
+    server.middlewares.use((req, _res, next) => {
+      const path = (req.url ?? '/').split('?')[0]!
+      const isRoute =
+        req.method === 'GET' &&
+        path !== '/' &&
+        !path.includes('.') &&
+        !path.startsWith('/api') &&
+        !path.startsWith('/ws')
+      if (isRoute) req.url = '/app.html'
+      next()
+    })
+  },
+})
+
 export default defineConfig({
   plugins: [
     react(),
     devFixtures(),
+    previewAppShell(),
     // Emits bundle-report.json, consumed by scripts/check-bundle-size.ts (C-4).
     visualizer({
       filename: 'stats.html',
@@ -72,6 +97,26 @@ export default defineConfig({
        * production the two are behind one origin and no proxy is involved,
        * so this exists purely so `pnpm dev` and the e2e suite match.
        */
+      '/ws': {
+        target: process.env.API_ORIGIN ?? 'http://localhost:3000',
+        changeOrigin: false,
+        ws: true,
+      },
+    },
+  },
+  /*
+   * `vite preview` serves the PRODUCTION build with the same one-origin proxy,
+   * so the PRD §7.1 budgets (tests/e2e/budgets.spec.ts, Lighthouse) are
+   * measured on what ships rather than on the dev server's unbundled modules.
+   */
+  preview: {
+    port: 4173,
+    strictPort: true,
+    proxy: {
+      '/api': {
+        target: process.env.API_ORIGIN ?? 'http://localhost:3000',
+        changeOrigin: false,
+      },
       '/ws': {
         target: process.env.API_ORIGIN ?? 'http://localhost:3000',
         changeOrigin: false,

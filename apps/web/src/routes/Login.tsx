@@ -39,7 +39,9 @@ export default function Login() {
   /** True after a wrong password, so the banner yields focus to the field. */
   const [credentialFailure, setCredentialFailure] = useState(false)
 
-  const form = useForm({ email: '', password: '' }, values => ({
+  // FLOWS §3.1 8b: S-02's "Log in instead" carries the typed email here.
+  const prefilledEmail = Boolean(params.get('email'))
+  const form = useForm({ email: params.get('email') ?? '', password: '' }, values => ({
     email: !values.email
       ? validation.emailRequired
       : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)
@@ -160,7 +162,8 @@ export default function Login() {
           label={auth.fields.email}
           type="email"
           autoComplete="email"
-          autoFocus
+          // Arriving with the email already filled in, the password is next.
+          autoFocus={!prefilledEmail}
           data-testid="email"
           value={form.values.email}
           error={form.errors.email}
@@ -173,6 +176,7 @@ export default function Login() {
           label={auth.fields.password}
           revealable
           autoComplete="current-password"
+          autoFocus={prefilledEmail}
           data-testid="password"
           value={form.values.password}
           error={form.errors.password}

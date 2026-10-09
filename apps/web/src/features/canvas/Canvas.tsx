@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MAX_DPR, type ObjectId } from '@coboard/shared'
+import { MAX_DPR, type ClientOp, type ObjectId } from '@coboard/shared'
 import { boardStore, objectsInZOrder, useBoardStore } from '../../stores/boardStore.js'
 import { Toolbar } from '../../components/board/Toolbar.js'
 import { PropertiesPanel } from '../../components/board/PropertiesPanel.js'
 import { ZoomControls } from '../../components/board/ZoomControls.js'
 import { UndoRedoControls } from '../../components/board/UndoRedoControls.js'
 import { history } from './history/history.js'
+import { applyAndEmit } from './history/apply.js'
 import {
   CanvasDebugOverlay,
   type DebugSnapshot,
@@ -25,12 +26,17 @@ import { ContextMenu } from '../../components/board/ContextMenu.js'
 import { resizeCanvas } from './renderer/resizeCanvas.js'
 import { getViewRect, isVisible } from './geometry/culling.js'
 import { useKeyboard } from './interaction/useKeyboard.js'
+import { setGestureElement } from './interaction/cancelGesture.js'
+import { boardChrome } from '../../lib/strings.js'
 import { getLastPointer, usePointer } from './interaction/usePointer.js'
 import { useWheel } from './interaction/useWheel.js'
 import { devFlags, loadStressFixture } from './devFixture.js'
 import { buildPresenceView } from '../presence/usePresence.js'
 import { emitSelection } from '../presence/bus.js'
 import { presenceStore } from '../presence/presenceStore.js'
+import { imageCache } from './imageCache.js'
+import { startUploads } from '../uploads/uploadEngine.js'
+import { UploadPlaceholders } from '../uploads/UploadPlaceholders.js'
 
 /**
  * The canvas surface — FLOWS §14.3.
@@ -145,9 +151,22 @@ export function Canvas() {
     rendererRef.current?.noteInput(timeStamp)
   }, [])
 
-  const { spaceHeld } = useKeyboard({ getSize, getElement, getPointer: getLastPointer })
+  const { spaceHeld } = useKeyboard({
+    getSize,
+    getElement,
+    getPointer: getLastPointer,
+    // FR-CANVAS-010: images pasted from the OS clipboard go to the centre.
+    onPasteImages: files => void startUploads(files),
+  })
   usePointer(container, spaceHeld, { onInput: noteInput })
   useWheel(container)
+
+  // The element holding pointer capture, so a gesture cancelled from outside
+  // the canvas — a live demotion to viewer — can still release it.
+  useEffect(() => {
+    setGestureElement(container)
+    return () => setGestureElement(null)
+  }, [container])
 
   // ── Renderer lifecycle ────────────────────────────────────────────────────
   useEffect(() => {
@@ -178,17 +197,32 @@ export function Canvas() {
     )
     rendererRef.current = renderer
 
+    let sized = false
     const applySize = () => {
       const rect = container.getBoundingClientRect()
       const width = Math.max(1, Math.floor(rect.width))
       const height = Math.max(1, Math.floor(rect.height))
+      const previous = sized ? sizeRef.current : null
       sizeRef.current = { width, height }
+      sized = true
+      /*
+       * FLOWS E-10: preserve the viewport CENTRE. The pan is a screen-space
+       * offset, so the canvas point at the middle stays there when the window
+       * grows by half the growth on each axis. A drag in flight survives it:
+       * the dragged object's screen position depends only on the pointer, so
+       * it stays under the finger while the board recentres around it.
+       */
+      if (previous && (previous.width !== width || previous.height !== height)) {
+        boardStore
+          .getState()
+          .panBy((width - previous.width) / 2, (height - previous.height) / 2)
+      }
       dprRef.current = Math.min(window.devicePixelRatio || 1, MAX_DPR)
       resizeCanvas(objectsCanvas, width, height)
       resizeCanvas(interactionCanvas, width, height)
       resizeCanvas(overlayCanvas, width, height)
-      // FLOWS E-10: a resize mid-drag must not drop the interaction. Only the
-      // backing store changes; viewport and interaction state are untouched.
+      // FLOWS E-10: a resize mid-drag must not drop the interaction —
+      // interaction state is untouched.
       renderer.markAllDirty()
     }
 
@@ -284,6 +318,9 @@ export function Canvas() {
       if (buildPresenceView()) renderer.markDirty('overlay')
     }, 33)
 
+    // An image finishing its load is a change to layer 1 only (FR-CANVAS-010).
+    const stopImages = imageCache.onChange(() => renderer.markDirty('objects'))
+
     // R-CANVAS-013: stop when hidden, restart when visible.
     const onVisibility = () => {
       if (document.hidden) renderer.stop()
@@ -336,12 +373,23 @@ export function Canvas() {
         undo: history.undoDepth(),
         redo: history.redoDepth(),
       })
+      /*
+       * The local write path, driven directly — the Phase 11 convergence
+       * harness. It goes through exactly what a pointer gesture commits
+       * through (applyAndEmit → history → pending writes → outbox → socket),
+       * minus the pixels, so two hundred seeded operations take seconds
+       * rather than minutes and replay identically from the same seed.
+       */
+      w.__coboardApplyLocal = (ops: ClientOp[], label: string) => applyAndEmit(ops, label)
+      w.__coboardUndo = () => history.undo() !== null
+      w.__coboardRedo = () => history.redo() !== null
     }
 
     return () => {
       // R-CANVAS-014 / R-STATE-007: cancel the loop, drop every listener.
       renderer.stop()
       unsubscribe()
+      stopImages()
       // R-UNDO-006: history does not outlive the board. Keeping a stack whose
       // entries name objects on a board the user has left is worse than
       // keeping none — the first Ctrl+Z on the next board would be a silent
@@ -435,8 +483,43 @@ export function Canvas() {
     return () => container.removeEventListener('pointermove', onMove)
   }, [container, activeTool, interactionType])
 
+  /*
+   * Drag-and-drop of image files — FR-CANVAS-010. The drop point becomes the
+   * image's centre, converted once to canvas coordinates (R-COORD-004).
+   * Anything that is not files (a dragged link, text) is left alone.
+   */
+  useEffect(() => {
+    if (!container) return
+    const carriesFiles = (e: DragEvent) =>
+      Array.from(e.dataTransfer?.types ?? []).includes('Files')
+    const onDragOver = (e: DragEvent) => {
+      if (!carriesFiles(e) || boardStore.getState().readOnly) return
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    }
+    const onDrop = (e: DragEvent) => {
+      if (!carriesFiles(e)) return
+      // Always prevent: a file dropped and NOT handled navigates the tab to
+      // it, abandoning the board.
+      e.preventDefault()
+      if (boardStore.getState().readOnly) return
+      const rect = container.getBoundingClientRect()
+      const at = toCanvas(e.clientX - rect.left, e.clientY - rect.top)
+      void startUploads(Array.from(e.dataTransfer?.files ?? []), at)
+    }
+    container.addEventListener('dragover', onDragOver)
+    container.addEventListener('drop', onDrop)
+    return () => {
+      container.removeEventListener('dragover', onDragOver)
+      container.removeEventListener('drop', onDrop)
+    }
+  }, [container])
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-canvas">
+      {/* Before the surface in the DOM: the toolbar is tabbed to before the
+          canvas (FLOWS §13.3). Positioned absolutely, so nothing moves. */}
+      <Toolbar />
       <div
         ref={setContainer}
         className="absolute inset-0 touch-none"
@@ -446,7 +529,7 @@ export function Canvas() {
         tabIndex={0}
         // R-A11Y-006: text alternative. The count updates as objects change.
         role="img"
-        aria-label={`Whiteboard with ${objectCount} objects`}
+        aria-label={boardChrome.canvasLabel(objectCount)}
       >
         {/* Layer 0 (grid) is [P2] and intentionally absent. */}
         <canvas ref={objectsRef} id="objects" className="absolute inset-0" />
@@ -456,7 +539,7 @@ export function Canvas() {
       </div>
 
       <TextOverlay container={container} />
-      <Toolbar />
+      <UploadPlaceholders />
       <PropertiesPanel />
       <ContextMenu container={container} getSize={getSize} />
       <ZoomControls getSize={getSize} />

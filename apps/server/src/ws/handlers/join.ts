@@ -26,13 +26,63 @@ export async function handleJoin(
   sinceSeq: number,
 ): Promise<void> {
   if (session.joined) return
+
+  /*
+   * The room cap — FR-RT-011 [P1], D-26. Beyond the soft limit a join is
+   * ADMITTED AS A VIEWER with a notice, not refused (refusal is the [P2]
+   * alternative). Counted here, at join, rather than at the upgrade: sockets
+   * that upgraded together all saw the same count before any had joined
+   * (finding 10), and this is the count of what is actually in the room.
+   *
+   * The demotion is enforced server-side (R-SEC-001): `overCapacity` makes
+   * handleOps refuse every write from this socket, and `role` = VIEWER stops
+   * the stroke previews a viewer may not produce.
+   */
+  if (rooms.isFull(session.boardId)) {
+    session.overCapacity = true
+    session.role = 'VIEWER'
+    session.log.warn('board full: admitted as viewer')
+  }
   session.joined = true
 
-  rooms.join(session)
+  const slot = await presenceService.nextColourSlot(session.boardId)
+  /*
+   * Finding 14: the socket can close during any await below. Its `close`
+   * handler has already run `leave` — before this function put it in the
+   * room — so carrying on would add a session nobody will ever remove: a
+   * ghost on every participant's avatar stack. Bail out after each await.
+   */
+  if (!session.open) {
+    session.joined = false
+    return
+  }
+  rooms.join(session, slot)
   // Record in Redis so other instances can see this session — TRD §15.2.
   void presenceService.touch(session.boardId, session.toPresenceUser())
 
-  const currentSeq = await opService.currentSeq(session.boardId)
+  const [currentSeq, everywhere] = await Promise.all([
+    opService.currentSeq(session.boardId),
+    presenceService.list(session.boardId),
+  ])
+  if (!session.open) {
+    // In the room by now, so leave it the way the close handler would have.
+    session.joined = false
+    rooms.leave(session)
+    void presenceService.forget(session.boardId, session.id)
+    return
+  }
+
+  // Who is already here: this instance's room, plus the sessions other
+  // instances recorded in Redis (TRD §15.2). Local entries win — they are
+  // the authority for this process and are never stale.
+  const local = rooms
+    .sessions(session.boardId)
+    .filter(other => other.id !== session.id && other.joined)
+    .map(other => other.toPresenceUser())
+  const known = new Set([session.id, ...local.map(u => u.sessionId)])
+  const remote = everywhere
+    .filter(entry => !known.has(entry.sessionId))
+    .map(({ seenAt: _seenAt, ...user }) => user)
 
   /*
    * The ack goes out BEFORE the catch-up ops, and before the presence
@@ -46,10 +96,8 @@ export async function handleJoin(
     role: session.role,
     sessionId: session.id,
     colour: session.colour,
-    users: rooms
-      .sessions(session.boardId)
-      .filter(other => other.id !== session.id && other.joined)
-      .map(other => other.toPresenceUser()),
+    users: [...local, ...remote],
+    ...(session.overCapacity ? { overCapacity: true as const } : {}),
   })
 
   // Everyone else learns about the arrival. Presence is never persisted and
@@ -69,7 +117,8 @@ export async function handleJoin(
    * snapshot; that is how they opened the board.
    */
   const ops = await opService.since(session.boardId, sinceSeq, JOIN_CATCHUP_LIMIT)
-  if (ops.length === 0) return
+  // Closed meanwhile: the close handler has already cleaned up; nothing to send.
+  if (ops.length === 0 || !session.open) return
 
   session.send({
     t: 'op_batch',

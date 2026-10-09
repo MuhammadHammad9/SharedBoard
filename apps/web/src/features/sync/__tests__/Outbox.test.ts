@@ -151,7 +151,7 @@ describe('failures', () => {
     // that has already made up its mind.
     expect(send).toHaveBeenCalledOnce()
     expect(outbox.pending).toBe(0)
-    expect(onNack).toHaveBeenCalledWith([refused])
+    expect(onNack).toHaveBeenCalledWith([refused], undefined)
   })
 
   it('keeps ops enqueued DURING a request rather than splicing them away', async () => {
@@ -285,5 +285,51 @@ describe('persistence across a reload', () => {
     store.set('coboard.outbox.b1', JSON.stringify({ v: 1, ops: [op()] }))
     clearOutbox('b1')
     expect(store.has('coboard.outbox.b1')).toBe(false)
+  })
+})
+
+describe('pacing — F-4, R-SEC-013', () => {
+  it('replays 500 offline ops without a single rate-limit nack', async () => {
+    /*
+     * A transport that enforces the server's real budget: a 100-op bucket
+     * refilling at 100/s, refusing what does not fit. Before pacing, a long
+     * offline replay sent batch after batch as fast as acks returned, and
+     * everything past the first second was nacked — and nacks are never
+     * retried, so that work was simply gone.
+     */
+    let clock = 0
+    let tokens = 100
+    let last = 0
+    const nacked: string[] = []
+    const rateLimited: OutboxTransport = async ops => {
+      tokens = Math.min(100, tokens + ((clock - last) * 100) / 1_000)
+      last = clock
+      if (tokens < ops.length) {
+        nacked.push(...ops.map(o => o.id))
+        return { acked: [], nacked: ops.map(o => o.id) }
+      }
+      tokens -= ops.length
+      clock += 5 // a fast round trip
+      return { acked: ops.map(o => o.id), nacked: [] }
+    }
+
+    const outbox = new Outbox({
+      boardId: 'b1',
+      send: rateLimited,
+      now: () => clock,
+      setTimer: (fn, ms) => {
+        clock += ms
+        queueMicrotask(fn)
+        return 1
+      },
+      clearTimer: () => {},
+    })
+    outbox.enqueue(Array.from({ length: 500 }, () => op()))
+    for (let i = 0; i < 100 && outbox.pending > 0; i++) await settle()
+
+    expect(nacked).toEqual([])
+    expect(outbox.pending).toBe(0)
+    // And it took the time the budget implies, not zero.
+    expect(clock).toBeGreaterThan(4_000)
   })
 })

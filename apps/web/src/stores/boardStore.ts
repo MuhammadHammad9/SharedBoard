@@ -21,7 +21,7 @@ import {
 import type { InteractionState } from '../features/canvas/interaction/machine.js'
 import type { DraftStroke } from '../features/canvas/renderer/drawInteraction.js'
 import { loadPrefs, savePrefs } from '../lib/persist.js'
-import { keyAfterTop } from '../features/canvas/geometry/zIndex.js'
+import { compareZ, keyAfterTop } from '../features/canvas/geometry/zIndex.js'
 
 /**
  * The board store.
@@ -89,12 +89,18 @@ export interface PenSettings {
 const DEFAULT_PEN: PenSettings = { color: PEN_COLOURS[0], strokeWidth: 3, opacity: 1 }
 
 /** Shape settings — FR-CANVAS-007, FLOWS §14.4. */
+/** FLOWS §14.4 — "arrowhead style (start/end/both/none)". */
+export type ArrowheadStyle = 'none' | 'start' | 'end' | 'both'
+
 export interface ShapeSettings {
   stroke: string
   strokeWidth: number
   fill: string
   cornerRadius: number
   opacity: number
+  /** Per tool, so the line tool keeps drawing plain lines by default. */
+  lineHeads: ArrowheadStyle
+  arrowHeads: ArrowheadStyle
 }
 
 const DEFAULT_SHAPE: ShapeSettings = {
@@ -103,14 +109,18 @@ const DEFAULT_SHAPE: ShapeSettings = {
   fill: 'none',
   cornerRadius: 0,
   opacity: 1,
+  lineHeads: 'none',
+  arrowHeads: 'end',
 }
 
 /** Sticky settings — FR-CANVAS-008. Colour is one of the 8 frozen values. */
 export interface StickySettings {
   color: string
+  /** FLOWS §14.4 "font size auto/manual toggle"; auto is FR-CANVAS-008's default. */
+  fontSize: number | 'auto'
 }
 
-const DEFAULT_STICKY: StickySettings = { color: STICKY_COLOURS.yellow }
+const DEFAULT_STICKY: StickySettings = { color: STICKY_COLOURS.yellow, fontSize: 'auto' }
 
 /** Text settings — FR-CANVAS-009. */
 export interface TextSettings {
@@ -120,6 +130,8 @@ export interface TextSettings {
   italic: boolean
   textAlign: 'left' | 'center' | 'right'
 }
+
+const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, zoom: 1 }
 
 const DEFAULT_TEXT: TextSettings = {
   color: PEN_COLOURS[0],
@@ -220,6 +232,15 @@ interface BoardState {
    */
   tombstones: Map<ObjectId, number>
 
+  /**
+   * Viewer mode — FR-SHARE-006, defect P-2. While true, every edit path in
+   * the canvas is inert: a primary drag pans, shortcuts that change the
+   * document are ignored, and `applyAndEmit` refuses as a backstop. The
+   * server refuses viewers' ops regardless; this is so a viewer is never shown
+   * an edit that then snaps back.
+   */
+  readOnly: boolean
+
   // ─── Actions ───
   setViewport: (v: Viewport) => void
   panBy: (dxScreen: number, dyScreen: number) => void
@@ -253,6 +274,21 @@ interface BoardState {
   reorder: () => void
   /** Forget every tombstone. Board load only — a new document, a new session. */
   clearTombstones: () => void
+  setReadOnly: (readOnly: boolean) => void
+  /**
+   * Forget everything about the board that was open: the document, its
+   * tombstones, the selection, the viewport, any gesture, draft, text edit or
+   * erase highlight. Preferences (tool, pen, shape, sticky, text settings) and
+   * the in-tab clipboard are the user's, not the board's, and survive.
+   */
+  resetBoard: () => void
+  /**
+   * The server ordered my delete at `seq`. Until now its tombstone sat at
+   * MAX_SAFE_INTEGER — "later than anything" — which would also swallow a
+   * teammate's LATER re-create (an undo) forever. Now the real seq is known,
+   * so the tombstone drops to it and only ops it truly beat are refused.
+   */
+  confirmDelete: (id: ObjectId, seq: number) => void
   toggleSelection: (id: ObjectId) => void
   clearSelection: () => void
   selectAll: () => void
@@ -269,8 +305,7 @@ interface BoardState {
  * meaningful: it marks the op as the user's own current intent, which always
  * wins over anything already on their screen.
  */
-const seqOf = (op: ClientOp): number | undefined =>
-  (op as { seq?: number }).seq
+const seqOf = (op: ClientOp): number | undefined => (op as { seq?: number }).seq
 
 /**
  * True when this op lost to a delete and must be dropped.
@@ -310,7 +345,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   objectsVersion: 0,
   sortedIds: [],
 
-  viewport: { x: 0, y: 0, zoom: 1 },
+  viewport: { ...DEFAULT_VIEWPORT },
 
   activeTool: restored.activeTool as Tool,
   pen: restored.pen,
@@ -327,6 +362,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   draft: null,
   draftVersion: 0,
   tombstones: new Map(),
+  readOnly: false,
 
   setViewport: v => set({ viewport: { ...v, zoom: clampZoom(v.zoom) } }),
 
@@ -437,10 +473,13 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     for (const o of objects) {
       map.set(o.id, { ...o, x: clampCoordValue(o.x), y: clampCoordValue(o.y) })
     }
-    const sortedIds = [...map.values()]
-      .sort((a, b) => (a.zIndex < b.zIndex ? -1 : a.zIndex > b.zIndex ? 1 : 0))
-      .map(o => o.id)
-    set(s => ({ objects: map, sortedIds, tombstones, objectsVersion: s.objectsVersion + 1 }))
+    const sortedIds = [...map.values()].sort(compareZ).map(o => o.id)
+    set(s => ({
+      objects: map,
+      sortedIds,
+      tombstones,
+      objectsVersion: s.objectsVersion + 1,
+    }))
   },
 
   /**
@@ -634,9 +673,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
        */
       let sortedIds = s.sortedIds
       if (zDirty) {
-        sortedIds = [...s.objects.values()]
-          .sort((a, b) => (a.zIndex < b.zIndex ? -1 : a.zIndex > b.zIndex ? 1 : 0))
-          .map(o => o.id)
+        sortedIds = [...s.objects.values()].sort(compareZ).map(o => o.id)
       } else {
         const listed = new Set(s.sortedIds)
         const gone = new Set<ObjectId>()
@@ -679,11 +716,49 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   clearTombstones: () =>
     set(s => (s.tombstones.size === 0 ? {} : { tombstones: new Map() })),
 
+  setReadOnly: readOnly =>
+    set(s => {
+      if (s.readOnly === readOnly) return {}
+      // Becoming a viewer mid-gesture (a live role:changed) cancels the
+      // gesture — FLOWS §9.5 "cancel any in-progress interaction".
+      return readOnly
+        ? {
+            readOnly,
+            interaction: { type: 'IDLE' } as InteractionState,
+            draft: null,
+            editingTextId: null,
+            selection: [],
+          }
+        : { readOnly }
+    }),
+
+  resetBoard: () =>
+    set(s => ({
+      objects: new Map(),
+      sortedIds: [],
+      objectsVersion: s.objectsVersion + 1,
+      tombstones: new Map(),
+      // No per-board viewport is persisted, so every board opens at the origin.
+      viewport: { ...DEFAULT_VIEWPORT },
+      interaction: { type: 'IDLE' } as InteractionState,
+      selection: [],
+      eraseCandidate: null,
+      editingTextId: null,
+      editingJustCreated: false,
+      draft: null,
+      draftVersion: s.draftVersion + 1,
+    })),
+
+  confirmDelete: (id, seq) => {
+    // Mutated in place, like `applyOps` does: tombstones are not rendered,
+    // and nothing subscribes to them, so no new Map and no React update.
+    const { tombstones } = get()
+    if (tombstones.get(id) === Number.MAX_SAFE_INTEGER) tombstones.set(id, seq)
+  },
+
   reorder: () =>
     set(s => ({
-      sortedIds: [...s.objects.values()]
-        .sort((a, b) => (a.zIndex < b.zIndex ? -1 : a.zIndex > b.zIndex ? 1 : 0))
-        .map(o => o.id),
+      sortedIds: [...s.objects.values()].sort(compareZ).map(o => o.id),
       objectsVersion: s.objectsVersion + 1,
     })),
 
@@ -730,8 +805,9 @@ function insertByZ(
   let hi = sortedIds.length
   while (lo < hi) {
     const mid = (lo + hi) >> 1
-    const z = objects.get(sortedIds[mid]!)?.zIndex ?? ''
-    if (z <= object.zIndex) lo = mid + 1
+    const other = objects.get(sortedIds[mid]!)
+    // Ties on zIndex fall to the id, the same on every client — compareZ.
+    if (!other || compareZ(other, object) <= 0) lo = mid + 1
     else hi = mid
   }
   sortedIds.splice(lo, 0, object.id)

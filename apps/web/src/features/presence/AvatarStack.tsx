@@ -1,6 +1,7 @@
 import type { PresenceUser } from '@coboard/shared'
 import { Tooltip } from '../../components/ui/Tooltip.js'
 import { useRoster } from './usePresence.js'
+import { presence } from '../../lib/strings.js'
 
 /**
  * Who else is here — `FR-RT-004`, FLOWS §9.1.
@@ -28,7 +29,7 @@ import { useRoster } from './usePresence.js'
 /** Beyond this, the rest collapse into "+N". */
 const MAX_VISIBLE = 5
 
-export function AvatarStack() {
+export function AvatarStack({ stale = false }: { stale?: boolean } = {}) {
   const { users } = useRoster()
   const unique = dedupeByUser(users)
 
@@ -36,15 +37,21 @@ export function AvatarStack() {
 
   const visible = unique.slice(0, MAX_VISIBLE)
   const overflow = unique.length - visible.length
+  const hidden = unique
+    .slice(MAX_VISIBLE)
+    .map(u => u.name)
+    .join(', ')
 
   return (
     <div
       className="pointer-events-auto flex items-center"
       data-testid="avatar-stack"
+      // Desaturated while the connection is down — see index.css.
+      data-presence-stale={stale ? 'true' : 'false'}
       // A list, so a screen reader announces "3 items" rather than reading
       // three initials as a run-on word.
       role="list"
-      aria-label={`${unique.length} other ${unique.length === 1 ? 'person' : 'people'} on this board`}
+      aria-label={presence.othersOnBoard(unique.length)}
     >
       {visible.map((user, index) => (
         <div
@@ -60,6 +67,7 @@ export function AvatarStack() {
               type="button"
               data-testid="avatar"
               data-user-name={user.name}
+              aria-label={presence.avatarLabel(user.name, roleLabel(user.role))}
               // Focusable so the tooltip is reachable by keyboard — otherwise
               // the name is mouse-only and the colour is all a keyboard user
               // gets (R-A11Y-007).
@@ -74,11 +82,12 @@ export function AvatarStack() {
 
       {overflow > 0 ? (
         <div role="listitem" className="-ml-2">
-          <Tooltip label={unique.slice(MAX_VISIBLE).map(u => u.name).join(', ')}>
+          <Tooltip label={hidden}>
             <button
               type="button"
+              aria-label={presence.overflowLabel(overflow, hidden)}
               data-testid="avatar-overflow"
-              className="flex h-7 w-7 cursor-default items-center justify-center rounded-full border-2 border-border bg-subtle text-[10px] font-semibold text-muted outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="flex h-7 w-7 cursor-default items-center justify-center rounded-full border-2 border-border bg-subtle text-[10px] font-semibold text-primary outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               +{overflow}
             </button>
@@ -113,4 +122,4 @@ function initials(name: string): string {
 }
 
 const roleLabel = (role: string): string | undefined =>
-  role === 'VIEWER' ? 'Viewing' : undefined
+  role === 'VIEWER' ? presence.viewing : undefined

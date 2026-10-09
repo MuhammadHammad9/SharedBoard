@@ -1,15 +1,40 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToastProvider } from './components/ui/Toast.js'
-import { RedirectIfAuthed, RequireAuth } from './routes/guards.js'
+import {
+  RedirectIfAuthed,
+  RedirectIfAuthedOptimistic,
+  RequireAuth,
+} from './routes/guards.js'
+import { RequireBoardAccess } from './routes/RequireBoardAccess.js'
 import { FullScreenSpinner } from './components/ui/Spinner.js'
+import { BoardShell } from './components/board/BoardShell.js'
 import Login from './routes/Login.js'
 import Signup from './routes/Signup.js'
 import ForgotPassword from './routes/ForgotPassword.js'
 import ResetPassword from './routes/ResetPassword.js'
+import VerifyEmail from './routes/VerifyEmail.js'
 import OAuthCallback from './routes/OAuthCallback.js'
 import Settings from './routes/Settings.js'
+import NotFound from './routes/NotFound.js'
+import { GlobalShortcuts } from './components/GlobalShortcuts.js'
+/*
+ * S-01 is STATIC, unlike the board. It is prerendered into dist/index.html
+ * (scripts/prerender.ts) for the LCP budget, and React's first render must be
+ * the same markup — a lazy route would first render an empty Suspense
+ * fallback and wipe the prerendered page until its chunk arrived. It costs
+ * ~4 KB gzipped and imports no canvas code.
+ */
+import Landing from './routes/Landing.js'
+import { loading } from './lib/strings.js'
 
 /**
  * The router — FLOWS §2.1.
@@ -24,12 +49,11 @@ import Settings from './routes/Settings.js'
  * transition — None", and it is right: a fade between pages makes an app that
  * navigates instantly feel like one that does not.
  *
- * S-01 Landing, S-08 Trash, S-11 GuestEntry and S-10's chrome are later
- * phases. The routes that do not exist yet are absent rather than stubbed,
- * so nothing renders a screen that pretends to work.
+ * S-01 Landing is the exception: static, because it is prerendered.
  */
 
 const Board = lazy(() => import('./routes/Board.js'))
+const GuestEntry = lazy(() => import('./routes/GuestEntry.js'))
 
 /*
  * The dashboard and Trash are lazy for the same reason the board is (TRD
@@ -38,7 +62,20 @@ const Board = lazy(() => import('./routes/Board.js'))
  * because they share every component they use, so the second one is free once
  * the first has loaded.
  */
-const Dashboard = lazy(() => import('./routes/Dashboard.js'))
+const loadDashboard = () => import('./routes/Dashboard.js')
+const Dashboard = lazy(loadDashboard)
+/*
+ * PRD §7.1 "Dashboard interactive ≤ 2.0 s": on a direct load of the dashboard
+ * or Trash, start fetching their chunk NOW, in parallel with the silent
+ * refresh, instead of after `RequireAuth` resolves. `lazy()` then finds the
+ * module already in flight. Measured: one round trip off a slow-4G load.
+ */
+if (
+  typeof window !== 'undefined' &&
+  /^\/(dashboard|trash)\b/.test(window.location.pathname)
+) {
+  void loadDashboard()
+}
 const Trash = lazy(() => import('./routes/Trash.js'))
 
 /**
@@ -63,14 +100,25 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <BrowserRouter>
+          {/* S-15 off the board route — D-33. */}
+          <GlobalShortcuts />
           <Routes>
-            {/* MARKETING — S-01 is Phase 15. Until then `/` is a signpost. */}
+            {/* MARKETING — S-01. */}
             <Route
               path="/"
               element={
-                <RedirectIfAuthed>
-                  <Navigate to="/login" replace />
-                </RedirectIfAuthed>
+                <RedirectIfAuthedOptimistic>
+                  <Landing />
+                </RedirectIfAuthedOptimistic>
+              }
+            />
+            {/* "Try it now" — S-10 in demo mode: no account, nothing saved. */}
+            <Route
+              path="/demo"
+              element={
+                <Suspense fallback={<BoardShell />}>
+                  <Board demo />
+                </Suspense>
               }
             />
 
@@ -102,6 +150,8 @@ export default function App() {
             {/* Guarded by the token in the URL, not by a session — a logged-out
             user following a reset link must reach it. */}
             <Route path="/reset-password" element={<ResetPassword />} />
+            {/* D-22: the emailed address-verification link, token-guarded too. */}
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/auth/callback" element={<OAuthCallback />} />
 
             {/* PRODUCT CHROME */}
@@ -109,7 +159,7 @@ export default function App() {
               path="/dashboard"
               element={
                 <RequireAuth>
-                  <Suspense fallback={<FullScreenSpinner label="Loading your boards" />}>
+                  <Suspense fallback={<FullScreenSpinner label={loading.boards} />}>
                     <Dashboard />
                   </Suspense>
                 </RequireAuth>
@@ -125,41 +175,57 @@ export default function App() {
             />
 
             {/*
-             * BOARD — FLOWS §2.1, §2.3.
-             *
-             * `RequireAuth` gets the session; the board-level half of
-             * `requireBoardAccess` is enforced by the server and rendered by the
-             * route itself, which shows S-19/S-20 rather than redirecting. That
-             * split is deliberate: a guard cannot decide access without asking the
-             * server anyway, and doing it inside the route means one request
-             * answers both "may I?" and "what is on it?".
+             * BOARD — FLOWS §2.3 `requireBoardAccess`. Users AND guests: the
+             * guard resolves identity, asks /access, and renders S-17/S-18
+             * itself rather than redirecting, because the URL is valid either way.
              */}
+            <Route path="/board/:boardId" element={<BoardRoute />} />
+
+            {/* S-11 — a guest arriving through a share link. No session needed. */}
             <Route
-              path="/board/:boardId"
+              path="/join/:token"
               element={
-                <RequireAuth>
-                  <Suspense fallback={<FullScreenSpinner label="Opening board" />}>
-                    <Board />
-                  </Suspense>
-                </RequireAuth>
+                <Suspense fallback={<FullScreenSpinner label={loading.invite} />}>
+                  <GuestEntry />
+                </Suspense>
               }
             />
 
+            {/* S-08 — PRD §6 and FLOWS §2.1 put Trash under the dashboard. */}
             <Route
-              path="/trash"
+              path="/dashboard/trash"
               element={
                 <RequireAuth>
-                  <Suspense fallback={<FullScreenSpinner label="Loading your boards" />}>
+                  <Suspense fallback={<FullScreenSpinner label={loading.boards} />}>
                     <Trash />
                   </Suspense>
                 </RequireAuth>
               }
             />
+            {/* D-30: the old path keeps working for bookmarks and links. */}
+            <Route path="/trash" element={<LegacyTrashRedirect />} />
 
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            {/* S-20 — the generic 404 (FLOWS §1.1). */}
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
       </ToastProvider>
     </QueryClientProvider>
+  )
+}
+
+function LegacyTrashRedirect() {
+  const { search, hash } = useLocation()
+  return <Navigate to={`/dashboard/trash${search}${hash}`} replace />
+}
+
+function BoardRoute() {
+  const { boardId = '' } = useParams<{ boardId: string }>()
+  return (
+    <RequireBoardAccess boardId={boardId}>
+      <Suspense fallback={<BoardShell />}>
+        <Board />
+      </Suspense>
+    </RequireBoardAccess>
   )
 }

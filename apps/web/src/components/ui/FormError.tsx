@@ -44,7 +44,7 @@ export function FormError({
       data-form-error=""
       data-testid="form-error"
       className={
-        'flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 ' +
+        'flex items-start gap-2 rounded-md border border-danger/30 bg-app px-3 py-2 ' +
         'text-sm text-danger outline-none focus-visible:outline focus-visible:outline-2 ' +
         'focus-visible:outline-danger'
       }

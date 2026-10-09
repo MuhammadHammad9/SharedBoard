@@ -68,6 +68,7 @@ export const actions = {
   resetLink: 'Reset link',
   requestAccess: 'Request access',
   switchAccount: 'Switch account',
+  logIn: 'Log in',
   notYou: 'Not you?',
   joinBoard: 'Join board',
   createAccount: 'Create account',
@@ -119,6 +120,47 @@ export const guest = {
   joinedAs: (name: string) => `You're in as ${name}`,
   joinedChip: (name: string) => `Joined as ${name}`,
   conversionBar: "You're a guest. Sign up to save your boards.",
+  // FLOWS §7.1 step 4 gives "3 people are here now". The singular and the
+  // "Shared by" line are not in PRD §8 — copy gaps, kept minimal.
+  hereNow: (count: number) =>
+    count === 1 ? '1 person is here now' : `${count} people are here now`,
+  sharedBy: (name: string) => `Shared by ${name}`,
+  nameCounter: (used: number) => `${used}/40`,
+  viewOnly: 'View only',
+} as const
+
+/**
+ * FLOWS §10 — the share modal (S-12). The quoted strings are FLOWS §10.1–10.2
+ * verbatim; section labels follow the §10.1 anatomy drawing.
+ */
+export const sharing = {
+  title: (name: string) => `Share "${name}"`,
+  inviteHeading: 'Invite by email',
+  invitePlaceholder: 'name@company.com',
+  send: 'Send',
+  inviteRole: 'Role for invited people',
+  roleFor: (name: string) => `Role for ${name}`,
+  invitesSent: (count: number) =>
+    count === 1 ? 'Invites sent to 1 person' : `Invites sent to ${count} people`,
+  invalidEmail: (email: string) => `${email} is not a valid email address`,
+  peopleHeading: 'People with access',
+  owner: 'Owner',
+  editor: 'Editor',
+  viewer: 'Viewer',
+  guestSuffix: '(guest)',
+  invited: 'Invited',
+  remove: 'Remove',
+  removeLastEditor: (name: string) => `Remove ${name}? They are the last editor.`,
+  roleChangeFailed: "Couldn't change that role.",
+  removeFailed: "Couldn't remove that person.",
+  generalHeading: 'General access',
+  restricted: 'Restricted',
+  anyoneWithLink: 'Anyone with the link',
+  canEdit: 'can edit',
+  canView: 'can view',
+  copyFallback: (mod: string) => `Press ${mod}+C to copy`,
+  resetConfirm: 'Anyone using the old link will lose access.',
+  linkUpdateFailed: "Couldn't update the link.",
 } as const
 
 /** FLOWS §12 — full-screen states. */
@@ -128,6 +170,8 @@ export const states = {
     // someone cannot access is an information leak.
     headline: errors.noBoardAccess,
     body: 'Ask the person who shared it to invite you.',
+    // FLOWS §12.1: "Signed in as priya@x.com — [Switch account]".
+    signedInAs: (email: string) => `Signed in as ${email}`,
   },
   boardNotFound: {
     headline: errors.boardNotFound,
@@ -136,6 +180,31 @@ export const states = {
   boardDeleted: {
     headline: errors.boardDeletedWhileOpen,
     body: 'Your changes were saved before it was deleted.',
+  },
+  // FLOWS §9.5 `access:revoked` — S-17 with the "access removed" copy.
+  accessRemoved: {
+    headline: errors.accessRevokedWhileOpen,
+    body: 'Ask the person who shared it to invite you.',
+  },
+  // FLOWS §7.3 and §2.3 — a link that no longer works.
+  linkInvalid: {
+    headline: guest.linkInvalid,
+    // Bodies for these three are copy gaps — PRD §8 gives only the headline.
+    body: 'Double-check the link, or ask for a new one.',
+  },
+  linkTurnedOff: {
+    headline: guest.linkTurnedOff,
+    body: 'Ask the person who shared it for a new one.',
+  },
+  boardGone: {
+    headline: guest.boardGone,
+    body: 'It may have been deleted by its owner.',
+  },
+  // S-20 — FLOWS §1.1 "GENERIC 404 (*)". Only the action label is specified
+  // ("Take me home", §1.2); headline and body are copy gaps written to §8.1.
+  notFound: {
+    headline: "We couldn't find that page.",
+    body: 'Check the address, or head back home.',
   },
   errorBoundary: {
     headline: 'Something went wrong.',
@@ -149,8 +218,19 @@ export const presence = {
   userLeft: (name: string) => `${name} left`,
   backOnline: (count: number) => `Back online — ${count} changes synced`,
   nowViewer: "You're now a viewer on this board.",
+  // FR-RT-011 [P1] — "admitted as viewers with a notice". PRD §8 gives no
+  // words for the notice; authored to §8.1 and recorded as D-26.
+  overCapacity:
+    "This board is full, so you've joined as a viewer. Try again later to edit.",
   offlineAWhile:
     "You've been offline a while. Refresh when you're back online to make sure everything is up to date.",
+  // FLOWS §9 — the avatar stack in the board header.
+  othersOnBoard: (count: number) =>
+    `${count} other ${count === 1 ? 'person' : 'people'} on this board`,
+  viewing: 'Viewing',
+  // R-A11Y-002: the avatar's accessible name — the initials alone say nothing.
+  avatarLabel: (name: string, role?: string) => (role ? `${name}, ${role}` : name),
+  overflowLabel: (count: number, names: string) => `${count} more: ${names}`,
 } as const
 
 /** FLOWS §6 — board management. */
@@ -166,13 +246,63 @@ export const boards = {
   resetLinkConfirm: 'Anyone using the old link will lose access.',
   invitesSent: (count: number) => `Invites sent to ${count} people`,
   clipboardFallback: 'Press Cmd+C to copy',
+  // S-08 Trash — Phase 13 UI: "deleted 3 days ago", "28 days left".
+  deletedAgo: (relative: string) => `Deleted ${relative}`,
+  daysLeft: (days: number) => (days === 1 ? '1 day left' : `${days} days left`),
+  // FR-BOARD-006: the copy "must say plainly that it is irreversible".
+  deleteForeverTitle: (name: string) => `Delete '${name}' forever?`,
+  deleteForeverBody:
+    'This cannot be undone. Every stroke, note and shape on this board will be removed permanently.',
+  deleteForeverPrompt: 'Type the board name to confirm',
+  // Inline rename input — dashboard card and board header.
+  nameLabel: 'Board name',
+  // The dev-only scratch board (`/board/<not-a-uuid>` in development).
+  scratchName: 'Scratch board',
 } as const
 
-/** FLOWS §11 — export. */
+/**
+ * S-13 — board settings (owner only). Neither PRD §8 nor FLOWS gives this
+ * modal any copy; authored to the §8.1 tone rules and recorded as D-24. The
+ * destructive confirm reuses `boards.deleteConfirm*`, the board-card copy.
+ */
+export const boardSettings = {
+  // FLOWS §1.2: "Title menu → Settings".
+  menu: 'Settings',
+  titleMenu: 'Board menu',
+  title: 'Board settings',
+  save: 'Save name',
+  renamed: 'Board renamed',
+  sharing: 'Sharing',
+  sharingBody: 'Invite people and manage who can view or edit this board.',
+  dangerZone: 'Danger zone',
+  dangerBody:
+    'Moving this board to trash disconnects everyone working on it. You can restore it for 30 days.',
+} as const
+
+/** FLOWS §11 — export. Labels follow the §11 S-14 drawing word for word. */
 export const exportStrings = {
   nothingToExport: "There's nothing to export yet.",
   exported: 'Exported',
   scaledDown: 'Scaled down to fit the maximum export size.',
+  title: 'Export board',
+  scope: 'Scope',
+  wholeBoard: 'Whole board',
+  currentSelection: 'Current selection',
+  visibleArea: 'Visible area',
+  format: 'Format',
+  png: 'PNG',
+  svg: 'SVG',
+  // SVG is FR-EXPORT-002 [P2]: shown, disabled, as the drawing marks it.
+  // Copy gap: the drawing gives no tooltip text. Interim.
+  svgLater: 'SVG export is coming later',
+  scale: 'Scale',
+  background: 'Background',
+  transparent: 'Transparent',
+  padding: 'Padding',
+  preview: 'Preview',
+  export: 'Export',
+  // Copy gap: FLOWS §11 asks for a progress indicator, not its words. Interim.
+  rendering: (percent: number) => `Rendering… ${percent}%`,
 } as const
 
 /**
@@ -195,6 +325,10 @@ export const auth = {
     or: 'or',
     // FLOWS §3.1 branch 8b — inline on the email field, beside a route out.
     emailTaken: errors.emailAlreadyRegistered,
+    // PRD §8.2 "Email already registered" → action "Log in instead".
+    logInInstead: actions.logInInstead,
+    // FLOWS §3.1 step 9 — the one-time toast after a first signup, verbatim.
+    welcome: 'Welcome to CoBoard',
     genericFailure: errors.genericServerError,
     // FLOWS §3.1 step 5.
     checklist: {
@@ -214,7 +348,8 @@ export const auth = {
     subtitle: 'Log in to get back to your boards.',
     submit: 'Log in',
     noAccount: "Don't have an account?",
-    signUp: actions.signUp,
+    // FLOWS §1.2: S-03 → S-02 is labelled "Create one".
+    signUp: 'Create one',
     forgot: 'Forgot password?',
     google: 'Continue with Google',
     // FLOWS §3.3 — the two OAuth failure banners.
@@ -260,6 +395,15 @@ export const auth = {
   settings: {
     title: 'Settings',
     profile: 'Profile',
+    // FR-SET-001 avatar (D-36). Copy gaps: the specs name the field only.
+    avatar: 'Avatar',
+    avatarAlt: (name: string) => `${name}'s avatar`,
+    avatarChange: 'Upload a photo',
+    avatarRemove: 'Remove photo',
+    avatarHint: 'PNG, JPG, GIF or WebP, under 10 MB.',
+    avatarUnsupported: 'We support PNG, JPG, GIF, and WebP for avatars.',
+    avatarSaved: 'Avatar updated',
+    avatarFailed: "Couldn't update your avatar. Try again.",
     displayName: 'Display name',
     email: 'Email',
     emailReadOnly: 'Your email address cannot be changed yet.',
@@ -292,6 +436,252 @@ export const auth = {
     email: 'Email',
     password: 'Password',
     displayName: 'Your name',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
+  },
+} as const
+
+/** Product name — the wordmark in the dashboard header and auth layout. */
+export const brand = {
+  name: 'CoBoard',
+} as const
+
+/** Full-screen spinner labels — route guards and board entry (FLOWS §2.2). */
+export const loading = {
+  boards: 'Loading your boards',
+  session: 'Checking your session',
+  board: 'Opening board',
+  // FLOWS §8.1, verbatim shape: "Loading 4,312 objects…".
+  objects: (count: number) => `Loading ${count.toLocaleString('en-US')} objects…`,
+  invite: 'Opening invite',
+} as const
+
+/**
+ * S-15 — the shortcuts reference, FR-SET-003. Every row is PRD Appendix A,
+ * verbatim: the action words, the key names and the context.
+ */
+export const shortcuts = {
+  title: 'Keyboard shortcuts',
+  rule: 'Every shortcut is disabled while a text input or on-canvas text editor has focus, except Escape and Cmd/Ctrl+Enter.',
+  contexts: { Board: 'Board', Global: 'Global', Forms: 'Forms' },
+  /** [keys, action, context] — Appendix A order. `Mod` reads Cmd or Ctrl. */
+  rows: [
+    [['V'], 'Select tool', 'Board'],
+    [['H'], 'Hand / pan tool', 'Board'],
+    [['P'], 'Pen tool', 'Board'],
+    [['E'], 'Eraser tool', 'Board'],
+    [['R'], 'Rectangle', 'Board'],
+    [['O'], 'Ellipse', 'Board'],
+    [['L'], 'Line', 'Board'],
+    [['A'], 'Arrow', 'Board'],
+    [['N'], 'Sticky note', 'Board'],
+    [['T'], 'Text', 'Board'],
+    [['Space (hold)'], 'Temporary pan', 'Board'],
+    [['Mod', 'Z'], 'Undo', 'Board'],
+    [['Mod', 'Shift', 'Z'], 'Redo', 'Board'],
+    [['Mod', 'C'], 'Copy', 'Board'],
+    [['Mod', 'X'], 'Cut', 'Board'],
+    [['Mod', 'V'], 'Paste', 'Board'],
+    [['Mod', 'D'], 'Duplicate', 'Board'],
+    [['Mod', 'A'], 'Select all', 'Board'],
+    [['Delete / Backspace'], 'Delete selection', 'Board'],
+    [['Escape'], 'Deselect / cancel / close modal', 'Global'],
+    [['Arrow keys'], 'Nudge 1 px', 'Board'],
+    [['Shift', 'Arrow'], 'Nudge 10 px', 'Board'],
+    [['Mod', 'Scroll'], 'Zoom', 'Board'],
+    [['Mod', '0'], 'Reset zoom to 100%', 'Board'],
+    [['Mod', '1'], 'Zoom to fit', 'Board'],
+    [['Mod', '+ / -'], 'Zoom in / out', 'Board'],
+    [[']'], 'Bring forward', 'Board'],
+    [['Mod', ']'], 'Bring to front', 'Board'],
+    [['['], 'Send backward', 'Board'],
+    [['Mod', '['], 'Send to back', 'Board'],
+    [['?'], 'Shortcuts modal', 'Global'],
+    [['Mod', 'Enter'], 'Submit form', 'Forms'],
+  ],
+  open: 'Keyboard shortcuts',
+} as const
+
+/** FLOWS §13.1 — the toast stack. */
+export const toastStrings = {
+  // R-UI-055: older toasts collapse into a count.
+  more: (count: number) => `+${count} more`,
+} as const
+
+/** FLOWS §6.1–6.4 — dashboard chrome (S-07, S-08): header, sidebar, filters, cards. */
+export const dashboard = {
+  searchPlaceholder: 'Search boards',
+  searchLabel: 'Search boards',
+  account: 'Account',
+  settings: 'Settings',
+  logOut: auth.settings.logOut,
+  loadMore: 'Load more',
+  trashTitle: 'Trash',
+  nav: {
+    label: 'Boards',
+    boards: 'Boards',
+    trash: 'Trash',
+    settings: 'Settings',
+  },
+  filters: {
+    label: 'Filter boards',
+    // FR-BOARD-002 and FLOWS §6.1 both name the tab "All".
+    all: 'All',
+    owned: 'Owned by me',
+    shared: 'Shared with me',
+    starred: 'Starred',
+  },
+  sorts: {
+    label: 'Sort boards',
+    lastEdited: 'Last edited',
+    created: 'Date created',
+    name: 'Name',
+  },
+  // FLOWS §6.4 — the card's overflow menu.
+  card: {
+    actionsFor: (name: string) => `Actions for ${name}`,
+    // FLOWS §6.4 item labels, in its order.
+    open: 'Open',
+    openInNewTab: 'Open in new tab',
+    rename: 'Rename',
+    duplicate: 'Duplicate',
+    share: actions.share,
+    copyLink: 'Copy link',
+    exportPng: 'Export as PNG',
+    leave: 'Leave board',
+    linkCopied: actions.copied,
+    // Copy gap — the clipboard was refused. Says what to do instead (§8.1).
+    linkCopyFailed:
+      "Couldn't copy the link. Open the board and copy it from the address bar.",
+    // FLOWS §6.2 avatar row: "+2" overflow, and its accessible name.
+    moreMembers: (count: number) => `+${count}`,
+    moreMembersLabel: (count: number) =>
+      count === 1 ? '1 more person' : `${count} more people`,
+    membersLabel: 'People on this board',
+  },
+} as const
+
+/** FLOWS §14 — board chrome (S-10): toolbar, menus, properties, zoom, history. */
+export const boardChrome = {
+  // FLOWS §14.5 mobile header `⋯`. Copy gap: the drawing shows the glyph only.
+  more: 'More',
+  renameBoard: 'Rename board',
+  // R-A11Y-006 — the canvas text alternative.
+  canvasLabel: (count: number) => `Whiteboard with ${count} objects`,
+  // The DOM textarea over the canvas while editing (TRD §7).
+  stickyTextLabel: 'Sticky note text',
+  textLabel: 'Text',
+  uploading: (fileName: string) => `Uploading ${fileName}`,
+
+  /** FLOWS §14.2 — the left toolbar, in §14.2 order. */
+  tools: {
+    label: 'Tools',
+    select: 'Select',
+    hand: 'Hand',
+    pen: 'Pen',
+    eraser: 'Eraser',
+    rect: 'Rectangle',
+    ellipse: 'Ellipse',
+    line: 'Line',
+    arrow: 'Arrow',
+    sticky: 'Sticky note',
+    text: 'Text',
+    image: 'Image',
+    comingLater: (label: string) => `${label} — coming in a later phase`,
+    // FLOWS §14.5: the mobile bar's `⋯`, opening a sheet with the rest.
+    // Copy gap: the drawing shows the glyph only. Interim.
+    more: 'More tools',
+  },
+
+  /** FR-CANVAS-019, FLOWS §14.2 — the right-click menu. */
+  contextMenu: {
+    label: 'Board actions',
+    duplicate: 'Duplicate',
+    copy: actions.copy,
+    bringToFront: 'Bring to front',
+    bringForward: 'Bring forward',
+    sendBackward: 'Send backward',
+    sendToBack: 'Send to back',
+    // FR-CANVAS-019, verbatim. Palette and property per type: D-25.
+    changeColour: 'Change colour',
+    delete: 'Delete',
+    paste: 'Paste',
+    selectAll: 'Select all',
+    zoomToFit: 'Zoom to fit',
+  },
+
+  /** FLOWS §14.4 — the properties panel. */
+  properties: {
+    label: 'Properties',
+    mixed: 'Mixed',
+    objectCount: (count: number) => (count === 1 ? '1 object' : `${count} objects`),
+    colour: 'Colour',
+    stroke: 'Stroke',
+    fill: 'Fill',
+    thickness: 'Thickness',
+    style: 'Style',
+    alignment: 'Alignment',
+    custom: 'Custom',
+    penColour: 'Pen colour',
+    customPenColour: 'Custom pen colour',
+    strokeColour: 'Stroke colour',
+    fillColour: 'Fill colour',
+    fillNone: 'Fill none',
+    stickyColour: 'Sticky colour',
+    textColour: 'Text colour',
+    thicknessPresets: 'Thickness presets',
+    thicknessPixels: (width: number) => `Thickness ${width} pixels`,
+    width: 'Width',
+    strokeWidth: 'Stroke width',
+    cornerRadius: 'Corner radius',
+    opacity: 'Opacity',
+    fontSize: 'Font size',
+    textStyle: 'Text style',
+    bold: 'Bold',
+    italic: 'Italic',
+    textAlignment: 'Text alignment',
+    alignLeft: 'Align left',
+    alignCentre: 'Align centre',
+    alignRight: 'Align right',
+    // FLOWS §14.4 rows. The drawing names the controls but gives no labels
+    // beyond these words; the rest are authored to PRD §8.1.
+    arrowheads: 'Arrowheads',
+    arrowheadNone: 'No arrowheads',
+    arrowheadStart: 'Arrowhead at start',
+    arrowheadEnd: 'Arrowhead at end',
+    arrowheadBoth: 'Arrowheads at both ends',
+    fontSizeAuto: 'Auto',
+    fontSizeAutoLabel: 'Fit text to the note automatically',
+    layer: 'Layer',
+    resetSize: 'Reset size',
+    stickyHint: 'Click the board to place a note and start typing.',
+    textHint: 'Click the board to place text.',
+    eraserHint: 'Drag across objects to delete them.',
+    delete: 'Delete',
+  },
+
+  /** FLOWS §14.2 — bottom-right zoom controls. */
+  zoom: {
+    label: 'Zoom controls',
+    zoomOut: 'Zoom out',
+    zoomIn: 'Zoom in',
+    zoomToFit: 'Zoom to fit',
+    percent: (percent: number) =>
+      `Zoom ${percent} percent. Click to reset to 100 percent`,
+  },
+
+  /** FR-CANVAS-018 — bottom-left undo and redo. */
+  history: {
+    label: 'Undo and redo',
+    undo: actions.undo,
+    redo: 'Redo',
+  },
+
+  /** FR-RT-009, FLOWS §15.2 — connection indicator labels not in errors. */
+  connection: {
+    connected: 'Connected',
+    connecting: 'Connecting…',
+    disconnected: 'Disconnected',
   },
 } as const
 
@@ -302,10 +692,101 @@ export const strings = {
   emptyStates,
   validation,
   guest,
+  sharing,
   states,
   presence,
   boards,
   export: exportStrings,
+  shortcuts,
+  brand,
+  loading,
+  dashboard,
+  boardChrome,
 } as const
 
 export type Strings = typeof strings
+
+/**
+ * S-01 landing — FLOWS §1.2, §3.1. The three CTA labels are FLOWS verbatim
+ * ("Log in", "Sign up free", "Try it now"; D-19). PRD §8 specifies no other
+ * landing copy, so the rest is written to PRD §1 and flagged in
+ * docs/REMAINING-WORK.md Phase 15 as a reversible decision.
+ */
+export const landing = {
+  nav: { label: 'Main', logIn: 'Log in', signUp: 'Sign up free' },
+  eyebrow: 'Real-time collaborative whiteboard',
+  headline: 'Draw together, in real time, from anywhere.',
+  sub: 'One infinite board, every cursor live. Sketch, plan and sort ideas with your team, and watch every stroke appear the moment it is drawn.',
+  ctaPrimary: 'Sign up free',
+  ctaSecondary: 'Try it now',
+  demoLabel: 'Two people drawing on the same board',
+  marquee: [
+    'Live cursors',
+    'Freehand strokes',
+    'Sticky notes',
+    'Shapes and arrows',
+    'Undo that is yours alone',
+    'Works offline',
+    'Share with a link',
+    'Export to PNG',
+  ],
+  bento: {
+    heading: 'Everything a whiteboard needs, and nothing in the way',
+    canvas: {
+      title: 'An infinite canvas',
+      body: 'Pan and zoom from 10% to 500%. Pen, shapes, arrows, text, sticky notes and images, all on one surface.',
+    },
+    presence: {
+      title: 'See who is here',
+      body: 'Named cursors move live, and so do the selections and strokes in progress.',
+    },
+    offline: {
+      title: 'Lose the wifi, keep the work',
+      body: 'Draw offline. Your changes merge the moment you are back.',
+    },
+    share: {
+      title: 'Invite anyone',
+      body: 'Share a link and a guest can be drawing in seconds, no account needed. Owners decide who can edit and who can only view.',
+    },
+  },
+  guarantees: {
+    heading: 'Built so nobody loses work',
+    items: [
+      {
+        title: 'Every change lands everywhere',
+        body: 'Each edit is ordered by the server and applied in the same order on every screen, so every collaborator ends up looking at exactly the same board.',
+      },
+      {
+        title: 'Your undo is yours',
+        body: 'Undo reverts what you did and never what a teammate did, even when you were both working on the same object a moment ago.',
+      },
+      {
+        title: 'Saved before it is confirmed',
+        body: 'A change is written to the database before anyone is told it succeeded, so a refresh, a crash or a restart never takes it away.',
+      },
+    ],
+  },
+  cta: {
+    heading: 'Start a board in ten seconds',
+    body: 'No credit card. No setup. Open a board and send the link.',
+  },
+  footer: { rights: 'CoBoard' },
+} as const
+
+/** `/demo` — the board UI on a local-only document (Phase 15 decision). */
+export const demo = {
+  bar: 'You are trying CoBoard. Nothing on this board is saved.',
+  signUp: 'Sign up free',
+  boardName: 'Demo board',
+  back: 'Back to home',
+} as const
+
+/** `/verify-email` — D-22: the emailed address-verification link. */
+export const verifyEmail = {
+  checking: 'Confirming your email address…',
+  verified: 'Email confirmed. Boards you were invited to are on your dashboard.',
+  invalid: "That confirmation link isn't valid.",
+  expired: 'That confirmation link has expired.',
+  used: 'That confirmation link has already been used.',
+  failed: "We couldn't confirm your email address. Try the link again.",
+} as const

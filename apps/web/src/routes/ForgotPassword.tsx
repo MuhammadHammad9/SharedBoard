@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { AuthLayout } from '../features/auth/AuthLayout.js'
 import { useForm } from '../features/auth/useForm.js'
 import { forgotPassword } from '../features/auth/api.js'
@@ -8,6 +8,17 @@ import { Button } from '../components/ui/Button.js'
 import { FormError } from '../components/ui/FormError.js'
 import { Input } from '../components/ui/Input.js'
 import { auth, validation } from '../lib/strings.js'
+
+/**
+ * FLOWS §5: S-05 sends a dead link back here "with banner". The reason
+ * travels in the URL (not router state) so it survives a reload; anything
+ * else in the parameter is ignored rather than echoed.
+ */
+const REASON_BANNER: Record<string, string> = {
+  expired: auth.reset.expired,
+  invalid: auth.reset.invalid,
+  used: auth.reset.used,
+}
 
 /** FLOWS §5: the resend button is disabled for 60 s with a countdown. */
 const RESEND_COOLDOWN_SECONDS = 60
@@ -25,6 +36,8 @@ const RESEND_COOLDOWN_SECONDS = 60
  * leak the 200 exists to prevent.
  */
 export default function ForgotPassword() {
+  const [params] = useSearchParams()
+  const reasonBanner = REASON_BANNER[params.get('reason') ?? ''] ?? null
   const [sentTo, setSentTo] = useState<string | null>(null)
   const [cooldown, setCooldown] = useState(0)
 
@@ -99,6 +112,14 @@ export default function ForgotPassword() {
         </Link>
       }
     >
+      {reasonBanner ? (
+        <div className="mb-4" data-testid="reset-reason">
+          {/* Announced, but focus stays in the email field — the next thing
+              the user does is type their address again. */}
+          <FormError message={reasonBanner} autoFocus={false} />
+        </div>
+      ) : null}
+
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
         <Input
           label={auth.fields.email}

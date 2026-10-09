@@ -39,3 +39,15 @@ pnpm-debug.log*
 # Prisma generated client
 packages/**/generated/
 apps/server/src/generated/
+dump.rdb
+
+# Production env and secret files (infra/docker-compose.prod.yml) — R-SEC-016.
+# The *.example files beside them are committed.
+infra/env/*.env
+infra/secrets/
+
+# Local database dumps (scripts/backup.sh)
+backups/
+
+# Local Claude Code agent worktrees
+.claude/worktrees/

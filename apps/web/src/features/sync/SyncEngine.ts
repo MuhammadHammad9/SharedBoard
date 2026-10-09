@@ -6,9 +6,11 @@ import {
   type ServerMessage,
   type ServerOp,
 } from '@coboard/shared'
-import { getOpsSince } from '../boards/api.js'
+import { getBoardState, getOpsSince } from '../boards/api.js'
 import { applyRemoteOp } from '../canvas/history/applyRemote.js'
 import { boardStore } from '../../stores/boardStore.js'
+import { activeSession } from './persistence.js'
+import { syncEvent } from './probe.js'
 
 /**
  * Ordering, gaps and the document — TRD §6.3, FLOWS §2.3 STEP 5.
@@ -35,12 +37,15 @@ export interface SyncCallbacks {
   /** The board is gone or access was revoked — S-18/S-19. */
   onFatal: (kind: 'deleted' | 'forbidden') => void
   onBoardRenamed?: (name: string) => void
+  /** FR-RT-011, D-26: this join was admitted as a viewer because the room is full. */
+  onOverCapacity?: () => void
 }
 
 export interface SyncDeps {
   send: (message: { t: 'join'; boardId: string; sinceSeq: number }) => boolean
   markSynced: () => void
   fetchOpsSince?: typeof getOpsSince
+  fetchSnapshot?: typeof getBoardState
   setTimer?: (fn: () => void, ms: number) => unknown
   clearTimer?: (handle: unknown) => void
 }
@@ -54,6 +59,13 @@ export class SyncEngine {
   private lastAppliedSeq = 0
   /** Ops that arrived ahead of their turn, keyed by seq. */
   private readonly pending = new Map<number, ServerOp>()
+  /**
+   * MY ops the server has ordered, keyed by their seq → op id. The server
+   * never broadcasts an op back to its author, so without these the author's
+   * own seqs would be permanent holes: `lastAppliedSeq` would stall at every
+   * one of them and only a REST gap fill could move it on.
+   */
+  private readonly own = new Map<number, string>()
   /** Ops that arrived before the snapshot did — the load-ordering rule. */
   private buffered: ServerOp[] = []
   private snapshotLoaded = false
@@ -62,10 +74,18 @@ export class SyncEngine {
   private gapFilling = false
   private unknownObjectTimes: number[] = []
   private reloadRequested = false
+  /** An E-13 snapshot reload is in flight: incoming ops wait, unapplied. */
+  private reloading = false
+  /**
+   * The board was left. A gap fill or snapshot reload still in flight must not
+   * land — by the time it resolves the store may hold the NEXT board.
+   */
+  private disposed = false
 
   private readonly setTimer: (fn: () => void, ms: number) => unknown
   private readonly clearTimer: (handle: unknown) => void
   private readonly fetchOpsSince: typeof getOpsSince
+  private readonly fetchSnapshot: typeof getBoardState
 
   constructor(
     private readonly boardId: string,
@@ -75,6 +95,7 @@ export class SyncEngine {
     this.setTimer = deps.setTimer ?? ((fn, ms) => globalThis.setTimeout(fn, ms))
     this.clearTimer = deps.clearTimer ?? (h => globalThis.clearTimeout(h as number))
     this.fetchOpsSince = deps.fetchOpsSince ?? getOpsSince
+    this.fetchSnapshot = deps.fetchSnapshot ?? getBoardState
   }
 
   get appliedSeq(): number {
@@ -117,6 +138,7 @@ export class SyncEngine {
     switch (message.t) {
       case 'join_ack':
         this.callbacks.onRole(message.role)
+        if (message.overCapacity) this.callbacks.onOverCapacity?.()
         this.deps.markSynced()
         /*
          * A join_ack whose seq is AHEAD of ours means we missed ops while
@@ -138,7 +160,11 @@ export class SyncEngine {
         return
 
       case 'nack':
-        this.callbacks.onNack([message.id], message.code)
+        /*
+         * The outbox owns nacks, through the socket transport's `settle`: it
+         * rolls the change back, drops the undo entry and reports once per
+         * batch. Reporting here as well toasted every refusal twice.
+         */
         return
 
       case 'board_deleted':
@@ -177,6 +203,7 @@ export class SyncEngine {
    * the document sits behind until the next message happens to arrive.
    */
   receiveOps(ops: readonly ServerOp[]): void {
+    if (this.disposed) return
     // Before the snapshot, everything waits. This is the load-ordering rule.
     if (!this.snapshotLoaded) {
       this.buffered.push(...ops)
@@ -190,22 +217,82 @@ export class SyncEngine {
       this.pending.set(op.seq, op)
     }
 
-    const ready: ServerOp[] = []
-    while (this.pending.has(this.lastAppliedSeq + 1)) {
-      const next = this.pending.get(this.lastAppliedSeq + 1)!
-      this.pending.delete(next.seq)
-      ready.push(next)
-      this.lastAppliedSeq = next.seq
-    }
+    // Mid-reload, the document is about to be replaced: hold everything and
+    // drain on top of the fresh snapshot instead.
+    if (this.reloading) return
+    this.drain()
+  }
 
-    if (ready.length > 0) this.apply(ready)
+  /**
+   * One of MY ops was ordered at `seq` — its ack, or its echo in a catch-up.
+   *
+   * ┌──────────────────────────────────────────────────────────────────────┐
+   * │  The fields it wrote are released when the DOCUMENT reaches `seq`,   │
+   * │  not when the ack arrives.                                           │
+   * │                                                                      │
+   * │  The server acks at once and batches broadcasts for 16 ms, so my ack │
+   * │  for seq 10 routinely lands before a teammate's seq 9. Released at   │
+   * │  the ack, their older write would then be applied over my newer one │
+   * │  — here and nowhere else. Released in order, seq 9 arrives while the │
+   * │  field is still held, and the document is right.                     │
+   * └──────────────────────────────────────────────────────────────────────┘
+   */
+  markOwn(seq: number, opId: string): void {
+    if (this.disposed) return
+    if (this.reloading) {
+      this.own.set(seq, opId)
+      return
+    }
+    if (!this.snapshotLoaded || seq <= this.lastAppliedSeq) {
+      // Already passed — it was applied in order as part of a replay.
+      activeSession()?.release(opId)
+      return
+    }
+    this.own.set(seq, opId)
+    this.drain()
+  }
+
+  private drain(): void {
+    if (this.disposed) return
+    /*
+     * In seq order, each remote op is applied and each of my own releases its
+     * fields AT ITS POSITION. Remote ops between two of mine are applied as
+     * one batch, so a long catch-up is still one store commit per run.
+     */
+    let batch: ServerOp[] = []
+    const flush = () => {
+      if (batch.length > 0) this.apply(batch)
+      batch = []
+    }
+    for (;;) {
+      const next = this.lastAppliedSeq + 1
+      const remote = this.pending.get(next)
+      if (remote) {
+        this.pending.delete(next)
+        // My own op, echoed by a replay. The reconcile step releases it.
+        this.own.delete(next)
+        batch.push(remote)
+        this.lastAppliedSeq = next
+        continue
+      }
+      const mine = this.own.get(next)
+      if (mine !== undefined) {
+        this.own.delete(next)
+        flush()
+        this.lastAppliedSeq = next
+        activeSession()?.release(mine)
+        continue
+      }
+      break
+    }
+    flush()
 
     /*
      * Anything still pending means a hole. Debounced, because out-of-order
      * delivery inside one batch is common and self-healing — asking the server
      * to re-send on every reordered pair would be a request per frame.
      */
-    if (this.pending.size > 0) this.scheduleGapFill()
+    if (this.pending.size > 0 || this.own.size > 0) this.scheduleGapFill()
     else this.cancelGapFill()
   }
 
@@ -218,17 +305,32 @@ export class SyncEngine {
      * diverged, and the honest repair is a fresh snapshot rather than limping
      * on with a document that is quietly wrong.
      */
-    const objects = boardStore.getState().objects
+    const { objects, tombstones } = boardStore.getState()
     for (const op of ops) {
       if (op.type === 'CREATE') continue
       if (objects.has(op.objectId as never)) continue
+      /*
+       * A DELETED object is not unknown. An update to something a teammate
+       * deleted a moment ago is the ordinary losing side of delete-wins
+       * (R-CONV-003), and counting it reloaded busy boards every few seconds.
+       */
+      if (tombstones.has(op.objectId as never)) continue
+      syncEvent(`unknown-object #${op.seq} ${op.type} ${op.objectId.slice(0, 8)}`)
       this.noteUnknownObject()
     }
+
+    /*
+     * Fields this client is still waiting on are held back, and our own ops
+     * echoed by a catch-up count as acks — see pendingWrites.ts. Without this
+     * a remote write ordered BEFORE an unacked local one overwrites it here
+     * and nowhere else: a permanent divergence (R-CONV-001).
+     */
+    const reconciled = activeSession()?.reconcileRemote(ops) ?? ops
 
     // The REMOTE path. It cannot reach the history stack — that separation is
     // what keeps undo per-user (R-UNDO-001), and it is enforced by a test that
     // reads applyRemote.ts's source.
-    applyRemoteOp(ops as unknown as ClientOp[])
+    applyRemoteOp(reconciled as unknown as ClientOp[])
   }
 
   private noteUnknownObject(): void {
@@ -270,6 +372,7 @@ export class SyncEngine {
     this.gapFilling = true
     try {
       const { ops } = await this.fetchOpsSince(this.boardId, this.lastAppliedSeq)
+      if (this.disposed) return
       if (ops.length > 0) this.receiveOps(ops as unknown as ServerOp[])
     } catch {
       // Still broken. The socket's own reconnect will re-join with our
@@ -279,24 +382,63 @@ export class SyncEngine {
     }
   }
 
-  /** A full reload — the E-13 escape hatch. */
+  /**
+   * A fresh snapshot — the E-13 escape hatch (FLOWS §12.5).
+   *
+   * ┌──────────────────────────────────────────────────────────────────────┐
+   * │  Three things the first version got wrong, each a divergence:       │
+   * │                                                                      │
+   * │  • It replayed the op log from 0 — one page of it — rather than     │
+   * │    loading a snapshot, so a long board came back truncated.         │
+   * │  • It wiped the document, losing this user's own unacknowledged     │
+   * │    edits: still queued for the server, gone from their screen.      │
+   * │  • It cleared the gap buffer, dropping ops that arrived during the  │
+   * │    fetch; with nothing written afterwards the hole was never seen.  │
+   * │                                                                      │
+   * │  Now incoming ops and own acks are held while the fetch is in       │
+   * │  flight, the snapshot replaces the document, everything it already  │
+   * │  covers is discarded, my unacked edits go back on top, and the held │
+   * │  ops drain after it.                                                │
+   * └──────────────────────────────────────────────────────────────────────┘
+   */
   private async reloadFromServer(): Promise<void> {
+    if (this.disposed) return
+    this.reloading = true
+    syncEvent(`snapshot-reload from seq ${this.lastAppliedSeq}`)
     try {
-      const { ops } = await this.fetchOpsSince(this.boardId, 0)
-      this.pending.clear()
-      this.lastAppliedSeq = 0
-      boardStore.getState().loadObjects([])
-      this.receiveOps(ops as unknown as ServerOp[])
+      const state = await this.fetchSnapshot(this.boardId)
+      if (this.disposed) return
+      boardStore.getState().loadObjects(state.objects)
+      this.lastAppliedSeq = state.seq
+      for (const seq of [...this.pending.keys()])
+        if (seq <= state.seq) this.pending.delete(seq)
+      const session = activeSession()
+      for (const [seq, id] of [...this.own]) {
+        if (seq > state.seq) continue
+        this.own.delete(seq)
+        session?.release(id)
+      }
+      session?.reapplyUnacked(state.seq)
     } catch {
-      // Nothing better to try. The next reconnect re-joins from seq 0.
+      // Nothing better to try. The next reconnect re-joins with our seq.
     } finally {
+      this.reloading = false
       this.reloadRequested = false
     }
+    this.drain()
+  }
+
+  private releaseAllOwn(): void {
+    const session = activeSession()
+    for (const id of this.own.values()) session?.release(id)
+    this.own.clear()
   }
 
   dispose(): void {
+    this.disposed = true
     this.cancelGapFill()
     this.pending.clear()
+    this.own.clear()
     this.buffered = []
   }
 }

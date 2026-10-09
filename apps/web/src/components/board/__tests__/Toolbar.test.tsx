@@ -16,13 +16,14 @@
  * undici dependency at all, so the whole class of problem goes away.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PEN_COLOURS } from '@coboard/shared'
 import { boardStore } from '../../../stores/boardStore.js'
 import { PREFS_KEY } from '../../../lib/persist.js'
 import { Toolbar } from '../Toolbar.js'
+import { recordedEvents } from '../../../lib/analytics.js'
 import { PropertiesPanel } from '../PropertiesPanel.js'
 
 function Board() {
@@ -85,7 +86,7 @@ describe('Toolbar — FLOWS §14.2', () => {
     )
   })
 
-  it('disables the tools that have no implementation yet', () => {
+  it('enables every tool — Image included, since FR-CANVAS-010 (Phase 13)', () => {
     render(<Board />)
     const disabled = (name: string) =>
       (screen.getByRole('button', { name }) as HTMLButtonElement).disabled
@@ -101,17 +102,20 @@ describe('Toolbar — FLOWS §14.2', () => {
       'Arrow',
       'Sticky note',
       'Text',
+      'Image',
     ]) {
       expect(disabled(name)).toBe(false)
     }
-    // Image alone is still unbuilt — FR-CANVAS-010 [P1], Phase 12.
-    expect(disabled('Image')).toBe(true)
   })
 
-  it('cannot activate a disabled tool by clicking it', async () => {
+  it('Image is an action, not a mode: it opens the file picker and keeps the tool', async () => {
     const user = userEvent.setup()
     render(<Board />)
+    const input = screen.getByTestId('image-file-input') as HTMLInputElement
+    const picked = vi.fn()
+    input.addEventListener('click', picked)
     await user.click(screen.getByRole('button', { name: 'Image' }))
+    expect(picked).toHaveBeenCalledTimes(1)
     expect(boardStore.getState().activeTool).toBe('select')
   })
 
@@ -238,5 +242,21 @@ describe('R-STATE-005 — the tool choice survives a refresh', () => {
     const stored = JSON.parse(localStorage.getItem(PREFS_KEY)!)
     expect(stored.activeTool).toBe('pen')
     expect(stored.pen.strokeWidth).toBe(6)
+  })
+})
+
+describe('PRD §9 tool_selected', () => {
+  it('fires via click when the tool changes, and not when re-clicking the active tool', async () => {
+    const user = userEvent.setup()
+    render(<Board />)
+    const start = recordedEvents().length
+
+    await user.click(screen.getByRole('button', { name: 'Pen' }))
+    await user.click(screen.getByRole('button', { name: 'Pen' }))
+
+    const events = recordedEvents()
+      .slice(start)
+      .filter(e => e.event === 'tool_selected')
+    expect(events.map(e => e.props)).toEqual([{ tool: 'pen', via: 'click' }])
   })
 })

@@ -1,9 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
-import type { ConnectionState, Role } from '@coboard/shared'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { SNAPSHOT_TIMEOUT_MS, type ConnectionState, type Role } from '@coboard/shared'
 import { ApiError } from '../../lib/api.js'
 import { useToast } from '../../components/ui/Toast.js'
-import { errors } from '../../lib/strings.js'
+import {
+  boards as boardStrings,
+  demo as demoStrings,
+  errors,
+  presence,
+} from '../../lib/strings.js'
 import { BoardSession } from '../sync/session.js'
+import { abandonPersistence } from '../sync/persistence.js'
+import { track } from '../../lib/analytics.js'
+import { boardStore } from '../../stores/boardStore.js'
+import { history } from '../canvas/history/history.js'
+import { flushPendingText } from '../canvas/interaction/handlers/textEdit.js'
 
 /**
  * A board id the server could never own — anything that is not a uuid.
@@ -20,6 +30,17 @@ import { BoardSession } from '../sync/session.js'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isScratchBoard = (id: string): boolean => import.meta.env.DEV && !UUID.test(id)
 
+/** Bumped by every board start, so a deferred clear never lands on the next board. */
+let boardGeneration = 0
+
+/**
+ * `/demo` — "Try it now" from S-01 (FLOWS §1.2). The scratch-board path, but
+ * in EVERY build: a local document, no fetch, no socket, nothing persisted,
+ * so there is nothing for the server to authorize. Not a uuid, so it can never
+ * collide with a real board.
+ */
+export const DEMO_BOARD_ID = 'demo'
+
 /**
  * Load a board's content and start persisting changes back — FLOWS §2.3 step 5.
  *
@@ -35,7 +56,13 @@ const isScratchBoard = (id: string): boolean => import.meta.env.DEV && !UUID.tes
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 
-export type BoardLoadStatus = 'loading' | 'ready' | 'not-found' | 'forbidden' | 'error'
+/**
+ * `deleted` and `revoked` are the LIVE ejections of FLOWS §9.5 — the board
+ * went away, or the person's access did, while it was open. `not-found` and
+ * `forbidden` are what loading it answered.
+ */
+export type BoardLoadStatus =
+  'loading' | 'ready' | 'not-found' | 'forbidden' | 'deleted' | 'revoked' | 'error'
 
 export interface BoardLoad {
   status: BoardLoadStatus
@@ -43,6 +70,14 @@ export interface BoardLoad {
   name: string
   /** Live socket state, for the header indicator — FR-RT-009. */
   connection: ConnectionState
+  /** Reconnect attempt in flight. */
+  attempt: number
+  /** Changes the server has not acknowledged yet. */
+  pending: number
+  /** "Retry now" — restarts the backoff. */
+  retryConnection: () => void
+  /** Reconnect under a new identity — guest → account (FLOWS §7.4). */
+  reconnect: () => void
   /** Server sequence the loaded document is current as of. */
   seq: number
   objectCount: number
@@ -57,17 +92,64 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
   const [objectCount, setObjectCount] = useState(0)
   const [attempt, setAttempt] = useState(0)
   const [connection, setConnection] = useState<ConnectionState>('connecting')
+  const [attemptN, setAttemptN] = useState(0)
+  const [pending, setPending] = useState(0)
   const sessionRef = useRef<BoardSession | null>(null)
+  const roleRef = useRef<Role | null>(null)
+  const capacityNoticeShown = useRef(false)
   const toast = useToast()
+  // Stable, so effects that depend on it (useGuestConversion) subscribe once.
+  const reconnect = useCallback(() => sessionRef.current?.socket.restart(), [])
 
   useEffect(() => {
     if (!boardId) return
 
+    /*
+     * A fresh board starts from nothing: no objects, selection, viewport,
+     * gesture, draft or text edit carried over from the last one, and no undo
+     * entries naming objects this board has never had (R-UNDO-006). For /demo
+     * and scratch boards this IS the document load — an empty one. The
+     * `?stress=1` fixture loads after this, when the canvas mounts.
+     */
+    const resetDocument = () => {
+      boardStore.getState().resetBoard()
+      history.clear()
+    }
+    const generation = ++boardGeneration
+    resetDocument()
+    /*
+     * Leaving clears the document too, but one microtask late. React runs the
+     * board route's effect cleanups in declaration order and this hook comes
+     * first, so a synchronous clear here emptied the store before
+     * useThumbnailUpkeep's cleanup captured it — and an empty board sends
+     * DELETE /thumbnail, wiping the card picture on every in-app exit. If
+     * another board has started by then, its own reset already ran: skip.
+     */
+    const resetAfterLeave = () => {
+      queueMicrotask(() => {
+        if (boardGeneration === generation) resetDocument()
+      })
+    }
+
+    if (boardId === DEMO_BOARD_ID) {
+      // An editor, not an owner: no share, no rename — both need a server.
+      setRole('EDITOR')
+      setName(demoStrings.boardName)
+      setStatus('ready')
+      return () => {
+        flushPendingText()
+        resetAfterLeave()
+      }
+    }
+
     if (isScratchBoard(boardId)) {
       setRole('OWNER')
-      setName('Scratch board')
+      setName(boardStrings.scratchName)
       setStatus('ready')
-      return
+      return () => {
+        flushPendingText()
+        resetAfterLeave()
+      }
     }
 
     /*
@@ -78,26 +160,79 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
      */
     const session = new BoardSession(boardId, {
       onState: next => setConnection(next),
-      onRole: next => setRole(next),
+      onRole: next => {
+        // FLOWS §9.5: demoted to viewer live — do not eject; say so once.
+        // Outside the state updater, which StrictMode runs twice.
+        const previous = roleRef.current
+        if (previous && previous !== 'VIEWER' && next === 'VIEWER') {
+          toast.show({ message: presence.nowViewer })
+        }
+        roleRef.current = next
+        setRole(next)
+      },
       onNack: () => toast.show({ message: errors.opRejected, variant: 'danger' }),
-      onFatal: kind => setStatus(kind === 'deleted' ? 'not-found' : 'forbidden'),
+      onFatal: kind => {
+        /*
+         * FLOWS §9.5: freeze, close the socket, full-screen state — and do NOT
+         * try to sync the outbox, because the target is gone. Its queue is
+         * discarded so a later visit does not replay into a board that no
+         * longer exists or no longer lets this person write.
+         */
+        abandonPersistence(boardId)
+        setStatus(kind === 'deleted' ? 'deleted' : 'revoked')
+      },
       onBoardRenamed: next => setName(next),
+      // FR-RT-011, D-26 — once per session, not on every reconnect's join_ack.
+      onOverCapacity: () => {
+        if (capacityNoticeShown.current) return
+        capacityNoticeShown.current = true
+        toast.show({ message: presence.overCapacity })
+      },
+      onAttempt: n => setAttemptN(n),
+      onPending: n => setPending(n),
+      // "Back online — 12 changes synced". Silent when nothing was waiting:
+      // a blip the user never noticed needs no announcement.
+      onBackOnline: synced => {
+        if (synced > 0) toast.show({ message: presence.backOnline(synced) })
+      },
     })
     sessionRef.current = session
 
     setStatus('loading')
+    const startedAt = performance.now()
 
     void (async () => {
       try {
-        const result = await session.start()
+        // E-21: never a spinner forever. On a hopeless connection the load
+        // gives up at 30 s and the error screen offers Retry (a fresh session).
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const result = await Promise.race([
+          session.start(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new LoadTimeout()), SNAPSHOT_TIMEOUT_MS)
+          }),
+        ]).finally(() => clearTimeout(timer))
         if (sessionRef.current !== session) return
+        roleRef.current = result.role
         setRole(result.role)
         setName(result.name)
         setSeq(result.seq)
         setObjectCount(result.objects)
         setStatus('ready')
+        // FLOWS §2.3 STEP 6 — with the measured load time (PRD §9).
+        track('board_opened', {
+          board_id: boardId,
+          role: result.role,
+          object_count: result.objects,
+          load_ms: Math.round(performance.now() - startedAt),
+        })
       } catch (error) {
         if (sessionRef.current !== session) return
+        if (error instanceof LoadTimeout) {
+          session.dispose()
+          setStatus('error')
+          return
+        }
         if (!(error instanceof ApiError)) {
           setStatus('error')
           return
@@ -105,22 +240,28 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
         /*
          * 404 covers both "no such board" and "not yours" — the server answers
          * 404 to a board the caller cannot see, on purpose (R-SEC-018).
+         * Either way there is nothing to stay connected to: the session goes,
+         * or its socket would keep retrying into a board we cannot open.
          */
+        if (error.status === 404 || error.status === 403) session.dispose()
         setStatus(
-          error.status === 404 ? 'not-found' : error.status === 403 ? 'forbidden' : 'error',
+          error.status === 404
+            ? 'not-found'
+            : error.status === 403
+              ? 'forbidden'
+              : 'error',
         )
       }
     })()
 
-    // Flush and reconnect the moment the browser says it is back, rather than
-    // waiting out whatever backoff was in flight.
-    const onOnline = () => session.resume()
-    window.addEventListener('online', onOnline)
-
+    // The `online`, `offline` and `visibilitychange` triggers belong to the
+    // session itself (features/sync/session.ts) — they are sync policy.
     return () => {
-      window.removeEventListener('online', onOnline)
       sessionRef.current = null
+      // Text typed since the last debounce goes out while the outbox exists.
+      flushPendingText()
       session.dispose()
+      resetAfterLeave()
     }
   }, [boardId, attempt, toast])
 
@@ -131,6 +272,18 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
     seq,
     objectCount,
     connection,
+    attempt: attemptN,
+    pending,
+    retryConnection: () => sessionRef.current?.resume(),
+    reconnect,
     retry: () => setAttempt(n => n + 1),
+  }
+}
+
+/** The load outran E-21's 30 s. */
+class LoadTimeout extends Error {
+  constructor() {
+    super('Board load timed out')
+    this.name = 'LoadTimeout'
   }
 }

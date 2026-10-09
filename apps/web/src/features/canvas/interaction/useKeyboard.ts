@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { boardStore } from '../../../stores/boardStore.js'
+import { boardStore, type Tool } from '../../../stores/boardStore.js'
+import { track } from '../../../lib/analytics.js'
 import { canChangeTool } from './machine.js'
 import { endPan } from './handlers/pan.js'
-import { cancelDraw } from './handlers/draw.js'
-import {
-  cancelDrag,
-  cancelResize,
-  cancelRotate,
-  nudgeSelection,
-} from './handlers/transform.js'
-import { cancelCreate } from './handlers/create.js'
+import { nudgeSelection } from './handlers/transform.js'
+import { cancelActiveGesture } from './cancelGesture.js'
 import {
   bringForward,
   bringToFront,
@@ -23,6 +18,23 @@ import {
 import { applyAndEmit, deleteOps } from '../history/apply.js'
 import { LABELS } from '../history/grouping.js'
 import { history } from '../history/history.js'
+import { openExport } from '../../export/exportStore.js'
+import { isModalOpen } from '../../../components/ui/Modal.js'
+import { openShortcuts } from '../../../components/board/shortcutsStore.js'
+
+/** Tool shortcuts — PRD Appendix A. Lower-cased `KeyboardEvent.key`. */
+const SHORTCUT_TOOLS: Record<string, Tool | undefined> = {
+  v: 'select',
+  h: 'hand',
+  p: 'pen',
+  e: 'eraser',
+  r: 'rect',
+  o: 'ellipse',
+  l: 'line',
+  a: 'arrow',
+  n: 'sticky',
+  t: 'text',
+}
 
 /** Arrow key → unit direction. FR-CANVAS-011. */
 const ARROW_DELTAS: Record<string, { x: number; y: number } | undefined> = {
@@ -35,10 +47,10 @@ const ARROW_DELTAS: Record<string, { x: number; y: number } | undefined> = {
 /**
  * Keyboard handling for the canvas. PRD Appendix A.
  *
- * Implemented so far: V H P E R O L A N T, Escape, Delete, arrows, Space,
- * Cmd+A/C/X/V/D/Z, Cmd+Shift+Z, Cmd+0, Cmd+1, Cmd +/-. What remains belongs
- * to later phases: `[`/`]` with the rest of FR-CANVAS-016 in Phase 9, and the
- * image tool whenever uploads land.
+ * V H P E R O L A N T, Escape, Delete, arrows, Space, `[` / `]` (with Cmd
+ * for to-front / to-back — FR-CANVAS-016), Cmd+A/C/X/V/D/Z, Cmd+Shift+Z,
+ * Cmd+Shift+E, Cmd+0, Cmd+1, Cmd +/- and `?`. The image tool has no letter:
+ * images arrive by drop, paste or the toolbar's picker.
  *
  * R-A11Y-009 (Blocking): EVERY shortcut is suppressed while a text input, the
  * on-canvas text overlay, or a modal has focus — except Escape and
@@ -69,6 +81,8 @@ export interface KeyboardOptions {
    * not carry one — so the pointer handler records it and this reads it back.
    */
   getPointer?: () => { x: number; y: number }
+  /** Image files pasted from the system clipboard — FR-CANVAS-010. */
+  onPasteImages?: (files: File[]) => void
 }
 
 export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolean } {
@@ -82,9 +96,23 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
       return { x: width / 2, y: height / 2 }
     }
 
+    /** The latest Cmd+V, so an image paste can stand the object paste down. */
+    let pasteIntent: { claimed: boolean } | null = null
+
     const onKeyDown = (e: KeyboardEvent) => {
       // R-A11Y-009: never steal keys from a text field.
       if (isTextEntryTarget(e.target)) return
+      // …nor from a modal (P14-1). The modal answers its own Escape, so
+      // nothing here does — not even the canvas's deselect.
+      if (isModalOpen()) return
+
+      // S-15 — `?` opens the shortcuts reference (PRD Appendix A, FR-SET-003).
+      // Shift+/ on most layouts; matched on the character, not the key code.
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        openShortcuts()
+        return
+      }
 
       const store = boardStore.getState()
       const mod = e.metaKey || e.ctrlKey
@@ -98,33 +126,44 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
       if (e.key === 'Escape') {
         e.preventDefault()
         const el = optionsRef.current.getElement?.() ?? null
-        switch (store.interaction.type) {
-          case 'DRAWING':
-            cancelDraw(el)
-            return
-          case 'DRAGGING':
-            cancelDrag(el)
-            return
-          case 'RESIZING':
-            cancelResize(el)
-            return
-          case 'ROTATING':
-            cancelRotate(el)
-            return
-          case 'CREATING':
-            cancelCreate(el)
-            return
-          case 'EDITING_TEXT':
-            // Handled by the overlay itself, which owns focus. Reaching here
-            // means the overlay is gone but the state is not — unwind it.
-            store.endTextEdit()
-            return
-          default:
-            // FR-CANVAS-022: Escape deselects and returns to the Select tool.
-            store.clearSelection()
-            if (store.activeTool !== 'select') store.setActiveTool('select')
+        if (store.interaction.type === 'EDITING_TEXT') {
+          // Handled by the overlay itself, which owns focus. Reaching here
+          // means the overlay is gone but the state is not — unwind it.
+          store.endTextEdit()
+          return
         }
+        // Mid-gesture, Escape cancels THAT gesture and nothing else — the
+        // tool never changes under a live pointer (R-CANVAS-055).
+        if (cancelActiveGesture(el)) return
+        if (store.interaction.type !== 'IDLE') return
+        // FR-CANVAS-022: Escape deselects and returns to the Select tool.
+        store.clearSelection()
+        if (store.activeTool !== 'select') store.setActiveTool('select')
         return
+      }
+
+      /*
+       * Viewer mode — FR-SHARE-006. Only keys that change nothing survive:
+       * Space to pan, and Cmd/Ctrl with 0, 1, +, − (zoom), C (copy) or A
+       * (select all, which copy needs). Everything else is ignored here, so
+       * no shortcut can start an edit the server would refuse.
+       */
+      /*
+       * Cmd+Shift+E — S-14 export (FLOWS §11). Read-only, so viewers too.
+       * Before the viewer gate and before the mod switch, where a bare `e`
+       * would be read as the eraser.
+       */
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault()
+        openExport()
+        return
+      }
+
+      if (store.readOnly) {
+        const viewSafe =
+          e.code === 'Space' ||
+          (mod && ['0', '1', '=', '+', '-', '_', 'c', 'a'].includes(e.key.toLowerCase()))
+        if (!viewSafe) return
       }
 
       // Delete the selection — FR-CANVAS-014, one entry for the whole
@@ -215,11 +254,19 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
             cutSelection()
             return
           case 'v': {
-            e.preventDefault()
+            /*
+             * NOT preventDefault: the browser must still fire its own `paste`
+             * event, because that is the only place an image copied from the
+             * OS arrives (clipboardData.files). If it carries one, the paste
+             * listener below claims this intent and the object paste stands
+             * down — the read below is async, so the claim always lands first.
+             */
+            const intent = { claimed: false }
+            pasteIntent = intent
             // "Paste places objects at the pointer position" — the last known
             // pointer position, since a keyboard event carries none.
             const at = optionsRef.current.getPointer?.() ?? { x: 0, y: 0 }
-            void pasteAt(at.x, at.y)
+            void pasteAt(at.x, at.y, () => intent.claimed)
             return
           }
           case 'd':
@@ -262,40 +309,14 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
       // Tool shortcuts. R-CANVAS-055 / FLOWS E-08: a tool change during an
       // interaction is ignored, not queued into a half-finished stroke.
       if (!canChangeTool(store.interaction.type)) return
-      switch (e.key.toLowerCase()) {
-        case 'v':
-          store.setActiveTool('select')
-          break
-        case 'h':
-          store.setActiveTool('hand')
-          break
-        case 'p':
-          store.setActiveTool('pen')
-          break
-        case 'e':
-          store.setActiveTool('eraser')
-          break
-        case 'r':
-          store.setActiveTool('rect')
-          break
-        case 'o':
-          store.setActiveTool('ellipse')
-          break
-        case 'l':
-          store.setActiveTool('line')
-          break
-        case 'a':
-          store.setActiveTool('arrow')
-          break
-        case 'n':
-          store.setActiveTool('sticky')
-          break
-        case 't':
-          store.setActiveTool('text')
-          break
-        default:
-          break
-      }
+      const tool = SHORTCUT_TOOLS[e.key.toLowerCase()]
+      if (!tool) return
+      // PRD §9 tool_selected — only when the tool really changes. Pressing P
+      // while already on Pen is not a selection. The implicit returns to
+      // Select (Escape above, and after creating an object) are not tracked:
+      // the user did not choose a tool, the machine reset one.
+      if (store.activeTool !== tool) track('tool_selected', { tool, via: 'shortcut' })
+      store.setActiveTool(tool)
     }
 
     const onKeyUp = (e: KeyboardEvent) => {
@@ -311,14 +332,33 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
       if (boardStore.getState().interaction.type === 'PANNING') endPan(null)
     }
 
+    /*
+     * The browser's own paste — FR-CANVAS-010. Fires after the Cmd+V keydown
+     * above (and for Edit → Paste). Only image FILES are handled here; text
+     * and CoBoard objects stay with `pasteAt`.
+     */
+    const onPaste = (e: ClipboardEvent) => {
+      if (isTextEntryTarget(e.target) || isModalOpen()) return
+      if (boardStore.getState().readOnly) return
+      const images = Array.from(e.clipboardData?.files ?? []).filter(f =>
+        f.type.startsWith('image/'),
+      )
+      if (images.length === 0) return
+      e.preventDefault()
+      if (pasteIntent) pasteIntent.claimed = true
+      optionsRef.current.onPasteImages?.(images)
+    }
+
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
     window.addEventListener('blur', onBlur)
+    window.addEventListener('paste', onPaste)
     // R-STATE-007: every listener has a matching remove.
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('blur', onBlur)
+      window.removeEventListener('paste', onPaste)
     }
   }, [])
 

@@ -1,3 +1,5 @@
+import { boardChrome } from '../../../lib/strings.js'
+
 /**
  * "Mixed" — FLOWS §14.4.
  *
@@ -9,7 +11,7 @@
 export function MixedValue() {
   return (
     <span className="text-xs italic text-muted" data-testid="mixed-value">
-      Mixed
+      {boardChrome.properties.mixed}
     </span>
   )
 }

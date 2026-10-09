@@ -1,0 +1,202 @@
+name: Deploy
+
+# Phase 15f — TRD §15.1. Builds the three images, pushes them to GHCR, then
+# (only when the deploy secrets exist) runs the release migration and a
+# rolling restart on the production host via scripts/deploy.sh.
+#
+# A push to main has already passed the CI gates on its PR (branch protection
+# requires ci.yml green before merge), so this workflow does not re-run them.
+#
+# Secrets (Settings → Secrets and variables → Actions, environment
+# "production"). Never inline a secret in this file (R-SEC-016).
+#   DEPLOY_HOST         production host name or IP
+#   DEPLOY_USER         SSH user (in the docker group)
+#   DEPLOY_SSH_KEY      private key for that user (ed25519)
+#   DEPLOY_KNOWN_HOSTS  `ssh-keyscan <host>` output — host keys are pinned,
+#                       never auto-accepted
+#   DEPLOY_PATH         optional; deploy directory on the host (default /opt/coboard)
+# Missing any required one → the build still runs, the deploy is skipped
+# with a notice. docs/RUNBOOK.md §2 describes the host setup.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Roll back / redeploy an existing image tag (a commit SHA). Empty = build and deploy this commit.'
+        required: false
+        default: ''
+
+# Deploys are serialised and never cancelled half-way: a cancelled rolling
+# restart leaves instances on two versions.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  images:
+    name: Build and push ${{ matrix.image }}
+    if: ${{ github.event_name == 'push' || inputs.tag == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - image: coboard-server
+            dockerfile: apps/server/Dockerfile
+            target: runtime
+          - image: coboard-migrate
+            dockerfile: apps/server/Dockerfile
+            target: migrate
+          - image: coboard-web
+            dockerfile: apps/web/Dockerfile
+            target: runtime
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR repository names must be lower-case.
+      - name: Image name
+        run: echo "IMAGE=${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.image }}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          push: true
+          # The SHA tag is what gets deployed and rolled back to; `latest` is
+          # a convenience for humans and never referenced by a deploy.
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  deploy:
+    name: Migrate and roll out
+    needs: images
+    # Runs after a successful build, or on its own for a rollback (images skipped).
+    if: ${{ !cancelled() && (needs.images.result == 'success' || needs.images.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    env:
+      TAG: ${{ inputs.tag || github.sha }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/coboard' }}
+    steps:
+      - name: Check deploy secrets
+        id: gate
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          missing=()
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::notice title=Deploy skipped::Images for ${TAG} are in GHCR, but no deploy target is configured (missing: ${missing[*]}). See docs/RUNBOOK.md §2."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.configured == 'true'
+
+      - name: Configure SSH
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<CONFIG
+          Host deploy
+            HostName ${DEPLOY_HOST}
+            User ${DEPLOY_USER}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking yes
+          CONFIG
+
+      # Ships the compose file, nginx/prometheus config and deploy script.
+      # infra/env/*.env and infra/secrets/ live only on the host and are
+      # never in the checkout, so this cannot overwrite them.
+      # inputs.tag is spliced into a remote shell command below. Only a commit
+      # SHA is a valid image tag here, so anything else is refused outright.
+      - name: Validate tag
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          if ! [[ "$TAG" =~ ^[0-9a-f]{7,40}$ ]]; then
+            echo "::error::tag must be a commit SHA (7-40 hex chars), got: $TAG"
+            exit 1
+          fi
+
+      - name: Sync deploy files
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          # --overwrite rewrites existing files in place (same inode), so the
+          # single-file bind mounts (lb.conf, prometheus.yml, alerts.yml) see
+          # the change; a default extract would swap the inode under them.
+          # backup.sh/restore.sh/lib ship too: the host's backup cron runs them.
+          tar -czf - infra scripts/deploy.sh scripts/backup.sh scripts/restore.sh scripts/lib \
+            | ssh deploy "mkdir -p '$DEPLOY_PATH' && tar --overwrite -xzf - -C '$DEPLOY_PATH'"
+
+      # The job's own short-lived token, piped over stdin — never on a command line.
+      - name: Log the host in to GHCR
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" \
+            | ssh deploy "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+
+      - name: Pull images
+        if: steps.gate.outputs.configured == 'true'
+        run: ssh deploy "cd '$DEPLOY_PATH' && TAG='$TAG' GHCR_OWNER='${GITHUB_REPOSITORY_OWNER,,}' bash scripts/deploy.sh pull"
+
+      # Release command, once, before any instance runs the new code. Skipped
+      # for a manual rollback: migrations only move forward.
+      - name: Run migrations
+        if: steps.gate.outputs.configured == 'true' && inputs.tag == ''
+        run: ssh deploy "cd '$DEPLOY_PATH' && TAG='$TAG' GHCR_OWNER='${GITHUB_REPOSITORY_OWNER,,}' bash scripts/deploy.sh migrate"
+
+      - name: Rolling restart
+        if: steps.gate.outputs.configured == 'true'
+        run: ssh deploy "cd '$DEPLOY_PATH' && TAG='$TAG' GHCR_OWNER='${GITHUB_REPOSITORY_OWNER,,}' bash scripts/deploy.sh rollout"
+
+      - name: Log the host out of GHCR
+        if: always() && steps.gate.outputs.configured == 'true'
+        run: ssh deploy "docker logout ghcr.io" || true

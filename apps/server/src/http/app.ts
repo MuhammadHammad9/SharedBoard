@@ -6,6 +6,16 @@ import { env } from '../lib/env.js'
 import { createAuthRouter } from './routes/auth.js'
 import { createBoardsRouter } from './routes/boards.js'
 import { createWsRouter } from './routes/ws.js'
+import { createShareRouter } from './routes/share.js'
+import { createMembersRouter } from './routes/members.js'
+import { createUploadsRouter } from './routes/uploads.js'
+import { createClientErrorsRouter } from './routes/clientErrors.js'
+import { createMetricsRouter } from './routes/metrics.js'
+import {
+  mountedAt,
+  REQUEST_ID_HEADER,
+  requestContext,
+} from './middleware/requestContext.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 
 /**
@@ -29,6 +39,10 @@ export function createApp(): Express {
    */
   app.set('trust proxy', 1)
 
+  // First, so even a CORS rejection or a malformed JSON body carries an id
+  // and is counted (Phase 15e, TRD §15.4).
+  app.use(requestContext)
+
   /*
    * CORS with an explicit allow-list — R-SEC-014, no wildcards.
    *
@@ -40,6 +54,8 @@ export function createApp(): Express {
     cors({
       origin: env().CLIENT_ORIGIN,
       credentials: true,
+      // So the client can read the id when the body is not our envelope.
+      exposedHeaders: [REQUEST_ID_HEADER],
     }),
   )
 
@@ -61,9 +77,19 @@ export function createApp(): Express {
     })
   })
 
-  app.use('/api/auth', createAuthRouter())
-  app.use('/api/boards', createBoardsRouter())
-  app.use('/api/ws', createWsRouter())
+  // `mountedAt` records each prefix for the metrics route label.
+  const mount = (base: string, router: express.Router) =>
+    app.use(base, mountedAt(base), router)
+
+  mount('/api/auth', createAuthRouter())
+  // Before the boards router, which would otherwise answer /:id/members.
+  mount('/api/boards/:id/members', createMembersRouter())
+  mount('/api/boards', createBoardsRouter())
+  mount('/api/ws', createWsRouter())
+  mount('/api/share', createShareRouter())
+  mount('/api/uploads', createUploadsRouter())
+  mount('/api/client-errors', createClientErrorsRouter())
+  mount('/metrics', createMetricsRouter())
 
   // Order matters: 404 for unmatched routes, then the error handler last, so
   // everything thrown anywhere above lands in one envelope (TRD §4).

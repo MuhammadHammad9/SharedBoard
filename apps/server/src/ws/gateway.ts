@@ -10,9 +10,10 @@ import { permissionService } from '../services/PermissionService.js'
 import { presenceService } from '../services/PresenceService.js'
 import { prisma } from '../lib/prisma.js'
 import { logger } from '../lib/logger.js'
+import { wsAttempts, wsConnected, wsFailures } from '../lib/metrics.js'
 import { redeemTicket } from '../http/routes/ws.js'
 import { Fanout } from './fanout.js'
-import { RoomManager, roomManager } from './RoomManager.js'
+import { liveRooms, RoomManager, roomManager, setActiveRooms } from './RoomManager.js'
 import { Session } from './Session.js'
 import { handleJoin } from './handlers/join.js'
 import { handleOps } from './handlers/op.js'
@@ -44,6 +45,14 @@ const MAX_FRAME_BYTES = 512 * 1024
 /** Matches the protocol's `op_batch` cap. A longer array is not a real client. */
 const MAX_OPS_PER_MESSAGE = 100
 
+/**
+ * How long an upgraded socket may sit without sending `join` — finding 10.
+ * An unjoined socket is in no room, so the idle sweep never sees it and the
+ * room cap never counts it; without a deadline a ticket-holder could park
+ * thousands of them. A real client sends `join` the moment the socket opens.
+ */
+export const JOIN_TIMEOUT_MS = 10_000
+
 export interface Gateway {
   wss: WebSocketServer
   rooms: RoomManager
@@ -58,17 +67,24 @@ export interface GatewayOptions {
    * would otherwise hold two extra Redis connections open per suite.
    */
   fanout?: boolean
+  /** Overridable so the test for it does not wait ten seconds. */
+  joinTimeoutMs?: number
 }
 
 export function attachGateway(server: Server, options: GatewayOptions = {}): Gateway {
   const rooms = options.rooms ?? roomManager
+  const joinTimeoutMs = options.joinTimeoutMs ?? JOIN_TIMEOUT_MS
+  // Restored on close: a second gateway in the same process (the fan-out
+  // tests attach two) must not leave REST broadcasting into a dead one.
+  const previousRooms = liveRooms()
+  setActiveRooms(rooms)
   const fanout = options.fanout ? new Fanout(rooms) : null
   if (fanout) void fanout.start()
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES })
 
   server.on('upgrade', (request, socket, head) => {
-    void handleUpgrade(wss, rooms, request, socket, head)
+    void handleUpgrade(wss, rooms, joinTimeoutMs, request, socket, head)
   })
 
   /*
@@ -83,7 +99,7 @@ export function attachGateway(server: Server, options: GatewayOptions = {}): Gat
   const sweep = setInterval(() => {
     for (const session of rooms.allSessions()) {
       if (!session.idle) continue
-      logger.info({ sessionId: session.id }, 'terminating idle socket')
+      session.log.info('terminating idle socket')
       leave(rooms, session)
       session.close(CLOSE_CODES.GOING_AWAY, 'idle')
     }
@@ -101,7 +117,7 @@ export function attachGateway(server: Server, options: GatewayOptions = {}): Gat
       void presenceService.sweep(boardId).then(stale => {
         for (const sessionId of stale) {
           if (rooms.get(boardId, sessionId)) continue // still live here
-          rooms.broadcast(boardId, { t: 'presence_leave', sessionId })
+          rooms.deliver(boardId, { t: 'presence_leave', sessionId })
         }
       })
     }
@@ -116,6 +132,7 @@ export function attachGateway(server: Server, options: GatewayOptions = {}): Gat
     close: async () => {
       clearInterval(sweep)
       rooms.dispose()
+      if (liveRooms() === rooms) setActiveRooms(previousRooms)
       await fanout?.stop()
       await new Promise<void>(resolve => wss.close(() => resolve()))
     },
@@ -125,11 +142,18 @@ export function attachGateway(server: Server, options: GatewayOptions = {}): Gat
 async function handleUpgrade(
   wss: WebSocketServer,
   rooms: RoomManager,
+  joinTimeoutMs: number,
   request: IncomingMessage,
   socket: Duplex,
   head: Buffer,
 ): Promise<void> {
+  // Every upgrade to any path counts as an attempt, and every refusal as a
+  // failure labelled by status — the TRD §15.4 failure-rate signal. A spike in
+  // 401s is expired tickets; in 500s, a dependency.
+  wsAttempts.inc()
+
   const reject = (status: number, reason: string) => {
+    wsFailures.inc({ reason: String(status) })
     // A plain HTTP response, because the upgrade never completed — there is no
     // WebSocket yet to close with a code.
     socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`)
@@ -153,33 +177,37 @@ async function handleUpgrade(
      * in that window must take effect — a stale role in a signed-ish blob is
      * the classic way an authorization change fails to apply (R-SEC-002).
      */
-    const access = await permissionService.resolve(payload.boardId, payload.userId)
+    const { identity } = payload
+    const access = await permissionService.resolve(payload.boardId, identity)
     if (!access || access.deletedAt) return reject(404, 'Not Found')
     if (access.role === 'none') return reject(403, 'Forbidden')
     const role = access.role
 
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { displayName: true },
-    })
-    if (!user) return reject(401, 'Unauthorized')
+    // The name others will see beside this cursor: the account's, or the one
+    // the guest typed on S-11.
+    const displayName =
+      identity.kind === 'user'
+        ? (
+            await prisma.user.findUnique({
+              where: { id: identity.userId },
+              select: { displayName: true },
+            })
+          )?.displayName
+        : (
+            await prisma.boardMember.findUnique({
+              where: {
+                boardId_guestId: { boardId: payload.boardId, guestId: identity.guestId },
+              },
+              select: { guestName: true },
+            })
+          )?.guestName
+    if (!displayName) return reject(401, 'Unauthorized')
 
     wss.handleUpgrade(request, socket, head, ws => {
-      const session = new Session(
-        ws,
-        payload.boardId,
-        payload.userId,
-        user.displayName,
-        role,
-      )
-
-      if (rooms.isFull(payload.boardId)) {
-        // 4029, not 4003: the client should retry in 30 s, not give up.
-        session.close(CLOSE_CODES.RATE_LIMITED, 'Board is full')
-        return
-      }
-
-      wire(session, rooms)
+      const session = new Session(ws, payload.boardId, identity, displayName, role)
+      // A full room is NOT refused here — FR-RT-011, D-26. `join` admits the
+      // socket as a viewer instead, counting the room as it actually is.
+      wire(session, rooms, joinTimeoutMs)
     })
   } catch (error) {
     logger.error({ err: error }, 'websocket upgrade failed')
@@ -187,26 +215,62 @@ async function handleUpgrade(
   }
 }
 
-function wire(session: Session, rooms: RoomManager): void {
+function wire(session: Session, rooms: RoomManager, joinTimeoutMs: number): void {
   const socket: WebSocket = session.socket
+
+  // `close` fires exactly once per socket, unlike `error`, so the gauge is
+  // decremented there and only there.
+  wsConnected.inc()
+  session.log.info({ role: session.role }, 'socket opened')
+
+  const joinDeadline = setTimeout(() => {
+    if (session.joined) return
+    session.log.info('closing socket that never joined')
+    session.close(CLOSE_CODES.POLICY_VIOLATION, 'join timeout')
+  }, joinTimeoutMs)
+  joinDeadline.unref?.()
 
   socket.on('message', data => {
     session.touch()
     void dispatch(session, rooms, data)
   })
 
-  socket.on('close', () => leave(rooms, session))
+  socket.on('close', code => {
+    clearTimeout(joinDeadline)
+    wsConnected.dec()
+    session.log.info({ code }, 'socket closed')
+    leave(rooms, session)
+  })
   socket.on('error', error => {
-    logger.debug({ err: error, sessionId: session.id }, 'socket error')
+    session.log.debug({ err: error }, 'socket error')
     leave(rooms, session)
   })
 }
 
+/**
+ * Every inbound frame, with a floor under it — finding 3.
+ *
+ * `dispatch` is fired with `void` from the socket's message listener, so a
+ * rejection escaping it is an UNHANDLED rejection — and one database error
+ * during a `join` took the whole process, and every room on it, down. A
+ * failure is logged against the session; a failed `join` also closes the
+ * socket with 1011 (see the `join` case), because a socket stuck half-joined
+ * can do nothing useful and the client's reconnect, with backoff, is the
+ * right recovery.
+ */
 async function dispatch(
   session: Session,
   rooms: RoomManager,
   data: unknown,
 ): Promise<void> {
+  try {
+    await route(session, rooms, data)
+  } catch (error) {
+    session.log.error({ err: error }, 'socket message handling failed')
+  }
+}
+
+async function route(session: Session, rooms: RoomManager, data: unknown): Promise<void> {
   let parsed: unknown
   try {
     parsed = JSON.parse(String(data))
@@ -270,7 +334,13 @@ async function dispatch(
         session.close(CLOSE_CODES.FORBIDDEN, 'Board mismatch')
         return
       }
-      await handleJoin(session, rooms, message.data.sinceSeq)
+      try {
+        await handleJoin(session, rooms, message.data.sinceSeq)
+      } catch (error) {
+        session.log.error({ err: error }, 'join failed')
+        leave(rooms, session)
+        session.close(CLOSE_CODES.INTERNAL_ERROR, 'join failed')
+      }
       return
 
     // Presence — relayed, never persisted (R-SYNC-001).

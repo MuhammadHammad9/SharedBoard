@@ -97,7 +97,13 @@ export const RefreshResponseSchema = z.object({ accessToken: z.string().min(1) }
 
 export const UpdateProfileSchema = z.object({
   displayName: DisplayNameSchema.optional(),
-  avatarUrl: z.string().url().max(2048).nullable().optional(),
+  /**
+   * D-36: null REMOVES the avatar. Setting one goes through the upload
+   * confirm (`POST /uploads/avatar/confirm`), never a client-supplied URL —
+   * an avatar is fetched by every collaborator's browser, and an arbitrary
+   * URL there is a tracking pixel aimed at all of them.
+   */
+  avatarUrl: z.null().optional(),
 })
 
 export const ChangePasswordSchema = z.object({

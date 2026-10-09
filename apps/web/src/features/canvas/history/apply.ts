@@ -8,7 +8,8 @@ import {
   diffOp,
   type ObjectReader,
 } from './inverseOps.js'
-import { emitOps } from '../../sync/persistence.js'
+import { activeSession, emitOps } from '../../sync/persistence.js'
+import { track } from '../../../lib/analytics.js'
 import type { CoalesceKey } from './grouping.js'
 
 /**
@@ -69,6 +70,10 @@ export function applyAndEmit(
   options: ApplyOptions = {},
 ): boolean {
   if (ops.length === 0) return false
+  // The backstop for viewer mode (FR-SHARE-006): whatever path got here —
+  // a panel button, a menu, a shortcut that slipped the gate — a viewer's
+  // change is never applied locally to be refused and rolled back.
+  if (boardStore.getState().readOnly) return false
 
   /*
    * R-UNDO-007 (Blocking), and the one line in this file that must not move.
@@ -87,8 +92,13 @@ export function applyAndEmit(
    * change must land on their screen at pointer speed; whether it has reached
    * Postgres yet is the outbox's problem, not theirs. Phase 9 swaps the
    * transport underneath this line for the socket.
+   *
+   * The inverse rides along: it holds each field's value before this change,
+   * which is what the sync layer restores if the server refuses it (R-SYNC-011)
+   * and what it holds remote writes against meanwhile (R-CONV-001).
    */
-  emitOps(ops)
+  emitOps(ops, inverse)
+  trackCreated(ops)
 
   // An un-invertible batch is applied but not recorded. Dropping the entry is
   // deliberate: a partial inverse would restore the board to a state the user
@@ -97,6 +107,23 @@ export function applyAndEmit(
 
   history.push({ forward: [...ops], inverse, label, coalesceKey: options.coalesceKey })
   return true
+}
+
+/**
+ * PRD §9 object_created — one event per CREATE op of a local user action.
+ *
+ * Here and only here: undo/redo replays go through `history.ts` and remote
+ * ops through `applyRemote.ts`, so neither is counted. With no persistence
+ * session there is no real board (the canvas-only e2e suites), so no
+ * board_id to report and nothing is sent.
+ */
+function trackCreated(ops: readonly ClientOp[]): void {
+  const boardId = activeSession()?.boardId
+  if (!boardId) return
+  for (const op of ops) {
+    if (op.type === 'CREATE')
+      track('object_created', { type: op.payload.type, board_id: boardId })
+  }
 }
 
 /* ── Op builders for the shapes the handlers actually commit ──────────────── */

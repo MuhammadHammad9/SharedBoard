@@ -124,7 +124,9 @@ async function surface(page: Page) {
 
 const objectCount = (page: Page): Promise<number> =>
   page.evaluate(
-    () => (window as unknown as { __coboardObjects: () => unknown[] }).__coboardObjects().length,
+    () =>
+      (window as unknown as { __coboardObjects: () => unknown[] }).__coboardObjects()
+        .length,
   )
 
 async function drawStroke(page: Page, x: number, y: number) {
@@ -255,7 +257,7 @@ test.describe('board persistence', () => {
     await waitForServerObjects(page, boardId, 3)
   })
 
-  test('a board the user cannot see shows S-20 and never its name', async ({
+  test('AT-21: a non-member sees S-17 access denied, and never the board name', async ({
     page,
   }) => {
     const ownerBoard = await openNewBoard(page, 'Acquisition target shortlist')
@@ -268,7 +270,9 @@ test.describe('board persistence', () => {
     await signIn(intruder, other)
 
     await intruder.goto(`/board/${ownerBoard}`)
-    await expect(intruder.getByTestId('board-not-found')).toBeVisible()
+    // Phase 12: FLOWS §2.3 STEP 4 — 403 no_access renders S-17 in place of the
+    // canvas (Phase 8 showed S-20 here, before access had its own branch).
+    await expect(intruder.getByTestId('board-forbidden')).toBeVisible()
     // R-SEC-018: the name must not appear anywhere on the page.
     expect(await intruder.content()).not.toContain('Acquisition')
     await context.close()
@@ -280,14 +284,20 @@ test.describe('board persistence', () => {
     await expect(page.getByTestId('board-not-found')).toBeVisible()
   })
 
-  test('an unauthenticated visitor is sent to login with next preserved', async ({
+  test('an anonymous visitor with no link gets S-17, and Log in returns to the board', async ({
     page,
   }) => {
-    await page.goto('/board/11111111-1111-4111-8111-111111111111')
-    await expect(page).toHaveURL(/\/login\?next=/)
-    expect(new URL(page.url()).searchParams.get('next')).toBe(
-      '/board/11111111-1111-4111-8111-111111111111',
-    )
+    // FLOWS §2.4: not a member, no share token → S-17. The deep link survives
+    // through the screen's Log in, which carries ?next= (FLOWS §4).
+    const boardId = await openNewBoard(page)
+    const stranger = await page.context().browser()!.newContext()
+    const anon = await stranger.newPage()
+    await anon.goto(`/board/${boardId}`)
+    await expect(anon.getByTestId('board-forbidden')).toBeVisible()
+    await anon.getByTestId('forbidden-log-in').click()
+    await expect(anon).toHaveURL(/\/login\?next=/)
+    expect(new URL(anon.url()).searchParams.get('next')).toBe(`/board/${boardId}`)
+    await stranger.close()
   })
 
   test('AT-11: draw, close the browser, reopen — the work is there', async ({

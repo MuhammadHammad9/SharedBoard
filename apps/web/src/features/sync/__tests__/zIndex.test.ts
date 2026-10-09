@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardObject, ObjectId } from '@coboard/shared'
+import { boardStore, objectsInZOrder } from '../../../stores/boardStore.js'
 import {
+  compareZ,
   keyAfterTop,
   keysAfter,
   keysAfterTop,
@@ -124,5 +126,83 @@ describe('the Phase 1-8 key format still sorts', () => {
   it('puts a new object above a fixture-format board', () => {
     const { objects, sortedIds } = board(['a000001', 'a009999'])
     expect(keyAfterTop(objects, sortedIds) > 'a009999').toBe(true)
+  })
+})
+
+describe('tied keys — concurrent creates', () => {
+  const obj = (id: string, zIndex: string) =>
+    ({
+      id,
+      type: 'rect',
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      rotation: 0,
+      zIndex,
+      opacity: 1,
+      createdBy: 't',
+      createdAt: 0,
+      updatedAt: 0,
+      stroke: '#18181B',
+      strokeWidth: 2,
+      fill: 'none',
+    }) as unknown as BoardObject
+
+  it('orders a tie by id, whatever order the objects arrive in', () => {
+    const a = obj('aaaaaaaa-0000-4000-8000-000000000000', 'a1')
+    const b = obj('bbbbbbbb-0000-4000-8000-000000000000', 'a1')
+    const base = obj('00000000-0000-4000-8000-000000000000', 'a0')
+
+    boardStore.getState().loadObjects([base])
+    boardStore.getState().addObject(b)
+    boardStore.getState().addObject(a)
+    const one = objectsInZOrder().map(o => o.id)
+
+    boardStore.getState().loadObjects([base])
+    boardStore.getState().addObject(a)
+    boardStore.getState().addObject(b)
+    const two = objectsInZOrder().map(o => o.id)
+
+    expect(one).toEqual(two)
+    expect(one).toEqual([base.id, a.id, b.id])
+
+    // The remote path and the snapshot path agree with the local one.
+    boardStore.getState().loadObjects([base])
+    boardStore.getState().applyOps([
+      { id: 'o1', type: 'CREATE', objectId: b.id, payload: b },
+      { id: 'o2', type: 'CREATE', objectId: a.id, payload: a },
+    ] as never)
+    expect(objectsInZOrder().map(o => o.id)).toEqual(one)
+    boardStore.getState().loadObjects([b, base, a])
+    expect(objectsInZOrder().map(o => o.id)).toEqual(one)
+    boardStore.getState().reorder()
+    expect(objectsInZOrder().map(o => o.id)).toEqual(one)
+  })
+
+  it('compareZ breaks a tie by id', () => {
+    expect(
+      compareZ({ id: 'a', zIndex: 'a1' } as never, { id: 'b', zIndex: 'a1' } as never),
+    ).toBe(-1)
+    expect(
+      compareZ({ id: 'b', zIndex: 'a0' } as never, { id: 'a', zIndex: 'a1' } as never),
+    ).toBe(-1)
+  })
+
+  it('bring forward beside a tie skips to the next distinct key instead of throwing', () => {
+    const { objects, sortedIds } = board(['a0', 'a1', 'a1', 'a2'])
+    const keys = keysAfter(objects, sortedIds, 1, 1)
+    expect(keys[0]! > 'a1' && keys[0]! < 'a2').toBe(true)
+    // At the top of a tie, with nothing above.
+    const top = board(['a0', 'a1', 'a1'])
+    expect(keysAfter(top.objects, top.sortedIds, 1, 1)[0]! > 'a1').toBe(true)
+  })
+
+  it('send backward beside a tie skips to the next distinct key instead of throwing', () => {
+    const { objects, sortedIds } = board(['a0', 'a1', 'a1', 'a2'])
+    const keys = keysBefore(objects, sortedIds, 2, 1)
+    expect(keys[0]! < 'a1' && keys[0]! > 'a0').toBe(true)
+    const bottom = board(['a1', 'a1', 'a2'])
+    expect(keysBefore(bottom.objects, bottom.sortedIds, 1, 1)[0]! < 'a1').toBe(true)
   })
 })

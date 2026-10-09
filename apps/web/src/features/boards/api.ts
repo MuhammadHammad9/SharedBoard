@@ -1,4 +1,4 @@
-import type { BoardObject, ClientOp, Role } from '@coboard/shared'
+import type { BoardObject, BoardSummary, ClientOp, Role } from '@coboard/shared'
 import { api } from '../../lib/api.js'
 
 /**
@@ -10,20 +10,8 @@ import { api } from '../../lib/api.js'
  * from `@coboard/shared` (R-ARCH-007).
  */
 
-export interface BoardSummary {
-  id: string
-  name: string
-  ownerId: string
-  ownerName: string
-  myRole: Role
-  thumbnailUrl: string | null
-  objectCount: number
-  createdAt: string
-  updatedAt: string
-  lastActivityAt: string
-  deletedAt: string | null
-  daysUntilPurge?: number
-}
+// The list shape is defined once, in @coboard/shared (R-ARCH-007).
+export type { BoardSummary }
 
 export interface BoardState {
   objects: BoardObject[]
@@ -51,8 +39,22 @@ export const getBoard = (id: string) =>
   api.get<{ board: BoardSummary; myRole: Role }>(`/boards/${id}`)
 
 /** The guard's probe. Deliberately returns no board name — R-SEC-018. */
-export const getBoardAccess = (id: string, signal?: AbortSignal) =>
-  api.get<{ role: Role | 'none'; joinable?: boolean }>(`/boards/${id}/access`, { signal })
+/**
+ * The guard's question — FLOWS §2.3 STEP 3. `share` is the token the visitor
+ * arrived with, if any; refusals come back as an ApiError whose
+ * `details.reason` names the branch.
+ */
+export const getBoardAccess = (id: string, share?: string | null, signal?: AbortSignal) =>
+  api.get<{
+    role: Role | 'none'
+    joinable?: boolean
+    requiresName?: boolean
+    /** Members only — FLOWS §8.1's "Loading N objects…". */
+    objectCount?: number
+  }>(
+    `/boards/${id}/access${share ? `?share=${encodeURIComponent(share)}` : ''}`,
+    signal ? { signal } : {},
+  )
 
 export const getBoardState = (id: string, signal?: AbortSignal) =>
   api.get<BoardState>(`/boards/${id}/snapshot`, { signal })
@@ -68,7 +70,8 @@ export const appendOps = (id: string, ops: readonly ClientOp[]) =>
 export const renameBoard = (id: string, name: string) =>
   api.patch<{ board: BoardSummary }>(`/boards/${id}`, { name })
 
-export const trashBoard = (id: string) => api.del<{ board: BoardSummary }>(`/boards/${id}`)
+export const trashBoard = (id: string) =>
+  api.del<{ board: BoardSummary }>(`/boards/${id}`)
 
 export const restoreBoard = (id: string) =>
   api.post<{ board: BoardSummary }>(`/boards/${id}/restore`)

@@ -4,7 +4,9 @@ import { z } from 'zod'
 import { ERROR_CODES } from '@coboard/shared'
 import { permissionService } from '../../services/PermissionService.js'
 import { redis } from '../../lib/redis.js'
-import { assertAuthenticated, requireAuth } from '../middleware/auth.js'
+import { assertIdentified, identify } from '../middleware/auth.js'
+import { identityKey, type Identity } from '../../lib/identity.js'
+import { consume, type Bucket } from '../../lib/tokenBucket.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
 import { validateBody } from '../middleware/validate.js'
 
@@ -40,8 +42,11 @@ export const TICKET_TTL_SECONDS = 60
 
 const TicketRequestSchema = z.object({ boardId: z.string().uuid() })
 
+/** 30 tickets a minute per identity, refilling steadily — finding 10. */
+export const TICKETS_BUCKET: Bucket = { rate: 30 / 60, capacity: 30 }
+
 export interface TicketPayload {
-  userId: string
+  identity: Identity
   boardId: string
   role: string
 }
@@ -72,11 +77,20 @@ export function createWsRouter(): Router {
 
   router.post(
     '/ticket',
-    requireAuth,
+    identify,
     validateBody(TicketRequestSchema),
     ah(async (req, res) => {
-      const userId = assertAuthenticated(req)
+      // A user or a guest — a guest holds a role through the membership its
+      // share link created (FR-AUTH-006).
+      const identity = assertIdentified(req)
       const { boardId } = req.body as z.infer<typeof TicketRequestSchema>
+
+      // Finding 10: tickets are cheap to mint and each one buys an upgraded
+      // socket, so minting is bounded per identity. Reconnect backoff never
+      // gets near 30 a minute; a script farming sockets does.
+      if (!(await consume(`ws-ticket:${identityKey(identity)}`, 1, TICKETS_BUCKET))) {
+        throw new HttpError(ERROR_CODES.RATE_LIMITED, 'Too many connection attempts', 429)
+      }
 
       /*
        * Authorization happens HERE, over HTTP, where a refusal can be a 404
@@ -84,10 +98,10 @@ export function createWsRouter(): Router {
        * upgrade handler can only close a socket with a numeric code, which is
        * a much worse place to discover you do not have access.
        */
-      const access = await permissionService.requireRead(boardId, userId)
+      const access = await permissionService.requireRead(boardId, identity)
 
       const ticket = randomBytes(32).toString('hex')
-      const payload: TicketPayload = { userId, boardId, role: access.role }
+      const payload: TicketPayload = { identity, boardId, role: access.role }
 
       const stored = await redis().set(
         ticketKey(ticket),
