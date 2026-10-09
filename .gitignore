@@ -48,3 +48,6 @@ infra/secrets/
 
 # Local database dumps (scripts/backup.sh)
 backups/
+
+# Local Claude Code agent worktrees
+.claude/worktrees/
