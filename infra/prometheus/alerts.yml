@@ -149,11 +149,11 @@ groups:
       #    sweeps (guest_sweep, trash_purge, image_collect), labelled by job.
       - alert: CoBoardJobFailed
         expr: |
-          sum by (job) (increase(coboard_job_failures_total[15m])) > 0
+          sum by (task) (increase(coboard_job_failures_total[15m])) > 0
         labels:
           severity: warn
         annotations:
-          summary: 'Background job {{ $labels.job }} failed'
+          summary: 'Background job {{ $labels.task }} failed'
           description: >-
             A snapshot or maintenance job threw in the last 15 minutes. Search
             the logs for "snapshot failed" or "<job> failed". A failing

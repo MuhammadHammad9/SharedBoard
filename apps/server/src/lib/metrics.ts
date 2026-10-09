@@ -19,7 +19,7 @@ import { redis } from './redis.js'
  * | Postgres pool utilisation  | `coboard_pg_pool_connections{state}`, `…_max`                |
  * | Redis memory               | `coboard_redis_memory_used_bytes`, `…_maxmemory_bytes`       |
  * | op_rejected rate           | `coboard_ops_{accepted,rejected}_total`                      |
- * | Snapshot job failures      | `coboard_job_failures_total{job}`                            |
+ * | Snapshot job failures      | `coboard_job_failures_total{task}`                           |
  *
  * A dedicated registry rather than prom-client's global one, so nothing a
  * dependency registers leaks into the endpoint, and process defaults (heap,
@@ -84,15 +84,18 @@ export const opsRejected = new client.Counter({
 export const jobFailures = new client.Counter({
   name: 'coboard_job_failures_total',
   help: 'Background job failures: snapshots and the hourly maintenance sweeps',
-  labelNames: ['job'] as const,
+  // `task`, not `job`: Prometheus sets its own `job` label on every scraped
+  // series and would rename ours to `exported_job`, so alerts grouping `by
+  // (job)` saw only the scrape job name (Phase 15 audit).
+  labelNames: ['task'] as const,
   registers: [registry],
 })
 
 // Zero-valued series from the first scrape, so `increase()` sees the first
 // failure as a change from 0 rather than as a series appearing from nothing
 // (which `increase` cannot measure, and the alert would miss).
-for (const job of ['snapshot', 'guest_sweep', 'trash_purge', 'image_collect']) {
-  jobFailures.inc({ job }, 0)
+for (const task of ['snapshot', 'guest_sweep', 'trash_purge', 'image_collect']) {
+  jobFailures.inc({ task }, 0)
 }
 for (const transport of ['ws', 'rest']) opsAccepted.inc({ transport }, 0)
 

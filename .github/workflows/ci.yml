@@ -330,6 +330,13 @@ jobs:
           done
           echo "servers did not come up"; exit 1
 
+      # The pinned lighthouse CLI (scripts/lighthouse.ts → npx lighthouse@13)
+      # needs Node >= 22.19. Only this step switches; the install and build
+      # above ran on the project's Node 20, like production.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Lighthouse budgets
         run: |
           # @playwright/test is the direct dependency; plain `playwright` is not

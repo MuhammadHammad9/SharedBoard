@@ -17,8 +17,18 @@
  *   pnpm --filter @coboard/web exec vite preview &   # with the API on :3000
  *   pnpm lighthouse                                   # BASE_URL=http://localhost:4173
  */
-import lighthouse, { desktopConfig } from 'lighthouse'
-import * as chromeLauncher from 'chrome-launcher'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+/*
+ * Lighthouse runs as a pinned CLI through npx, NOT as a project dependency:
+ * lighthouse 13 requires Node >= 22.19, and with engine-strict a dependency on
+ * it broke `pnpm install` on Node 20 for every CI job and both Docker images;
+ * lighthouse 12 avoids that but drags in an unpatchable extract-zip advisory.
+ * The CI job that runs this script sets up Node 22 for itself.
+ */
+const LIGHTHOUSE = 'lighthouse@13.5.0'
+const run$ = promisify(execFile)
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:4173'
 const CHROME = process.env.CHROME_PATH ?? process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
@@ -55,23 +65,33 @@ async function sessionCookie(): Promise<string> {
   return cookies.join('; ')
 }
 
-async function run(budget: Budget, port: number): Promise<number> {
-  const result = await lighthouse(
+async function run(budget: Budget): Promise<number> {
+  const args = [
+    '--yes',
+    LIGHTHOUSE,
     `${BASE}${budget.path}`,
-    {
-      port,
-      output: 'json',
-      logLevel: 'error',
-      onlyCategories: ['performance'],
-      ...(budget.cookie ? { extraHeaders: { Cookie: budget.cookie } } : {}),
-    },
-    budget.profile === 'desktop' ? desktopConfig : undefined,
-  )
-  const audit = result?.lhr.audits[budget.audit]
-  if (!audit || typeof audit.numericValue !== 'number') {
+    '--output=json',
+    '--output-path=stdout',
+    '--quiet',
+    '--only-categories=performance',
+    '--chrome-flags=--headless=new --no-sandbox',
+    ...(budget.profile === 'desktop' ? ['--preset=desktop'] : []),
+    ...(budget.cookie
+      ? [`--extra-headers=${JSON.stringify({ Cookie: budget.cookie })}`]
+      : []),
+  ]
+  const { stdout } = await run$('npx', args, {
+    maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, ...(CHROME ? { CHROME_PATH: CHROME } : {}) },
+  })
+  const report = JSON.parse(stdout) as {
+    audits: Record<string, { numericValue?: number } | undefined>
+  }
+  const value = report.audits[budget.audit]?.numericValue
+  if (typeof value !== 'number') {
     throw new Error(`${budget.name}: no ${budget.audit} in the report`)
   }
-  return audit.numericValue
+  return value
 }
 
 async function main(): Promise<void> {
@@ -109,23 +129,15 @@ async function main(): Promise<void> {
     },
   ]
 
-  const chrome = await chromeLauncher.launch({
-    chromeFlags: ['--headless=new', '--no-sandbox'],
-    ...(CHROME ? { chromePath: CHROME } : {}),
-  })
   let failed = false
-  try {
-    for (const budget of budgets) {
-      const ms = await run(budget, chrome.port)
-      const ok = ms <= budget.limitMs
-      if (!budget.advisory) failed ||= !ok
-      const tag = ok ? 'ok  ' : budget.advisory ? 'note' : 'FAIL'
-      console.log(
-        `[lighthouse] ${tag} ${budget.name}: ${Math.round(ms)} ms / ${budget.limitMs} ms`,
-      )
-    }
-  } finally {
-    await chrome.kill()
+  for (const budget of budgets) {
+    const ms = await run(budget)
+    const ok = ms <= budget.limitMs
+    if (!budget.advisory) failed ||= !ok
+    const tag = ok ? 'ok  ' : budget.advisory ? 'note' : 'FAIL'
+    console.log(
+      `[lighthouse] ${tag} ${budget.name}: ${Math.round(ms)} ms / ${budget.limitMs} ms`,
+    )
   }
   if (failed) process.exit(1)
 }

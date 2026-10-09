@@ -202,7 +202,7 @@ export class SnapshotService {
       await this.snapshotNow(boardId, board.currentSeq)
       return true
     } catch (error) {
-      jobFailures.inc({ job: 'snapshot' })
+      jobFailures.inc({ task: 'snapshot' })
       logger.error({ err: error, boardId }, 'snapshot failed')
       return false
     } finally {
