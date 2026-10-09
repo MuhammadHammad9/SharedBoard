@@ -84,12 +84,25 @@ describe('board switch — nothing of the last board survives', () => {
     expect(history.canUndo()).toBe(false)
   })
 
-  it('leaving a board clears it on unmount', () => {
+  it('leaving a board clears it on unmount — after every other cleanup has read it', async () => {
     const view = renderHook(() => useBoardLoad(DEMO_BOARD_ID))
     dirtyTheStore()
     view.unmount()
+    // Still there for the rest of the route's cleanups (the thumbnail capture).
+    expect(boardStore.getState().objects.size).toBeGreaterThan(0)
+    await Promise.resolve()
     expect(boardStore.getState().objects.size).toBe(0)
     expect(boardStore.getState().selection).toEqual([])
+  })
+
+  it('a deferred clear never lands on the board that replaced it', async () => {
+    const view = renderHook(({ id }) => useBoardLoad(id), {
+      initialProps: { id: DEMO_BOARD_ID },
+    })
+    view.rerender({ id: 'scratch-two' })
+    dirtyTheStore()
+    await Promise.resolve()
+    expect(boardStore.getState().objects.size).toBeGreaterThan(0)
   })
 })
 

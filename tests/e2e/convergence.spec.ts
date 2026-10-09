@@ -105,7 +105,9 @@ test('offline merge: A draws 10 offline while B draws 10 online — 20 on both',
   await goOffline(contextA, a)
   for (let i = 0; i < 10; i++) {
     await drawStroke(a, 100 + (i % 5) * 90, 140 + Math.floor(i / 5) * 120)
-    await drawStroke(b, 100 + (i % 5) * 90, 420 + Math.floor(i / 5) * 120)
+    // B's rows start right of x=300: A's offline/online gives B a "left" and a
+    // "joined" toast, and stacked bottom-left they cover the canvas there.
+    await drawStroke(b, 320 + (i % 5) * 90, 400 + Math.floor(i / 5) * 100)
   }
   await goOnline(contextA)
 

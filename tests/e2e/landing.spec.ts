@@ -50,7 +50,12 @@ test('the landing page never downloads the canvas engine — TRD §12.2', async 
   await page.goto('/')
   await expect(page.getByTestId('landing-demo')).toBeVisible()
   await page.waitForLoadState('networkidle')
-  expect(scripts.filter(url => /\/(Board|Canvas|renderer)/.test(url))).toEqual([])
+  // The board route module (`routes/Board.tsx` in dev, `Board-<hash>.js` built)
+  // and anything under the canvas feature. Not `BoardShell`: that is the
+  // spinner-and-text skeleton the route shows while its chunk loads, so it
+  // ships with the app by design.
+  const engine = /\/(Board[-.]|Canvas|renderer\/)|\/features\/canvas\//
+  expect(scripts.filter(url => engine.test(url))).toEqual([])
 })
 
 test('FLOWS §1.2 edges: Log in, Sign up free, logo', async ({ page }) => {

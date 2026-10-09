@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { stubSession } from './support/session.js'
+import { STUB_BOARD } from './support/boardSummary.js'
 
 /**
  * Accessibility — PRD §7.6, rules R-A11Y-*, Phase 14e.
@@ -10,16 +11,7 @@ import { stubSession } from './support/session.js'
  * with an accessible name, which is all it can judge.
  */
 
-const BOARD = {
-  id: '11111111-1111-4111-8111-111111111111',
-  name: 'Q3 launch retro — product and design',
-  ownerId: '00000000-0000-4000-8000-000000000001',
-  thumbnailUrl: null,
-  createdAt: '2026-09-01T09:00:00.000Z',
-  updatedAt: '2026-09-30T16:20:00.000Z',
-  deletedAt: null,
-  role: 'OWNER',
-}
+const BOARD = STUB_BOARD
 
 async function stubApi(page: Page) {
   await stubSession(page)

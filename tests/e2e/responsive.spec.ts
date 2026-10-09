@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { stubSession } from './support/session.js'
+import { STUB_BOARD } from './support/boardSummary.js'
 
 /**
  * Responsive layout — PRD §7.7, FLOWS §14.5, Phase 14d.
@@ -17,16 +18,7 @@ const WIDTHS = [
   { width: 390, toolbar: 'mobile' },
 ] as const
 
-const BOARD = {
-  id: '11111111-1111-4111-8111-111111111111',
-  name: 'Q3 launch retro — product and design',
-  ownerId: '00000000-0000-4000-8000-000000000001',
-  thumbnailUrl: null,
-  createdAt: '2026-09-01T09:00:00.000Z',
-  updatedAt: '2026-09-30T16:20:00.000Z',
-  deletedAt: null,
-  role: 'OWNER',
-}
+const BOARD = STUB_BOARD
 
 async function stubLists(page: Page) {
   await page.route('**/api/boards/trash', route =>

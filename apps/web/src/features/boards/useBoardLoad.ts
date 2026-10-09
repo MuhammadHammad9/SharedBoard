@@ -30,6 +30,9 @@ import { flushPendingText } from '../canvas/interaction/handlers/textEdit.js'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isScratchBoard = (id: string): boolean => import.meta.env.DEV && !UUID.test(id)
 
+/** Bumped by every board start, so a deferred clear never lands on the next board. */
+let boardGeneration = 0
+
 /**
  * `/demo` — "Try it now" from S-01 (FLOWS §1.2). The scratch-board path, but
  * in EVERY build: a local document, no fetch, no socket, nothing persisted,
@@ -112,7 +115,21 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
       boardStore.getState().resetBoard()
       history.clear()
     }
+    const generation = ++boardGeneration
     resetDocument()
+    /*
+     * Leaving clears the document too, but one microtask late. React runs the
+     * board route's effect cleanups in declaration order and this hook comes
+     * first, so a synchronous clear here emptied the store before
+     * useThumbnailUpkeep's cleanup captured it — and an empty board sends
+     * DELETE /thumbnail, wiping the card picture on every in-app exit. If
+     * another board has started by then, its own reset already ran: skip.
+     */
+    const resetAfterLeave = () => {
+      queueMicrotask(() => {
+        if (boardGeneration === generation) resetDocument()
+      })
+    }
 
     if (boardId === DEMO_BOARD_ID) {
       // An editor, not an owner: no share, no rename — both need a server.
@@ -121,7 +138,7 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
       setStatus('ready')
       return () => {
         flushPendingText()
-        resetDocument()
+        resetAfterLeave()
       }
     }
 
@@ -131,7 +148,7 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
       setStatus('ready')
       return () => {
         flushPendingText()
-        resetDocument()
+        resetAfterLeave()
       }
     }
 
@@ -244,7 +261,7 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
       // Text typed since the last debounce goes out while the outbox exists.
       flushPendingText()
       session.dispose()
-      resetDocument()
+      resetAfterLeave()
     }
   }, [boardId, attempt, toast])
 
