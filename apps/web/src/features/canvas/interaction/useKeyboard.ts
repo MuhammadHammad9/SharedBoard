@@ -3,14 +3,8 @@ import { boardStore, type Tool } from '../../../stores/boardStore.js'
 import { track } from '../../../lib/analytics.js'
 import { canChangeTool } from './machine.js'
 import { endPan } from './handlers/pan.js'
-import { cancelDraw } from './handlers/draw.js'
-import {
-  cancelDrag,
-  cancelResize,
-  cancelRotate,
-  nudgeSelection,
-} from './handlers/transform.js'
-import { cancelCreate } from './handlers/create.js'
+import { nudgeSelection } from './handlers/transform.js'
+import { cancelActiveGesture } from './cancelGesture.js'
 import {
   bringForward,
   bringToFront,
@@ -53,10 +47,10 @@ const ARROW_DELTAS: Record<string, { x: number; y: number } | undefined> = {
 /**
  * Keyboard handling for the canvas. PRD Appendix A.
  *
- * Implemented so far: V H P E R O L A N T, Escape, Delete, arrows, Space,
- * Cmd+A/C/X/V/D/Z, Cmd+Shift+Z, Cmd+0, Cmd+1, Cmd +/-. What remains belongs
- * to later phases: `[`/`]` with the rest of FR-CANVAS-016 in Phase 9, and the
- * image tool whenever uploads land.
+ * V H P E R O L A N T, Escape, Delete, arrows, Space, `[` / `]` (with Cmd
+ * for to-front / to-back — FR-CANVAS-016), Cmd+A/C/X/V/D/Z, Cmd+Shift+Z,
+ * Cmd+Shift+E, Cmd+0, Cmd+1, Cmd +/- and `?`. The image tool has no letter:
+ * images arrive by drop, paste or the toolbar's picker.
  *
  * R-A11Y-009 (Blocking): EVERY shortcut is suppressed while a text input, the
  * on-canvas text overlay, or a modal has focus — except Escape and
@@ -132,32 +126,19 @@ export function useKeyboard(options: KeyboardOptions): { spaceHeld: () => boolea
       if (e.key === 'Escape') {
         e.preventDefault()
         const el = optionsRef.current.getElement?.() ?? null
-        switch (store.interaction.type) {
-          case 'DRAWING':
-            cancelDraw(el)
-            return
-          case 'DRAGGING':
-            cancelDrag(el)
-            return
-          case 'RESIZING':
-            cancelResize(el)
-            return
-          case 'ROTATING':
-            cancelRotate(el)
-            return
-          case 'CREATING':
-            cancelCreate(el)
-            return
-          case 'EDITING_TEXT':
-            // Handled by the overlay itself, which owns focus. Reaching here
-            // means the overlay is gone but the state is not — unwind it.
-            store.endTextEdit()
-            return
-          default:
-            // FR-CANVAS-022: Escape deselects and returns to the Select tool.
-            store.clearSelection()
-            if (store.activeTool !== 'select') store.setActiveTool('select')
+        if (store.interaction.type === 'EDITING_TEXT') {
+          // Handled by the overlay itself, which owns focus. Reaching here
+          // means the overlay is gone but the state is not — unwind it.
+          store.endTextEdit()
+          return
         }
+        // Mid-gesture, Escape cancels THAT gesture and nothing else — the
+        // tool never changes under a live pointer (R-CANVAS-055).
+        if (cancelActiveGesture(el)) return
+        if (store.interaction.type !== 'IDLE') return
+        // FR-CANVAS-022: Escape deselects and returns to the Select tool.
+        store.clearSelection()
+        if (store.activeTool !== 'select') store.setActiveTool('select')
         return
       }
 

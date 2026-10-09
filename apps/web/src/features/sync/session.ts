@@ -41,6 +41,12 @@ import { armFirstPaint } from '../canvas/renderer/firstPaint.js'
  * the wiring: who is constructed, in what order, and what is torn down.
  */
 
+/**
+ * How often stale presence is swept — R-PERF-023. An interval, never a second
+ * rAF loop (R-CANVAS-010): once a second is plenty for a 60 s idle threshold.
+ */
+export const PRESENCE_SWEEP_EVERY_MS = 1_000
+
 export interface BoardSessionCallbacks {
   onState: (state: ConnectionState) => void
   onRole: (role: Role) => void
@@ -68,11 +74,20 @@ export class BoardSession {
   private persistence: PersistenceSession | null = null
   private binding: ReturnType<typeof createSocketTransport> | null = null
   private disposed = false
+  /**
+   * The snapshot's seq, once it has been applied. Null until then: the outbox
+   * must not start before the document exists (R-SYNC-035), because restored
+   * ops are applied on top of it and a later `loadObjects` would wipe them.
+   */
+  private loadedSeq: number | null = null
+  /** The most recent role the server reported, from join_ack or role_changed. */
+  private latestRole: Role | null = null
   /** Set when the connection drops; read when it is whole again. */
   private droppedSince = false
   /** Unsent changes when SYNCING began, for the "back online" toast. */
   private syncingCount = 0
   private readonly detachWindow: () => void
+  private readonly sweepTimer: ReturnType<typeof setInterval>
 
   constructor(
     readonly boardId: string,
@@ -93,7 +108,7 @@ export class BoardSession {
       boardId,
       {
         onState: callbacks.onState,
-        onRole: callbacks.onRole,
+        onRole: role => this.onRole(role),
         onNack: callbacks.onNack,
         onFatal: callbacks.onFatal,
         ...(callbacks.onBoardRenamed ? { onBoardRenamed: callbacks.onBoardRenamed } : {}),
@@ -105,6 +120,9 @@ export class BoardSession {
     )
 
     this.detachWindow = this.attachWindow()
+    // Cursors and stroke previews whose leave or `done` was lost are dropped
+    // after PRESENCE_SWEEP_IDLE_MS, instead of haunting the board forever.
+    this.sweepTimer = setInterval(() => presenceStore.sweep(), PRESENCE_SWEEP_EVERY_MS)
 
     // Fault injection for the chaos e2e suite — never in production.
     if (import.meta.env.DEV && typeof window !== 'undefined') {
@@ -218,43 +236,14 @@ export class BoardSession {
     // snapshot, so nothing is sent about a board we have not loaded.
     setPresenceEmitter(this.presence)
 
-    // Only editors get an outbox: queueing a viewer's ops builds a pile of
-    // work the server will always refuse.
-    if (state.myRole !== 'VIEWER') {
-      this.persistence = startPersistence(this.boardId, {
-        loadSeq: state.seq,
-        discardHistory: ids => history.discard(ids),
-        onOrdered: (opId, seq) => this.sync.markOwn(seq, opId),
-        onPending: pending => {
-          this.callbacks.onPending?.(pending)
-          this.checkSynced()
-        },
-        onNack: ops => {
-          /*
-           * FLOWS §9.4: an op refused while SYNCING — typically one that names
-           * an object someone deleted while we were away — is dropped
-           * silently. The board is already put back; a toast for each of a
-           * dozen replayed changes would be noise about nothing the user did
-           * just now. Refusals of live work are reported.
-           */
-          if (this.socket.connectionState === 'syncing') return
-          this.callbacks.onNack(
-            ops.map(op => op.id),
-            'NACK',
-          )
-        },
-      })
-      /*
-       * Kept on the instance, because acks arrive as ordinary messages rather
-       * than as responses: `onMessage` has to route them back into whichever
-       * in-flight batch is waiting, and it cannot do that without a handle.
-       */
-      this.binding = createSocketTransport(
-        message => this.socket.send(message),
-        () => this.socket.isOpen,
-      )
-      this.persistence.bindSocket(this.binding)
-    }
+    /*
+     * Only editors get an outbox: queueing a viewer's ops builds a pile of
+     * work the server will always refuse. A join_ack that raced ahead of the
+     * snapshot may already have told us better than the snapshot does.
+     */
+    this.loadedSeq = state.seq
+    const role = this.latestRole ?? state.myRole
+    if (role !== 'VIEWER' || state.myRole !== 'VIEWER') this.ensurePersistence()
 
     return {
       objects: state.objects.length,
@@ -262,6 +251,59 @@ export class BoardSession {
       role: state.myRole,
       name: state.name,
     }
+  }
+
+  /**
+   * Every role report, live. A viewer promoted mid-session — `role_changed:
+   * EDITOR`, or a guest converted to an account — gets the outbox now; without
+   * it every edit would go to `emitOps` with no session and vanish.
+   */
+  private onRole(role: Role): void {
+    this.latestRole = role
+    if (role !== 'VIEWER') this.ensurePersistence()
+    this.callbacks.onRole(role)
+  }
+
+  /**
+   * Start the outbox and bind it to the socket — once, and only after the
+   * snapshot has been applied (R-SYNC-035). Idempotent: a role report that
+   * arrives on every rejoin must not restart a live outbox.
+   */
+  private ensurePersistence(): void {
+    if (this.disposed || this.persistence || this.loadedSeq === null) return
+    this.persistence = startPersistence(this.boardId, {
+      loadSeq: this.loadedSeq,
+      discardHistory: ids => history.discard(ids),
+      onOrdered: (opId, seq) => this.sync.markOwn(seq, opId),
+      onPending: pending => {
+        this.callbacks.onPending?.(pending)
+        this.checkSynced()
+      },
+      onNack: ops => {
+        /*
+         * FLOWS §9.4: an op refused while SYNCING — typically one that names
+         * an object someone deleted while we were away — is dropped
+         * silently. The board is already put back; a toast for each of a
+         * dozen replayed changes would be noise about nothing the user did
+         * just now. Refusals of live work are reported.
+         */
+        if (this.socket.connectionState === 'syncing') return
+        this.callbacks.onNack(
+          ops.map(op => op.id),
+          'NACK',
+        )
+      },
+    })
+    /*
+     * Kept on the instance, because acks arrive as ordinary messages rather
+     * than as responses: `onMessage` has to route them back into whichever
+     * in-flight batch is waiting, and it cannot do that without a handle.
+     */
+    this.binding = createSocketTransport(
+      message => this.socket.send(message),
+      () => this.socket.isOpen,
+    )
+    this.persistence.bindSocket(this.binding)
   }
 
   private onMessage(message: ServerMessage): void {
@@ -293,6 +335,7 @@ export class BoardSession {
 
   dispose(): void {
     this.disposed = true
+    clearInterval(this.sweepTimer)
     this.detachWindow()
     if (import.meta.env.DEV && typeof window !== 'undefined') {
       delete (window as unknown as Record<string, unknown>).__coboardNet

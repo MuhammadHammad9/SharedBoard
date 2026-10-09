@@ -26,6 +26,7 @@ import { ContextMenu } from '../../components/board/ContextMenu.js'
 import { resizeCanvas } from './renderer/resizeCanvas.js'
 import { getViewRect, isVisible } from './geometry/culling.js'
 import { useKeyboard } from './interaction/useKeyboard.js'
+import { setGestureElement } from './interaction/cancelGesture.js'
 import { boardChrome } from '../../lib/strings.js'
 import { getLastPointer, usePointer } from './interaction/usePointer.js'
 import { useWheel } from './interaction/useWheel.js'
@@ -159,6 +160,13 @@ export function Canvas() {
   })
   usePointer(container, spaceHeld, { onInput: noteInput })
   useWheel(container)
+
+  // The element holding pointer capture, so a gesture cancelled from outside
+  // the canvas — a live demotion to viewer — can still release it.
+  useEffect(() => {
+    setGestureElement(container)
+    return () => setGestureElement(null)
+  }, [container])
 
   // ── Renderer lifecycle ────────────────────────────────────────────────────
   useEffect(() => {

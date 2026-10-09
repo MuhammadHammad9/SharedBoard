@@ -2,10 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { SNAPSHOT_TIMEOUT_MS, type ConnectionState, type Role } from '@coboard/shared'
 import { ApiError } from '../../lib/api.js'
 import { useToast } from '../../components/ui/Toast.js'
-import { boards as boardStrings, demo as demoStrings, errors, presence } from '../../lib/strings.js'
+import {
+  boards as boardStrings,
+  demo as demoStrings,
+  errors,
+  presence,
+} from '../../lib/strings.js'
 import { BoardSession } from '../sync/session.js'
 import { abandonPersistence } from '../sync/persistence.js'
 import { track } from '../../lib/analytics.js'
+import { boardStore } from '../../stores/boardStore.js'
+import { history } from '../canvas/history/history.js'
+import { flushPendingText } from '../canvas/interaction/handlers/textEdit.js'
 
 /**
  * A board id the server could never own — anything that is not a uuid.
@@ -92,19 +100,38 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
   useEffect(() => {
     if (!boardId) return
 
+    /*
+     * A fresh board starts from nothing: no objects, selection, viewport,
+     * gesture, draft or text edit carried over from the last one, and no undo
+     * entries naming objects this board has never had (R-UNDO-006). For /demo
+     * and scratch boards this IS the document load — an empty one. The
+     * `?stress=1` fixture loads after this, when the canvas mounts.
+     */
+    const resetDocument = () => {
+      boardStore.getState().resetBoard()
+      history.clear()
+    }
+    resetDocument()
+
     if (boardId === DEMO_BOARD_ID) {
       // An editor, not an owner: no share, no rename — both need a server.
       setRole('EDITOR')
       setName(demoStrings.boardName)
       setStatus('ready')
-      return
+      return () => {
+        flushPendingText()
+        resetDocument()
+      }
     }
 
     if (isScratchBoard(boardId)) {
       setRole('OWNER')
       setName(boardStrings.scratchName)
       setStatus('ready')
-      return
+      return () => {
+        flushPendingText()
+        resetDocument()
+      }
     }
 
     /*
@@ -189,7 +216,10 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
         /*
          * 404 covers both "no such board" and "not yours" — the server answers
          * 404 to a board the caller cannot see, on purpose (R-SEC-018).
+         * Either way there is nothing to stay connected to: the session goes,
+         * or its socket would keep retrying into a board we cannot open.
          */
+        if (error.status === 404 || error.status === 403) session.dispose()
         setStatus(
           error.status === 404
             ? 'not-found'
@@ -204,7 +234,10 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
     // session itself (features/sync/session.ts) — they are sync policy.
     return () => {
       sessionRef.current = null
+      // Text typed since the last debounce goes out while the outbox exists.
+      flushPendingText()
       session.dispose()
+      resetDocument()
     }
   }, [boardId, attempt, toast])
 

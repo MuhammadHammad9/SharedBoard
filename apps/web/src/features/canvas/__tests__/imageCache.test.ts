@@ -29,7 +29,28 @@ function harness(cap = 3) {
   return { cache, made }
 }
 
+/** A paint is one synchronous run of `get`s; the frame advances after it. */
+const nextFrame = () => Promise.resolve()
+
 describe('ImageCache', () => {
+  it('never evicts an image requested in the current frame — no reload loop', async () => {
+    const { cache, made } = harness(2)
+    const visible = ['a', 'b', 'c']
+    // Three images on screen, a cap of two: paint several frames.
+    for (let frame = 0; frame < 5; frame++) {
+      for (const url of visible) cache.get(url)
+      for (const image of made) image.onload?.()
+      await nextFrame()
+    }
+    // Each loaded exactly once, and all three are ready to draw.
+    expect(made).toHaveLength(3)
+    for (const url of visible) expect(cache.status(url)).toBe('ready')
+
+    // Scrolled away: the next load trims back to the cap.
+    cache.get('d')
+    expect(cache.size).toBe(2)
+  })
+
   it('returns null while loading, the bitmap once loaded, and asks for CORS', () => {
     const { cache, made } = harness()
     const changed = vi.fn()
@@ -46,11 +67,12 @@ describe('ImageCache', () => {
     expect(made).toHaveLength(1)
   })
 
-  it('evicts the least recently USED entry past the cap, not the oldest loaded', () => {
+  it('evicts the least recently USED entry past the cap, not the oldest loaded', async () => {
     const { cache } = harness(3)
     cache.get('a')
     cache.get('b')
     cache.get('c')
+    await nextFrame()
     cache.get('a') // touch: b is now the least recently used
     cache.get('d')
     expect(cache.size).toBe(3)
@@ -58,11 +80,12 @@ describe('ImageCache', () => {
     expect(cache.status('a')).toBe('loading')
   })
 
-  it('a late load of an evicted image is a no-op', () => {
+  it('a late load of an evicted image is a no-op', async () => {
     const { cache, made } = harness(1)
     const changed = vi.fn()
     cache.onChange(changed)
     cache.get('a')
+    await nextFrame()
     cache.get('b') // evicts a
     expect(made[0]!.onload).toBeNull()
     expect(changed).not.toHaveBeenCalled()

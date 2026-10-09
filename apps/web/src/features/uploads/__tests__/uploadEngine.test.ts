@@ -178,3 +178,57 @@ describe('the pipeline', () => {
     expect(boardStore.getState().objects.size).toBe(0)
   })
 })
+
+describe('uploads belong to their board', () => {
+  const OTHER = '00000000-0000-4000-8000-000000000002'
+
+  it('an upload finishing after a board switch creates nothing on the new board', async () => {
+    let finishPut: () => void = () => {}
+    put.mockImplementationOnce(() => new Promise<void>(r => (finishPut = r)))
+    lib.post
+      .mockResolvedValueOnce({ uploadUrl: 'https://s3/put', key: 'k', headers: {} })
+      .mockResolvedValueOnce({ url: 'https://cdn/x.png' })
+
+    await engine.startUploads([file('image/png')], { x: 0, y: 0 })
+    await flush()
+    expect(items()).toHaveLength(1)
+
+    // Leave for another board while the bytes are still going up.
+    engine.setUploadContext(null)
+    boardStore.getState().loadObjects([])
+    engine.setUploadContext({
+      boardId: OTHER,
+      notify,
+      visibleArea: () => ({ x: 0, y: 0, width: 1000, height: 800 }),
+    })
+    expect(items()).toHaveLength(0)
+
+    finishPut()
+    await flush()
+    await flush()
+    expect(boardStore.getState().objects.size).toBe(0)
+  })
+
+  it('tags each item with its board and refuses to commit into a different one', async () => {
+    let finishPut: () => void = () => {}
+    put.mockImplementationOnce(() => new Promise<void>(r => (finishPut = r)))
+    lib.post
+      .mockResolvedValueOnce({ uploadUrl: 'https://s3/put', key: 'k', headers: {} })
+      .mockResolvedValueOnce({ url: 'https://cdn/x.png' })
+
+    await engine.startUploads([file('image/png')], { x: 0, y: 0 })
+    await flush()
+    expect(items()[0]).toMatchObject({ boardId: BOARD })
+
+    // Switched straight to another board, with no null in between.
+    engine.setUploadContext({
+      boardId: OTHER,
+      notify,
+      visibleArea: () => ({ x: 0, y: 0, width: 1000, height: 800 }),
+    })
+    finishPut()
+    await flush()
+    await flush()
+    expect(boardStore.getState().objects.size).toBe(0)
+  })
+})

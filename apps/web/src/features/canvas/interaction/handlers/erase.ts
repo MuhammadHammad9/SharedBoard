@@ -1,7 +1,12 @@
 import type { BoardObject, ObjectId } from '@coboard/shared'
 import { boardStore, objectsInZOrder } from '../../../../stores/boardStore.js'
 import { hitTest } from '../../geometry/hitTest.js'
-import { applyAndEmit, deleteOps, snapshotReader } from '../../history/apply.js'
+import {
+  applyAndEmit,
+  createOps,
+  deleteOps,
+  snapshotReader,
+} from '../../history/apply.js'
 import { LABELS } from '../../history/grouping.js'
 import { canTransition } from '../machine.js'
 import { releaseCapture } from './select.js'
@@ -99,14 +104,35 @@ export function endErase(element: Element | null): void {
    * of needing a record-only variant of it.
    */
   const snapshot = new Map(erased.map(o => [o.id, o]))
+  // One call: one undo entry, and one batched op message (E-07).
   applyAndEmit(deleteOps(erased.map(o => o.id)), LABELS.erase, {
     before: snapshotReader(snapshot),
   })
-  // PHASE 9 SLOT: applyAndEmit emits the same set as one batched op message.
 }
 
 /** Ids erased during the current or most recent drag. For tests. */
 export const erasedIds = (): readonly ObjectId[] => erasedThisDrag.map(o => o.id)
 
-/** pointercancel — R-CANVAS-052. Erases already applied stand; the drag ends. */
-export const cancelErase = endErase
+/**
+ * Abandon the sweep — Escape (R-CANVAS-055) and a live demotion to viewer
+ * (FLOWS §9.5). Nothing was emitted yet, so nothing is committed: the objects
+ * the drag removed go back exactly as they were, through the raw store path
+ * (no history, no op). One a teammate deleted meanwhile stays deleted —
+ * delete wins (R-CONV-003).
+ *
+ * pointercancel does NOT come here: the OS stealing the pointer is not the
+ * user changing their mind, so usePointer commits that sweep with `endErase`.
+ */
+export function cancelErase(element: Element | null): void {
+  const { interaction, setInteraction, setEraseCandidate } = boardStore.getState()
+  if (interaction.type !== 'ERASING') return
+  releaseCapture(element, interaction.pointerId)
+  setInteraction({ type: 'IDLE' })
+  setEraseCandidate(null)
+
+  const erased = erasedThisDrag
+  erasedThisDrag = []
+  const { objects, tombstones, applyOps } = boardStore.getState()
+  const restore = erased.filter(o => !objects.has(o.id) && !tombstones.has(o.id))
+  if (restore.length > 0) applyOps(createOps(restore))
+}

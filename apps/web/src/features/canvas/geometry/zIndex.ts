@@ -32,8 +32,29 @@ import type { BoardObject, ObjectId } from '@coboard/shared'
  * values would be 10,000 ops to change nothing anyone can see.
  */
 
+/**
+ * The ONE paint order: zIndex, then id.
+ *
+ * Two people creating at the same moment both take "the key above the top"
+ * from the same document and get the SAME key. Ordered by key alone, the tie
+ * falls to insertion order, which differs per client — the same board then
+ * paints differently on each screen. The id is the same everywhere, so it is
+ * the tie-break everywhere order is decided (R-CONV-009).
+ */
+export function compareZ(
+  a: Pick<BoardObject, 'zIndex' | 'id'>,
+  b: Pick<BoardObject, 'zIndex' | 'id'>,
+): number {
+  if (a.zIndex < b.zIndex) return -1
+  if (a.zIndex > b.zIndex) return 1
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
 /** The key for a new object placed on top of everything. */
-export function keyAfterTop(objects: ReadonlyMap<ObjectId, BoardObject>, sortedIds: readonly ObjectId[]): string {
+export function keyAfterTop(
+  objects: ReadonlyMap<ObjectId, BoardObject>,
+  sortedIds: readonly ObjectId[],
+): string {
   const topId = sortedIds[sortedIds.length - 1]
   const top = topId ? objects.get(topId) : undefined
   return generateKeyBetween(top?.zIndex ?? null, null)
@@ -69,6 +90,10 @@ export function keysBeforeBottom(
  * The neighbour above the reference is the upper bound, so the result lands
  * strictly between them and nothing else has to move — which is the entire
  * argument for fractional indexing over renumbering.
+ *
+ * "The neighbour" is the next STRICTLY greater key. Neighbours can share the
+ * reference's key (concurrent creates — see `compareZ`), and asking for keys
+ * between `a` and `a` throws.
  */
 export function keysAfter(
   objects: ReadonlyMap<ObjectId, BoardObject>,
@@ -77,11 +102,18 @@ export function keysAfter(
   count: number,
 ): string[] {
   const lower = objects.get(sortedIds[referenceIndex] as ObjectId)?.zIndex ?? null
-  const upperId = sortedIds[referenceIndex + 1]
-  const upper = upperId ? (objects.get(upperId)?.zIndex ?? null) : null
+  let upper: string | null = null
+  for (let i = referenceIndex + 1; i < sortedIds.length; i++) {
+    const z = objects.get(sortedIds[i]!)?.zIndex
+    if (z !== undefined && (lower === null || z > lower)) {
+      upper = z
+      break
+    }
+  }
   return generateNKeysBetween(lower, upper, count)
 }
 
+/** One step down: keys placing the selection just below `reference`. */
 export function keysBefore(
   objects: ReadonlyMap<ObjectId, BoardObject>,
   sortedIds: readonly ObjectId[],
@@ -89,7 +121,13 @@ export function keysBefore(
   count: number,
 ): string[] {
   const upper = objects.get(sortedIds[referenceIndex] as ObjectId)?.zIndex ?? null
-  const lowerId = sortedIds[referenceIndex - 1]
-  const lower = lowerId ? (objects.get(lowerId)?.zIndex ?? null) : null
+  let lower: string | null = null
+  for (let i = referenceIndex - 1; i >= 0; i--) {
+    const z = objects.get(sortedIds[i]!)?.zIndex
+    if (z !== undefined && (upper === null || z < upper)) {
+      lower = z
+      break
+    }
+  }
   return generateNKeysBetween(lower, upper, count)
 }

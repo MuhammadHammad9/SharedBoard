@@ -1,13 +1,19 @@
 import {
   STICKY_TEXT_MAX,
   TEXT_MAX,
+  TEXT_UPDATE_DEBOUNCE_MS,
   type BoardObject,
   type ObjectId,
   type StickyObject,
   type TextObject,
 } from '@coboard/shared'
 import { boardStore } from '../../../../stores/boardStore.js'
-import { applyAndEmit, createOps, updateOps } from '../../history/apply.js'
+import {
+  applyAndEmit,
+  createOps,
+  snapshotReader,
+  updateOps,
+} from '../../history/apply.js'
 import { LABELS, typingKey } from '../../history/grouping.js'
 
 /**
@@ -19,7 +25,42 @@ import { LABELS, typingKey } from '../../history/grouping.js'
  */
 
 /** FLOWS §8.2.2 step 3: "debounced 300 ms: emit an update with the new text". */
-export const TEXT_DEBOUNCE_MS = 300
+export const TEXT_DEBOUNCE_MS = TEXT_UPDATE_DEBOUNCE_MS
+
+/**
+ * The typing burst not yet emitted: the object as it was BEFORE the burst's
+ * first keystroke (the undo target, R-UNDO-007) and the debounce timer.
+ */
+let burst: { base: BoardObject; timer: ReturnType<typeof setTimeout> } | null = null
+
+/**
+ * Emit the pending typing burst now, as ONE op and one (coalescing) history
+ * entry. Idempotent, and safe with nothing pending.
+ *
+ * Called by the debounce timer and by every exit — commit, Escape, click
+ * outside, the overlay unmounting, the board being left — so no keystroke is
+ * ever held back past the moment the editor goes away.
+ */
+export function flushPendingText(): void {
+  if (!burst) return
+  const { base, timer } = burst
+  burst = null
+  clearTimeout(timer)
+  const current = boardStore.getState().objects.get(base.id)
+  // Deleted under us meanwhile: delete wins (R-CONV-003), nothing to send.
+  if (!current || !isEditable(current)) return
+  const before = snapshotReader(new Map([[base.id, base]]))
+  // Only the fields typing changes — never a field a teammate wrote meanwhile.
+  const next = {
+    ...base,
+    text: current.text,
+    updatedAt: current.updatedAt,
+  } as BoardObject
+  applyAndEmit(updateOps([next], before), LABELS.typing, {
+    before,
+    coalesceKey: typingKey(base.id),
+  })
+}
 
 const isEditable = (o: BoardObject): o is StickyObject | TextObject =>
   o.type === 'sticky' || o.type === 'text'
@@ -31,10 +72,11 @@ const maxLengthFor = (o: BoardObject): number =>
 /**
  * Apply typed text to the object being edited.
  *
- * Written straight through, not debounced: the canvas renders the text live
- * beneath the transparent overlay (FLOWS §8.2.2 step 3), so any delay here
- * would show as the canvas text lagging the caret. The 300 ms debounce belongs
- * on the *network* emit, which is Phase 9's job and is marked below.
+ * The STORE write is immediate: the canvas renders the text live beneath the
+ * transparent overlay (FLOWS §8.2.2 step 3), so any delay here would show as
+ * the canvas text lagging the caret. The NETWORK emit is debounced to
+ * TEXT_UPDATE_DEBOUNCE_MS — one op per pause, not a full-text op per key —
+ * and teammates see the text arrive in those steps as it is typed.
  */
 export function updateEditingText(text: string): void {
   const { editingTextId, editingJustCreated, objects, updateObjects } =
@@ -63,14 +105,14 @@ export function updateEditingText(text: string): void {
     return
   }
 
-  applyAndEmit(updateOps([next]), LABELS.typing, {
-    coalesceKey: typingKey(editingTextId),
-  })
+  // A burst on another object (should one still be pending) goes out first.
+  if (burst && burst.base.id !== editingTextId) flushPendingText()
+  if (boardStore.getState().readOnly) return
 
-  // PHASE 9 SLOT: debounced TEXT_DEBOUNCE_MS, emit op:update with the new
-  // text so remote users see it appear as it is typed. Note the asymmetry —
-  // the STORE write is immediate (the canvas renders under the caret) and only
-  // the NETWORK emit is debounced.
+  if (burst) clearTimeout(burst.timer)
+  const base = burst?.base ?? object
+  burst = { base, timer: setTimeout(flushPendingText, TEXT_UPDATE_DEBOUNCE_MS) }
+  updateObjects([next])
 }
 
 /**
@@ -87,10 +129,12 @@ export function updateEditingText(text: string): void {
  */
 export function commitTextEdit(): boolean {
   const state = boardStore.getState()
-  const { editingTextId, editingJustCreated, objects } = state
+  const { editingTextId, editingJustCreated } = state
   if (!editingTextId) return false
 
-  const object = objects.get(editingTextId)
+  // Whatever was typed since the last pause is sent before the editor closes.
+  flushPendingText()
+  const object = boardStore.getState().objects.get(editingTextId)
   state.endTextEdit()
 
   if (!object || !isEditable(object)) return false

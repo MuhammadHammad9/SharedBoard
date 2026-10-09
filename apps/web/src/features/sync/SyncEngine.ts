@@ -74,6 +74,11 @@ export class SyncEngine {
   private reloadRequested = false
   /** An E-13 snapshot reload is in flight: incoming ops wait, unapplied. */
   private reloading = false
+  /**
+   * The board was left. A gap fill or snapshot reload still in flight must not
+   * land — by the time it resolves the store may hold the NEXT board.
+   */
+  private disposed = false
 
   private readonly setTimer: (fn: () => void, ms: number) => unknown
   private readonly clearTimer: (handle: unknown) => void
@@ -195,6 +200,7 @@ export class SyncEngine {
    * the document sits behind until the next message happens to arrive.
    */
   receiveOps(ops: readonly ServerOp[]): void {
+    if (this.disposed) return
     // Before the snapshot, everything waits. This is the load-ordering rule.
     if (!this.snapshotLoaded) {
       this.buffered.push(...ops)
@@ -229,6 +235,7 @@ export class SyncEngine {
    * └──────────────────────────────────────────────────────────────────────┘
    */
   markOwn(seq: number, opId: string): void {
+    if (this.disposed) return
     if (this.reloading) {
       this.own.set(seq, opId)
       return
@@ -243,6 +250,7 @@ export class SyncEngine {
   }
 
   private drain(): void {
+    if (this.disposed) return
     /*
      * In seq order, each remote op is applied and each of my own releases its
      * fields AT ITS POSITION. Remote ops between two of mine are applied as
@@ -361,6 +369,7 @@ export class SyncEngine {
     this.gapFilling = true
     try {
       const { ops } = await this.fetchOpsSince(this.boardId, this.lastAppliedSeq)
+      if (this.disposed) return
       if (ops.length > 0) this.receiveOps(ops as unknown as ServerOp[])
     } catch {
       // Still broken. The socket's own reconnect will re-join with our
@@ -390,10 +399,12 @@ export class SyncEngine {
    * └──────────────────────────────────────────────────────────────────────┘
    */
   private async reloadFromServer(): Promise<void> {
+    if (this.disposed) return
     this.reloading = true
     syncEvent(`snapshot-reload from seq ${this.lastAppliedSeq}`)
     try {
       const state = await this.fetchSnapshot(this.boardId)
+      if (this.disposed) return
       boardStore.getState().loadObjects(state.objects)
       this.lastAppliedSeq = state.seq
       for (const seq of [...this.pending.keys()])
@@ -421,6 +432,7 @@ export class SyncEngine {
   }
 
   dispose(): void {
+    this.disposed = true
     this.cancelGapFill()
     this.pending.clear()
     this.own.clear()

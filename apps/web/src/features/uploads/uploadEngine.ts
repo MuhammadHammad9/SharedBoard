@@ -40,6 +40,12 @@ export type UploadStatus = 'uploading' | 'failed' | 'done'
 
 export interface UploadItem {
   id: ObjectId
+  /**
+   * The board this upload belongs to. Items outlive nothing: leaving the
+   * board drops them, and a commit is refused unless this board is still the
+   * one open — otherwise a slow upload would land on the NEXT board.
+   */
+  boardId: string
   file: File
   /** Where the image will sit — canvas coordinates (R-COORD-002). */
   box: Rect
@@ -81,8 +87,22 @@ export interface UploadContext {
 let context: UploadContext | null = null
 
 export function setUploadContext(next: UploadContext | null): void {
+  const previous = context
   context = next
+  // Leaving a board abandons its uploads: their placeholders go, and a
+  // transfer still in flight finds its item gone and creates nothing.
+  if (previous && previous.boardId !== next?.boardId) {
+    useUploadStore.setState(s => {
+      const items: Record<string, UploadItem> = {}
+      for (const [id, item] of Object.entries(s.items))
+        if (item.boardId !== previous.boardId) items[id] = item
+      return { items }
+    })
+  }
 }
+
+/** True while `item`'s board is still the one open. */
+const isCurrent = (item: UploadItem): boolean => context?.boardId === item.boardId
 
 /* ── Transport: XHR for upload progress; swappable in tests ──────────────── */
 
@@ -192,6 +212,8 @@ export async function startUploads(
       continue
     }
     const natural = await naturalSize(file)
+    // The board was left while the file was decoding.
+    if (context !== ctx) return
     // Several at once fan out a little, so they do not land exactly stacked.
     const box = placeBox(natural, { x: centre.x + offset, y: centre.y + offset }, visible)
     offset += 24
@@ -201,6 +223,7 @@ export async function startUploads(
         ...s.items,
         [id]: {
           id,
+          boardId: ctx.boardId,
           file,
           box,
           naturalWidth: natural.width,
@@ -215,6 +238,8 @@ export async function startUploads(
 }
 
 export function retryUpload(id: string): void {
+  const item = useUploadStore.getState().items[id]
+  if (!item || context?.boardId !== item.boardId) return
   patch(id, { status: 'uploading', progress: 0 })
   void run(id)
 }
@@ -231,12 +256,11 @@ interface Presigned {
 
 async function run(id: string): Promise<void> {
   const item = useUploadStore.getState().items[id]
-  const ctx = context
-  if (!item || !ctx) return
+  if (!item || context?.boardId !== item.boardId) return
 
   try {
     const signed = await api.post<Presigned>('/uploads/presign', {
-      boardId: ctx.boardId,
+      boardId: item.boardId,
       filename: item.file.name.slice(0, 255) || 'image',
       contentType: item.file.type,
       size: item.file.size,
@@ -248,8 +272,10 @@ async function run(id: string): Promise<void> {
       key: signed.key,
     })
 
-    // Removed while uploading: the user said no, so nothing is created.
-    if (!useUploadStore.getState().items[id]) return
+    // Removed while uploading — the user said no — or the board was left:
+    // nothing is created, and certainly not on whichever board is open now.
+    const current = useUploadStore.getState().items[id]
+    if (!current || !isCurrent(current)) return
     applyAndEmit(createOps([imageObject(id as ObjectId, item, url)]), LABELS.create)
     // Placeholder → loaded is a 200 ms crossfade (Phase 13 motion): keep the
     // placeholder until the bitmap has decoded, so there is no blank frame.

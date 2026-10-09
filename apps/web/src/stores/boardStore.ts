@@ -21,7 +21,7 @@ import {
 import type { InteractionState } from '../features/canvas/interaction/machine.js'
 import type { DraftStroke } from '../features/canvas/renderer/drawInteraction.js'
 import { loadPrefs, savePrefs } from '../lib/persist.js'
-import { keyAfterTop } from '../features/canvas/geometry/zIndex.js'
+import { compareZ, keyAfterTop } from '../features/canvas/geometry/zIndex.js'
 
 /**
  * The board store.
@@ -120,6 +120,8 @@ export interface TextSettings {
   italic: boolean
   textAlign: 'left' | 'center' | 'right'
 }
+
+const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, zoom: 1 }
 
 const DEFAULT_TEXT: TextSettings = {
   color: PEN_COLOURS[0],
@@ -264,6 +266,13 @@ interface BoardState {
   clearTombstones: () => void
   setReadOnly: (readOnly: boolean) => void
   /**
+   * Forget everything about the board that was open: the document, its
+   * tombstones, the selection, the viewport, any gesture, draft, text edit or
+   * erase highlight. Preferences (tool, pen, shape, sticky, text settings) and
+   * the in-tab clipboard are the user's, not the board's, and survive.
+   */
+  resetBoard: () => void
+  /**
    * The server ordered my delete at `seq`. Until now its tombstone sat at
    * MAX_SAFE_INTEGER — "later than anything" — which would also swallow a
    * teammate's LATER re-create (an undo) forever. Now the real seq is known,
@@ -326,7 +335,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   objectsVersion: 0,
   sortedIds: [],
 
-  viewport: { x: 0, y: 0, zoom: 1 },
+  viewport: { ...DEFAULT_VIEWPORT },
 
   activeTool: restored.activeTool as Tool,
   pen: restored.pen,
@@ -454,9 +463,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     for (const o of objects) {
       map.set(o.id, { ...o, x: clampCoordValue(o.x), y: clampCoordValue(o.y) })
     }
-    const sortedIds = [...map.values()]
-      .sort((a, b) => (a.zIndex < b.zIndex ? -1 : a.zIndex > b.zIndex ? 1 : 0))
-      .map(o => o.id)
+    const sortedIds = [...map.values()].sort(compareZ).map(o => o.id)
     set(s => ({
       objects: map,
       sortedIds,
@@ -656,9 +663,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
        */
       let sortedIds = s.sortedIds
       if (zDirty) {
-        sortedIds = [...s.objects.values()]
-          .sort((a, b) => (a.zIndex < b.zIndex ? -1 : a.zIndex > b.zIndex ? 1 : 0))
-          .map(o => o.id)
+        sortedIds = [...s.objects.values()].sort(compareZ).map(o => o.id)
       } else {
         const listed = new Set(s.sortedIds)
         const gone = new Set<ObjectId>()
@@ -717,6 +722,23 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         : { readOnly }
     }),
 
+  resetBoard: () =>
+    set(s => ({
+      objects: new Map(),
+      sortedIds: [],
+      objectsVersion: s.objectsVersion + 1,
+      tombstones: new Map(),
+      // No per-board viewport is persisted, so every board opens at the origin.
+      viewport: { ...DEFAULT_VIEWPORT },
+      interaction: { type: 'IDLE' } as InteractionState,
+      selection: [],
+      eraseCandidate: null,
+      editingTextId: null,
+      editingJustCreated: false,
+      draft: null,
+      draftVersion: s.draftVersion + 1,
+    })),
+
   confirmDelete: (id, seq) => {
     // Mutated in place, like `applyOps` does: tombstones are not rendered,
     // and nothing subscribes to them, so no new Map and no React update.
@@ -726,9 +748,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
   reorder: () =>
     set(s => ({
-      sortedIds: [...s.objects.values()]
-        .sort((a, b) => (a.zIndex < b.zIndex ? -1 : a.zIndex > b.zIndex ? 1 : 0))
-        .map(o => o.id),
+      sortedIds: [...s.objects.values()].sort(compareZ).map(o => o.id),
       objectsVersion: s.objectsVersion + 1,
     })),
 
@@ -775,8 +795,9 @@ function insertByZ(
   let hi = sortedIds.length
   while (lo < hi) {
     const mid = (lo + hi) >> 1
-    const z = objects.get(sortedIds[mid]!)?.zIndex ?? ''
-    if (z <= object.zIndex) lo = mid + 1
+    const other = objects.get(sortedIds[mid]!)
+    // Ties on zIndex fall to the id, the same on every client — compareZ.
+    if (!other || compareZ(other, object) <= 0) lo = mid + 1
     else hi = mid
   }
   sortedIds.splice(lo, 0, object.id)

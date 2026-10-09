@@ -16,7 +16,7 @@ import { useJoinLeaveToasts } from '../features/presence/useJoinLeaveToasts.js'
 import { actions, demo as demoStrings, guest, loading, states } from '../lib/strings.js'
 import { setGuestCredential } from '../lib/api.js'
 import { useBoardToastPlacement, useToast } from '../components/ui/Toast.js'
-import { boardStore } from '../stores/boardStore.js'
+import { setBoardReadOnly } from '../features/canvas/interaction/cancelGesture.js'
 import { clearGuest } from '../features/auth/guestIdentity.js'
 import { useBoardEntry } from './RequireBoardAccess.js'
 import { useImageUploads } from '../features/uploads/useImageUploads.js'
@@ -64,10 +64,12 @@ export default function Board({ demo = false }: { demo?: boolean } = {}) {
   // FLOWS §9.5: an ejected board is FROZEN under its overlay — the user
   // still sees their work, and nothing on it can change.
   const ejected = load.status === 'deleted' || load.status === 'revoked'
+  // A demotion mid-gesture cancels the gesture through the Escape path first
+  // (FLOWS §9.5), so nothing is left half-applied on this screen only.
   useEffect(() => {
-    boardStore.getState().setReadOnly(load.role === 'VIEWER' || ejected)
+    setBoardReadOnly(load.role === 'VIEWER' || ejected)
   }, [load.role, ejected])
-  useEffect(() => () => boardStore.getState().setReadOnly(false), [])
+  useEffect(() => () => setBoardReadOnly(false), [])
 
   // FLOWS §7.1 step 9: "You're in as Marcus" — once, when arriving from S-11.
   const joinedAs = (location.state as { joinedAs?: string } | null)?.joinedAs

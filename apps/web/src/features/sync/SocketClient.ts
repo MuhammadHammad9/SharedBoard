@@ -122,6 +122,18 @@ export class SocketClient {
   private attempt = 0
   private closedByUs = false
   private refreshedOnce = false
+  /**
+   * A connect is between its ticket request and the socket it opens. The
+   * `this.socket` guard cannot cover that window — there is no socket yet —
+   * and `online` plus `visibilitychange` firing together on wake would each
+   * fetch a ticket and open a socket of their own.
+   */
+  private connecting = false
+  /**
+   * Bumped by `restart()`, so a ticket fetched under the previous identity is
+   * abandoned rather than used to open a second socket beside the new one.
+   */
+  private generation = 0
 
   /*
    * PRD §9 socket_disconnected / socket_reconnected bookkeeping. `openedAt`
@@ -191,7 +203,10 @@ export class SocketClient {
    */
   async connect(): Promise<void> {
     if (this.closedByUs) return
+    if (this.connecting) return
     if (this.socket && this.socket.readyState <= 1) return
+    this.connecting = true
+    const generation = this.generation
 
     // From DISCONNECTED this is the first connect; from OFFLINE it is a
     // retry. From RECONNECTING it is the next attempt and nothing changes.
@@ -205,11 +220,17 @@ export class SocketClient {
       })
       ticket = response.ticket
     } catch {
+      // Superseded by a restart while the request was out: that connect owns
+      // the retry now.
+      if (generation !== this.generation) return
+      this.connecting = false
       // Could not even get a ticket — the API is down or the session expired.
       // Treated as a network failure, because that is what it usually is.
       this.scheduleRetry()
       return
     }
+    if (generation !== this.generation) return
+    this.connecting = false
     if (this.closedByUs) return
 
     const url = new URL(
@@ -248,6 +269,8 @@ export class SocketClient {
     }
 
     socket.onmessage = event => {
+      // A socket we have already replaced or given up on speaks for nothing.
+      if (this.socket !== socket) return
       const parsed = safeParse(event.data)
       if (!parsed) return
 
@@ -259,7 +282,16 @@ export class SocketClient {
       this.handlers.onMessage(parsed)
     }
 
-    socket.onclose = event => this.onClose(event.code)
+    /*
+     * Only the CURRENT socket's close is a drop. A superseded socket closing
+     * late — after a restart, a heartbeat teardown, or a duplicate connect —
+     * would otherwise stop the live socket's heartbeat, null it and report
+     * 'disconnected' while it is perfectly healthy.
+     */
+    socket.onclose = event => {
+      if (this.socket !== socket) return
+      this.onClose(event.code)
+    }
     socket.onerror = () => {
       // `error` is always followed by `close`, which is where the reaction
       // lives. Handling both would double every reconnect.
@@ -461,6 +493,9 @@ export class SocketClient {
     const socket = this.socket
     this.stopTimers()
     this.socket = null
+    // A ticket request still in flight belongs to the old identity.
+    this.generation += 1
+    this.connecting = false
     // A planned swap of identity, not a drop: nothing is tracked for it.
     this.openedAt = null
     if (socket) {

@@ -461,3 +461,76 @@ describe('E-13 — an op for an unknown object', () => {
     expect(sync.appliedSeq).toBe(11)
   })
 })
+
+/* ── Dispose ──────────────────────────────────────────────────────────────── */
+
+describe('dispose — async work never lands on the next board', () => {
+  it('a gap fill resolving after dispose writes nothing', async () => {
+    const leaked = sticky()
+    let resolve!: (v: unknown) => void
+    const fetchOpsSince = vi.fn(() => new Promise(r => (resolve = r)))
+    const sync = new SyncEngine('board-1', callbacks, {
+      send: () => true,
+      markSynced: noop,
+      setTimer: fn => {
+        queueMicrotask(fn)
+        return 1
+      },
+      clearTimer: noop,
+      fetchOpsSince: fetchOpsSince as never,
+    })
+    boardStore.getState().loadObjects([])
+    sync.snapshotReady(0)
+    sync.receiveOps([createOp(2, sticky())])
+    await new Promise(r => setTimeout(r, 5))
+    expect(fetchOpsSince).toHaveBeenCalledTimes(1)
+
+    sync.dispose()
+    // The next board is open now.
+    boardStore.getState().loadObjects([])
+    resolve({ ops: [createOp(1, leaked)], currentSeq: 2 })
+    await new Promise(r => setTimeout(r, 5))
+
+    expect(ids()).toEqual([])
+  })
+
+  it('a snapshot reload resolving after dispose does not replace the next board', async () => {
+    const next = sticky()
+    let resolve!: (v: unknown) => void
+    const fetchSnapshot = vi.fn(() => new Promise(r => (resolve = r)))
+    const sync = new SyncEngine('board-1', callbacks, {
+      send: () => true,
+      markSynced: noop,
+      setTimer: fn => {
+        queueMicrotask(fn)
+        return 1
+      },
+      clearTimer: noop,
+      fetchOpsSince: () => Promise.resolve({ ops: [], currentSeq: 0 }),
+      fetchSnapshot: fetchSnapshot as never,
+    })
+    boardStore.getState().loadObjects([])
+    sync.snapshotReady(0)
+    sync.receiveOps([1, 2, 3].map(seq => updateOp(seq, `never-seen-${seq}`, { x: 1 })))
+    await new Promise(r => setTimeout(r, 5))
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1)
+
+    sync.dispose()
+    boardStore.getState().loadObjects([next])
+    resolve({ objects: [sticky()], seq: 10 })
+    await new Promise(r => setTimeout(r, 5))
+
+    expect(ids()).toEqual([next.id])
+  })
+
+  it('ignores ops and acks delivered after dispose', () => {
+    const sync = engine()
+    boardStore.getState().loadObjects([])
+    sync.snapshotReady(0)
+    sync.dispose()
+    sync.receiveOps([createOp(1, sticky())])
+    sync.markOwn(2, 'op-mine')
+    expect(ids()).toEqual([])
+    expect(sync.appliedSeq).toBe(0)
+  })
+})

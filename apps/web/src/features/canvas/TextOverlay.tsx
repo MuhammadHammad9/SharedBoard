@@ -1,7 +1,11 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useBoardStore } from '../../stores/boardStore.js'
 import { boardChrome } from '../../lib/strings.js'
-import { commitTextEdit, updateEditingText } from './interaction/handlers/textEdit.js'
+import {
+  commitTextEdit,
+  flushPendingText,
+  updateEditingText,
+} from './interaction/handlers/textEdit.js'
 import {
   LINE_HEIGHT_RATIO,
   STICKY_FONT_MAX,
@@ -63,6 +67,10 @@ export function TextOverlay({ container }: TextOverlayProps) {
     el.setSelectionRange(el.value.length, el.value.length)
   }, [editingId])
 
+  // The debounced text op never outlives the editor: switching objects or
+  // unmounting the overlay sends whatever was typed since the last pause.
+  useEffect(() => () => flushPendingText(), [editingId])
+
   /*
    * Click-outside commits — FLOWS §8.2.2 step 4.
    *
@@ -105,6 +113,9 @@ export function TextOverlay({ container }: TextOverlayProps) {
       ref={ref}
       value={object.text}
       onChange={e => updateEditingText(e.target.value)}
+      // Focus leaving (another window, a toolbar control) sends the pending
+      // text now rather than after the debounce.
+      onBlur={flushPendingText}
       onKeyDown={e => {
         // Escape and Tab both commit. Neither may bubble: Escape would reach
         // the canvas's deselect handler, Tab would move focus into the toolbar.

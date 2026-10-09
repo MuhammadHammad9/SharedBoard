@@ -35,13 +35,14 @@ export async function login(input: {
 /**
  * Log out — FR-AUTH-007, task 19.
  *
- * The order is deliberate: disconnect the socket FIRST, then revoke the
- * session server-side, then clear local state. Reversed, the socket would
- * still be open with a session the server has already killed, and Phase 9's
- * gateway would be forced to handle a stream of ops from a logged-out user.
+ * No socket can be open here: logout is offered only off the board route
+ * (the dashboard chrome, Settings, and the S-19 "switch account" link, whose
+ * board session was already disposed by the failed load). Leaving a board
+ * disposes its session — and closes its socket — on unmount, so by the time
+ * the session is revoked server-side there is nothing left to stream ops
+ * under it. Then local state is cleared.
  */
 export async function logout(): Promise<void> {
-  // PHASE 9 SLOT: socketClient.disconnect() belongs here, before the revoke.
   try {
     await api.post<void>('/auth/logout')
   } catch {

@@ -61,11 +61,23 @@ function kindOf(objects: readonly BoardObject[]): Kind {
   return only === 'image' ? 'mixed' : (only as Kind)
 }
 
+/** Interaction states driven by a live pointer, where geometry streams. */
+const isPointerGesture = (type: string): boolean =>
+  type !== 'IDLE' && type !== 'EDITING_TEXT'
+
 export function SelectionProperties() {
   const selectionCount = useBoardStore(s => s.selection.length)
-  // Reading the version rather than the objects keeps the subscription narrow
-  // while still refreshing after a transform or an edit commits.
-  useBoardStore(s => s.objectsVersion)
+  /*
+   * Reading the version rather than the objects keeps the subscription narrow
+   * while still refreshing after a transform, an edit or a remote change.
+   *
+   * Frozen while a pointer gesture is live: a drag bumps the version on every
+   * pointermove, and re-rendering the panel sixty times a second for values
+   * it does not show (geometry) is exactly R-ARCH-003's failure. The gesture
+   * ending flips the selector back to the live version, so the panel catches
+   * up — including with anything a teammate changed meanwhile — in one render.
+   */
+  useBoardStore(s => (isPointerGesture(s.interaction.type) ? -1 : s.objectsVersion))
   const selection = useBoardStore(s => s.selection)
 
   const objects = selectedObjects()

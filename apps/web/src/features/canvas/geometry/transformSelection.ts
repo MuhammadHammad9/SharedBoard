@@ -131,10 +131,11 @@ export function applyBoxTransform(o: BoardObject, from: Rect, to: Rect): BoardOb
   }
 
   /*
-   * PHASE 5 SLOT — text and sticky notes must REFLOW rather than scale their
-   * glyphs (FR-CANVAS-012). Neither type can exist yet, so there is nothing to
-   * reflow and nothing to test; the branch lands with those tools. Until then
-   * the generic box transform below is correct for every type that exists.
+   * Text and sticky notes REFLOW rather than scale their glyphs
+   * (FR-CANVAS-012), and that needs nothing here: only the box changes, and
+   * the renderer wraps (and, for stickies, auto-fits) the text to whatever box
+   * it is given at draw time — renderer/shapes/textual.ts. So the generic box
+   * transform below is correct for every type, text included.
    */
   return { ...o, x, y, width, height, updatedAt: Date.now() }
 }

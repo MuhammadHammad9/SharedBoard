@@ -21,6 +21,8 @@ export type ImageStatus = 'loading' | 'ready' | 'error'
 interface Entry {
   image: HTMLImageElement
   status: ImageStatus
+  /** The frame this entry was last requested in — see `frame`. */
+  usedInFrame: number
 }
 
 /** What the draw path needs — the cache, or a stand-in in tests. */
@@ -32,6 +34,17 @@ export interface ImageSource {
 export class ImageCache implements ImageSource {
   private readonly entries = new Map<string, Entry>()
   private readonly listeners = new Set<() => void>()
+  /**
+   * A "frame" is one synchronous run of `get` calls: a layer-1 paint asks for
+   * every visible image inside one rAF callback, and the counter advances on
+   * the microtask after it. Entries requested in the current frame are never
+   * evicted — with more than `cap` images on screen, evicting a visible one
+   * would make it reload, re-dirty the layer and evict another visible one,
+   * forever. The cache may exceed the cap for exactly as long as that many
+   * images are visible, and is trimmed back on the next load after.
+   */
+  private frame = 0
+  private frameScheduled = false
 
   constructor(
     private readonly cap = IMAGE_CACHE_CAP,
@@ -40,8 +53,10 @@ export class ImageCache implements ImageSource {
 
   /** The decoded image, or null while it loads (or if it failed). */
   get(url: string): HTMLImageElement | null {
+    this.touchFrame()
     const entry = this.entries.get(url)
     if (entry) {
+      entry.usedInFrame = this.frame
       // Most recently used goes to the back; eviction takes from the front.
       this.entries.delete(url)
       this.entries.set(url, entry)
@@ -83,7 +98,7 @@ export class ImageCache implements ImageSource {
 
   private load(url: string): void {
     const image = this.createImage()
-    const entry: Entry = { image, status: 'loading' }
+    const entry: Entry = { image, status: 'loading', usedInFrame: this.frame }
     image.crossOrigin = 'anonymous'
     image.decoding = 'async'
     image.onload = () => {
@@ -97,13 +112,30 @@ export class ImageCache implements ImageSource {
     this.entries.set(url, entry)
     image.src = url
 
-    while (this.entries.size > this.cap) {
-      const oldest = this.entries.keys().next().value as string
-      const evicted = this.entries.get(oldest)!
+    this.trim()
+  }
+
+  /** Evict least-recently-used entries past the cap, sparing this frame's. */
+  private trim(): void {
+    let excess = this.entries.size - this.cap
+    if (excess <= 0) return
+    for (const [url, entry] of this.entries) {
+      if (excess <= 0) break
+      if (entry.usedInFrame === this.frame) continue
       // Drop the handlers so a late load of an evicted image is a no-op.
-      evicted.image.onload = evicted.image.onerror = null
-      this.entries.delete(oldest)
+      entry.image.onload = entry.image.onerror = null
+      this.entries.delete(url)
+      excess -= 1
     }
+  }
+
+  private touchFrame(): void {
+    if (this.frameScheduled) return
+    this.frameScheduled = true
+    queueMicrotask(() => {
+      this.frameScheduled = false
+      this.frame += 1
+    })
   }
 
   private notify(): void {
