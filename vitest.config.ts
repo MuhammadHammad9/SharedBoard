@@ -38,7 +38,13 @@ export default defineConfig({
           environment: 'node',
           setupFiles: ['./vitest.setup.ts'],
           include: ['**/*.{test,spec}.{ts,tsx}'],
-          exclude: ['**/node_modules/**', '**/dist/**', '.claude/**', 'tests/e2e/**', INTEGRATION],
+          exclude: [
+            '**/node_modules/**',
+            '**/dist/**',
+            '.claude/**',
+            'tests/e2e/**',
+            INTEGRATION,
+          ],
         },
       },
       {

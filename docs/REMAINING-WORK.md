@@ -33,7 +33,7 @@ Do not rebuild these — extend them.
 
 ## 3. Known stubs to retire (grep `Phase 1[1-5]`) — all retired
 
-> Each row was retired by the phase named in its last column; the outcomes below record how. The `starred` filter has no Star model by design (stars are P2); see §7.
+> Each row was retired by the phase named in its last column; the outcomes below record how. The `starred` filter has no Star model by design (stars are P2), so it returns no boards (D-34); see §7.
 
 | Where                                                               | Stub                                                   | Retired by    |
 | ------------------------------------------------------------------- | ------------------------------------------------------ | ------------- |
@@ -525,7 +525,7 @@ All seven slices landed, and P15-1 to P15-9 are closed. New defect-register entr
 - A visual Safari pass: WebKit runs in CI, but it is not Safari on a Mac.
 - Alert routing (Alertmanager or Grafana).
 - The first quarterly human restore drill: the scripted drill is automated daily.
-- Vitest's moderate advisory GHSA-82fw-gwwq-j7x9 needs a major upgrade to v4. It is non-blocking under R-SEC-019 and left for a dedicated PR.
+- ~~Vitest's moderate advisory GHSA-82fw-gwwq-j7x9 needs a major upgrade to v4.~~ Done in the §7 audit (vitest 4.1.11).
 
 ## 5. Sequencing and critical path
 
@@ -553,3 +553,27 @@ All seven slices landed, and P15-1 to P15-9 are closed. New defect-register entr
 | D   | **`Q-1` guest persistence** was due at Phase 10 and is still unratified. Proceed on the interim (rows kept, swept after 24 h idle)? **Resolved:** guest rows kept, swept by the `guest_sweep` maintenance job after 24 h idle.        | 12b, 12f |
 | E   | **S3 in dev**: `docker-compose.yml` has Postgres + Redis only. Add MinIO for local uploads? **Resolved:** no MinIO; the in-process fake S3 (`dev/fakeS3.ts`) starts with `pnpm dev`.                                                  | 13b      |
 | F   | `Q-3`/`Q-4`/`Q-5` — due Phase 14; interim positions (chrome-only dark mode, fixed 30 days, Inter everywhere) apply unless overruled. **Resolved:** Q-3 dark mode is FR-SET-002 (P2, not built); 30-day fixed trash; Inter everywhere. | Phase 14 |
+
+## 7. Post-Phase-15 audit
+
+A full sweep after Phase 15: an independent review of the server, the web client and the infra/docs against the four specifications and `RULES.md`, then a requirement-by-requirement pass over PRD §6–§8 and every FLOWS screen. Everything it found is fixed below, or listed under "Still open" with the reason.
+
+**Security (server).** UPDATE payloads are validated strictly against the target object's type inside the append transaction, and CREATE needs `payload.id === objectId` (256 KB cap per payload, not 64 KB: a long full-precision stroke legitimately exceeds 64 KB). Invites are claimed only for a proven address: a verification link, `POST /api/auth/verify-email`, Google `email_verified`, and pre-hijack password clearing (D-22). A guest who converts keeps their role (D-23). Also: a join failure closes the socket with 1011 instead of crashing the process; rate limits on REST ops, ticket minting and presence; unjoined sockets closed after 10 s; only an `AuthError` nacks FORBIDDEN; op-id collisions nacked; SVGs served as attachments; image URLs must be our own uploads; a login success no longer clears per-IP failures; forgot-password timing equalised; reset races return 400; permanent delete notifies the room; client-error URLs scrubbed; production refuses to boot without `SMTP_URL`, which now sends real mail through nodemailer.
+
+**Correctness (web).** A viewer promoted mid-session starts persisting. No duplicate sockets from a racing ticket fetch. Nothing lands after a session is disposed. Transforms write and send geometry keys only, so undo never reverts a teammate's colour or text. z-order ties break on `(zIndex, id)` everywhere. Demotion and Escape cancel any live gesture. Every board load starts from an empty store, and uploads belong to their board. The presence sweep is scheduled, the image cache never evicts the current frame, and text edits debounce their op.
+
+**Requirement gaps closed.**
+
+- Routes, auth, dashboard: S-20 404, `/dashboard/trash` (D-30), guests exit to S-01 (D-31), S-11 "Log in instead" (D-37), the reset-reason banner, global `?` shortcuts (D-33), signup 409 link and 429 countdown, the welcome toast (D-39), card avatars (D-38), the full card menu (D-35), Trash auto-return, avatar upload (D-36), and the copy fixes (D-32).
+- Board and canvas: S-13 board settings (D-24), sticky drag-to-size, "Change colour" (D-25), remote selection name labels, over-capacity joins admitted as viewers (D-26), the board-too-large warning, the rest of the properties panel, one load shell with "Loading N objects…", and the text editor kept above the mobile keyboard.
+- Copy and behaviour conflicts recorded as D-27, D-28 and D-29.
+
+**Infra and dependencies.** The deploy reloads nginx after each server swap, validates its tag and ships the backup scripts. CI permissions are tightened, and e2e runs both stages through `scripts/e2e.sh`. Lighthouse runs as a pinned CLI on Node 22 because Lighthouse 13 broke Node 20 installs. The metrics label `job` is renamed to `task`, because it collided with Prometheus's own `job` label. `proxy-addr` and `source-map-js` are overridden to patched releases, and vitest is upgraded to 4.1.11 (clearing the critical tinypool advisories). `pnpm audit --audit-level high` exits 0, and `pnpm install` works on Node 20.
+
+**Still open, by decision.**
+
+- "Replace image" (FLOWS §14.4 only; not in FR-CANVAS-010) is not built.
+- An over-capacity viewer's REST op path is gated by their real role, not the room: capacity is a load limit, not authorization.
+- A long-lived socket's role is re-checked per op batch and on live invalidation, never on a timer.
+- Selection-panel sliders add one undo entry per change event, not one per drag.
+- Deploy notes: the upload bucket's CORS must allow `content-disposition`, and `CSP_IMG_ORIGINS` must include `https://lh3.googleusercontent.com` when Google sign-in is on (both in `docs/RUNBOOK.md`).
