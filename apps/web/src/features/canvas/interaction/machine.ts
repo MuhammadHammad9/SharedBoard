@@ -109,7 +109,8 @@ export type InteractionState =
   | {
       type: 'CREATING'
       pointerId: number
-      tool: 'rect' | 'ellipse' | 'line' | 'arrow'
+      /** A shape, or a sticky note dragged to a custom size — FR-CANVAS-008. */
+      tool: 'rect' | 'ellipse' | 'line' | 'arrow' | 'sticky'
       startX: number
       startY: number
       box: Rect

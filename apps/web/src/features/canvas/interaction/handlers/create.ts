@@ -165,9 +165,12 @@ export function buildObject(tool: Tool, box: Rect, id: ObjectId): BoardObject | 
 
 /* ── Drag-created shapes ──────────────────────────────────────────────────── */
 
+/** What a CREATING drag can make: a shape, or a sticky note dragged to size. */
+export type CreateTool = ShapeTool | 'sticky'
+
 export function beginCreate(
   pointerId: number,
-  tool: ShapeTool,
+  tool: CreateTool,
   x: number,
   y: number,
 ): boolean {
@@ -215,6 +218,8 @@ export function endCreate(element: Element | null): BoardObject | null {
   state.setInteraction({ type: 'IDLE' })
 
   const box = interaction.box
+  if (interaction.tool === 'sticky') return endStickyCreate(interaction, state.viewport.zoom)
+
   const isLinear = interaction.tool === 'line' || interaction.tool === 'arrow'
   // A line may legitimately be zero-height; a rect may not be zero-anything.
   // Either way a click that never became a drag creates nothing, rather than
@@ -277,6 +282,12 @@ export function placeAndEdit(
       : // Text starts as a single line's worth of box and grows as it wraps.
         { x, y, width: 240, height: state.text.fontSize * 1.35 }
 
+  return placeBoxAndEdit(tool, box)
+}
+
+/** Create the object for `box` and open its editor — no history yet (see above). */
+function placeBoxAndEdit(tool: 'sticky' | 'text', box: Rect): BoardObject | null {
+  const state = boardStore.getState()
   const object = buildObject(tool, box, crypto.randomUUID() as ObjectId)
   if (!object) return null
 
@@ -284,6 +295,39 @@ export function placeAndEdit(
   state.setSelection([object.id])
   state.beginTextEdit(object.id, true)
   return object
+}
+
+/**
+ * Below this many SCREEN pixels of travel, a sticky-note press is a click,
+ * not a drag. Screen space, so a hand tremor is a click at every zoom — at
+ * 10% one canvas unit is a tenth of a pixel, and a canvas-space threshold
+ * would turn every click into a speck.
+ */
+export const STICKY_DRAG_SLOP_PX = 8
+
+/**
+ * Release of a sticky-note press — FR-CANVAS-008: "Click to place a fixed
+ * 200×200 note; or drag to define a custom size."
+ *
+ * A click places the default note centred on the press, exactly as before.
+ * A drag places a note filling the dragged box, never under the 8×8 minimum
+ * (FR-CANVAS-012). Either way the note goes straight into edit mode, and
+ * history is left to `commitTextEdit`, as for every placed note.
+ */
+function endStickyCreate(
+  interaction: { startX: number; startY: number; box: Rect },
+  zoom: number,
+): BoardObject | null {
+  const { startX, startY, box } = interaction
+  if (Math.max(box.width, box.height) * zoom < STICKY_DRAG_SLOP_PX) {
+    return placeAndEdit('sticky', startX, startY)
+  }
+  return placeBoxAndEdit('sticky', {
+    x: box.x,
+    y: box.y,
+    width: Math.max(MIN_OBJECT_SIZE, box.width),
+    height: Math.max(MIN_OBJECT_SIZE, box.height),
+  })
 }
 
 /** The 8 frozen sticky colours, in palette order — R-UI-014. */

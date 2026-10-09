@@ -191,10 +191,15 @@ export function usePointer(
         started = beginDraw(e.pointerId, p.x, p.y, e.pressure)
       } else if (isShapeTool(activeTool)) {
         started = beginCreate(e.pointerId, activeTool, c.x, c.y)
-      } else if (activeTool === 'sticky' || activeTool === 'text') {
-        // Click-placed and straight into edit mode — FR-CANVAS-008's "click
-        // and type without a second action". No pointer capture: there is no
-        // drag to track.
+      } else if (activeTool === 'sticky') {
+        // FR-CANVAS-008: "click to place a fixed 200×200 note; or drag to
+        // define a custom size". The press starts a CREATING gesture either
+        // way; `endCreate` tells a click from a drag on release, and both go
+        // straight into edit mode.
+        started = beginCreate(e.pointerId, 'sticky', c.x, c.y)
+      } else if (activeTool === 'text') {
+        // Click-placed and straight into edit mode — FR-CANVAS-009. No pointer
+        // capture: there is no drag to track.
         placeAndEdit(activeTool, c.x, c.y)
         e.preventDefault()
         return
