@@ -1,5 +1,9 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
-import { useBoardStore } from '../../stores/boardStore.js'
+import { boardStore, useBoardStore } from '../../stores/boardStore.js'
+import { keyboardPanDelta, visibleBand } from './keyboardAvoidance.js'
+
+/** Below this much lost height, the visual viewport is not a keyboard. */
+const KEYBOARD_MIN_HEIGHT_PX = 120
 import { boardChrome } from '../../lib/strings.js'
 import {
   commitTextEdit,
@@ -70,6 +74,35 @@ export function TextOverlay({ container }: TextOverlayProps) {
   // The debounced text op never outlives the editor: switching objects or
   // unmounting the overlay sends whatever was typed since the last pause.
   useEffect(() => () => flushPendingText(), [editingId])
+
+  /*
+   * FLOWS §14.5: "Text editing scrolls the canvas so the edited object sits
+   * above the keyboard." The on-screen keyboard shrinks the VISUAL viewport,
+   * so it is the visualViewport's resize that says the keyboard arrived. The
+   * response is a pan of the canvas — a viewport change, never a stored
+   * coordinate (R-COORD-002).
+   *
+   * Only while a keyboard is plausibly open (the visual viewport is well
+   * short of the layout viewport): on a desktop, editing a note near the
+   * window edge must not shove the board around.
+   */
+  useEffect(() => {
+    if (!editingId) return
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null
+    if (!vv) return
+    const avoid = () => {
+      const band = visibleBand()
+      const el = ref.current
+      if (!band || !el) return
+      if (window.innerHeight - vv.height < KEYBOARD_MIN_HEIGHT_PX) return
+      const rect = el.getBoundingClientRect()
+      const dy = keyboardPanDelta(rect.top, rect.bottom, band.top, band.bottom)
+      if (dy !== 0) boardStore.getState().panBy(0, dy)
+    }
+    avoid()
+    vv.addEventListener('resize', avoid)
+    return () => vv.removeEventListener('resize', avoid)
+  }, [editingId])
 
   /*
    * Click-outside commits — FLOWS §8.2.2 step 4.
