@@ -8,6 +8,7 @@ import { ShortcutsModal } from '../components/board/ShortcutsModal.js'
 import { BoardHeader } from '../components/board/BoardHeader.js'
 import { SessionExpiredBanner } from '../components/board/SessionExpiredBanner.js'
 import { OfflineBanner } from '../components/board/OfflineBanner.js'
+import { BoardSizeWarning } from '../components/board/BoardSizeWarning.js'
 import { FullScreenSpinner } from '../components/ui/Spinner.js'
 import { BackHome, FullScreenState } from '../components/ui/FullScreenState.js'
 import { Button } from '../components/ui/Button.js'
@@ -150,6 +151,7 @@ export default function Board({ demo = false }: { demo?: boolean } = {}) {
       <BoardEmptyHint neverEdited={load.seq === 0} />
       <ShortcutsModal />
       <OfflineBanner state={load.connection} pending={load.pending} />
+      <BoardSizeWarning boardId={boardId ?? ''} readOnly={load.role === 'VIEWER'} />
       <SessionExpiredBanner />
       {actingGuest && <GuestBar boardId={boardId ?? ''} />}
       {actingGuest && entry.returning && (
