@@ -974,6 +974,109 @@ describe('leaving', () => {
   })
 })
 
+describe('room capacity — FR-RT-011, D-26', () => {
+  async function boardWithEditor() {
+    const priya = await signUp()
+    const marcus = await signUp('Marcus Feld')
+    const boardId = await createBoard(priya)
+    await prisma.boardMember.create({
+      data: { boardId, userId: marcus.userId, role: 'EDITOR' },
+    })
+    const member = await prisma.boardMember.findFirstOrThrow({
+      where: { boardId, userId: marcus.userId },
+    })
+    return { priya, marcus, boardId, memberId: member.id }
+  }
+
+  /** Join `actor` while the room reports itself full. */
+  async function joinWhileFull(actor: Actor, boardId: string) {
+    const spy = vi.spyOn(RoomManager.prototype, 'isFull').mockReturnValue(true)
+    try {
+      const client = await connect(actor, boardId)
+      const ack = await client.join(boardId)
+      return { client, ack }
+    } finally {
+      spy.mockRestore()
+    }
+  }
+
+  it('admits an editor past the soft limit as a VIEWER, with the notice flag', async () => {
+    const { priya, marcus, boardId } = await boardWithEditor()
+    const a = await connect(priya, boardId)
+    const ordinary = await a.join(boardId)
+    expect(ordinary.role).toBe('OWNER')
+    expect(ordinary).not.toHaveProperty('overCapacity')
+
+    const { client: m, ack } = await joinWhileFull(marcus, boardId)
+    expect(ack.role).toBe('VIEWER')
+    expect(ack.overCapacity).toBe(true)
+    // Admitted, not refused: still connected, and announced to the room.
+    await new Promise(r => setTimeout(r, 50))
+    expect(m.closeCode).toBeNull()
+    expect((await a.waitFor('presence_join')).user.name).toBe('Marcus Feld')
+  })
+
+  it('refuses every write from an over-capacity session and stores nothing — R-SEC-001', async () => {
+    const { marcus, boardId } = await boardWithEditor()
+    const { client: m } = await joinWhileFull(marcus, boardId)
+
+    const op = createOp(sticky())
+    m.send({ t: 'op', op })
+    expect(await m.waitFor('nack')).toMatchObject({
+      id: op.id,
+      code: NACK_CODES.FORBIDDEN,
+    })
+    expect(await prisma.operation.count({ where: { boardId } })).toBe(0)
+  })
+
+  it('drops the stroke and move previews a viewer could not commit', async () => {
+    const { priya, marcus, boardId } = await boardWithEditor()
+    const a = await connect(priya, boardId)
+    await a.join(boardId)
+    const { client: m } = await joinWhileFull(marcus, boardId)
+
+    m.send({ t: 'stroke', id: randomUUID(), pts: [0, 0, 0.5, 10, 10, 0.5], done: false })
+    m.send({ t: 'xform', ids: [randomUUID()], dx: 10, dy: 10 })
+    // A cursor IS relayed — viewers broadcast presence — so its arrival proves
+    // the two before it were dropped rather than still in flight.
+    m.send({ t: 'cursor', x: 5, y: 5 })
+    await a.waitFor('cursor')
+    expect(a.all('stroke')).toHaveLength(0)
+    expect(a.all('xform')).toHaveLength(0)
+  })
+
+  it('a live promotion does not lift the hold for the life of the socket', async () => {
+    const { priya, marcus, boardId, memberId } = await boardWithEditor()
+    await prisma.boardMember.update({ where: { id: memberId }, data: { role: 'VIEWER' } })
+    const { client: m } = await joinWhileFull(marcus, boardId)
+
+    const res = await request(app)
+      .patch(`/api/boards/${boardId}/members/${memberId}`)
+      .set({ Authorization: `Bearer ${priya.token}` })
+      .send({ role: 'EDITOR' })
+    expect(res.status).toBe(200)
+    await new Promise(r => setTimeout(r, 150))
+    expect(m.all('role_changed')).toHaveLength(0)
+
+    const op = createOp(sticky())
+    m.send({ t: 'op', op })
+    expect((await m.waitFor('nack')).code).toBe(NACK_CODES.FORBIDDEN)
+  })
+
+  it('a fresh connection once there is space writes normally', async () => {
+    const { marcus, boardId } = await boardWithEditor()
+    const { client: held } = await joinWhileFull(marcus, boardId)
+    held.close()
+
+    const m = await connect(marcus, boardId)
+    const ack = await m.join(boardId)
+    expect(ack.role).toBe('EDITOR')
+    const op = createOp(sticky())
+    m.send({ t: 'op', op })
+    expect(await m.waitFor('ack')).toMatchObject({ ids: [op.id] })
+  })
+})
+
 describe('live access changes — FLOWS §9.5, Phase 12c', () => {
   async function boardWithEditor() {
     const priya = await signUp()
@@ -1353,21 +1456,37 @@ describe('sockets that never join, and the room cap — finding 10', () => {
     }
   })
 
-  it('re-checks the room cap at join, not only at upgrade', async () => {
+  it('re-checks the room cap at join, not only at upgrade — and admits as a viewer (D-26)', async () => {
     const priya = await signUp()
     const boardId = await createBoard(priya)
     // Upgraded while the room was empty…
     const late = await connect(priya, boardId)
     // …and the room filled before it joined.
-    const fakes = Array.from({ length: 50 }, () => ({
-      id: randomUUID(),
-      boardId,
-      joined: true,
-    }))
+    const fakes = Array.from({ length: 50 }, (_, i) => {
+      const id = randomUUID()
+      return {
+        id,
+        boardId,
+        joined: true,
+        // Enough of a Session for an admitted join to list and greet them.
+        send: () => true,
+        toPresenceUser: () => ({
+          sessionId: id,
+          userId: null,
+          guestId: null,
+          name: `Seat ${i}`,
+          colour: '#EF4444',
+          role: 'VIEWER' as const,
+        }),
+      }
+    })
     for (const fake of fakes) gateway.rooms.join(fake as never)
     try {
-      late.send({ t: 'join', boardId, sinceSeq: 0 })
-      expect(await late.waitForClose()).toBe(CLOSE_CODES.RATE_LIMITED)
+      // FR-RT-011 [P1]: beyond the soft limit a join is admitted as a viewer
+      // with a notice — the owner included — rather than refused.
+      const ack = await late.join(boardId)
+      expect(ack).toMatchObject({ role: 'VIEWER', overCapacity: true })
+      expect(late.closeCode).toBeNull()
     } finally {
       for (const fake of fakes) gateway.rooms.leave(fake as never)
     }

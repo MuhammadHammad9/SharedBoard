@@ -93,6 +93,7 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
   const [pending, setPending] = useState(0)
   const sessionRef = useRef<BoardSession | null>(null)
   const roleRef = useRef<Role | null>(null)
+  const capacityNoticeShown = useRef(false)
   const toast = useToast()
   // Stable, so effects that depend on it (useGuestConversion) subscribe once.
   const reconnect = useCallback(() => sessionRef.current?.socket.restart(), [])
@@ -164,6 +165,12 @@ export function useBoardLoad(boardId: string | undefined): BoardLoad {
         setStatus(kind === 'deleted' ? 'deleted' : 'revoked')
       },
       onBoardRenamed: next => setName(next),
+      // FR-RT-011, D-26 — once per session, not on every reconnect's join_ack.
+      onOverCapacity: () => {
+        if (capacityNoticeShown.current) return
+        capacityNoticeShown.current = true
+        toast.show({ message: presence.overCapacity })
+      },
       onAttempt: n => setAttemptN(n),
       onPending: n => setPending(n),
       // "Back online — 12 changes synced". Silent when nothing was waiting:

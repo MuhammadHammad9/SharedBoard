@@ -62,6 +62,15 @@ export async function handleOps(
 ): Promise<void> {
   // STEP 1 — AUTHORIZE. Every message. No exceptions.
   //
+  // An over-capacity session (FR-RT-011, D-26) is a viewer for the life of
+  // the socket whatever its membership says, so it is refused before the
+  // membership is even consulted.
+  if (session.overCapacity) {
+    for (const raw of incoming)
+      nack(session, opId(raw), NACK_CODES.FORBIDDEN, 'View-only access')
+    return
+  }
+  //
   // Against the CURRENT role — defect P-1 — not the one this socket opened
   // with. `session.role` is a snapshot taken at upgrade; a member demoted or
   // removed since must stop writing now, not on their next reconnect. The

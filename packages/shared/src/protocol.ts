@@ -64,6 +64,12 @@ export const ServerMessageSchema = z.discriminatedUnion('t', [
     sessionId: z.string(),
     colour: z.string(),
     users: z.array(PresenceUserSchema),
+    /**
+     * FR-RT-011 [P1]: the room was at its soft limit, so this session was
+     * admitted as a VIEWER whatever its membership says (D-26). Absent when
+     * the join was ordinary — additive, so an older client ignores it.
+     */
+    overCapacity: z.literal(true).optional(),
   }),
   z.object({ t: z.literal('op_batch'), ops: z.array(ServerOpSchema) }),
   z.object({

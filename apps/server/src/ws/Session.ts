@@ -44,6 +44,14 @@ export class Session {
   colour = PRESENCE_COLOURS[0] as string
   /** Set by `join`; a socket that has not joined may not send ops. */
   joined = false
+  /**
+   * FR-RT-011, D-26: admitted to a room already at MAX_USERS_PER_ROOM, so held
+   * to VIEWER for the life of this socket whatever the membership says. The
+   * op handler refuses every write from it before the permission lookup, and
+   * a live role change cannot lift it — only a fresh connection into a room
+   * with space can.
+   */
+  overCapacity = false
 
   /**
    * Every log line about this socket goes through here, so each one carries

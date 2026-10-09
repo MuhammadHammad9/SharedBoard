@@ -101,7 +101,7 @@ export class RoomManager {
     return this.rooms.get(boardId)?.sessions.get(sessionId)
   }
 
-  /** True when the room is full — the caller closes with 4029. */
+  /** True when the room is at its soft limit — `join` admits as a viewer (D-26). */
   isFull(boardId: string): boolean {
     return this.size(boardId) >= MAX_USERS_PER_ROOM
   }
@@ -179,6 +179,10 @@ export class RoomManager {
       }
       if (session.identityKey !== control.identityKey) continue
       if (control.action === 'role') {
+        // D-26: an over-capacity session stays a viewer. A promotion is a
+        // statement about the membership; the room is still full, and the
+        // socket was let in only on the condition that it would not write.
+        if (session.overCapacity && control.role !== 'VIEWER') continue
         session.role = control.role
         session.send({ t: 'role_changed', role: control.role })
       } else {

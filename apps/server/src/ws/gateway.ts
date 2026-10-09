@@ -205,15 +205,8 @@ async function handleUpgrade(
 
     wss.handleUpgrade(request, socket, head, ws => {
       const session = new Session(ws, payload.boardId, identity, displayName, role)
-
-      if (rooms.isFull(payload.boardId)) {
-        wsFailures.inc({ reason: 'board_full' })
-        session.log.warn('board full: connection refused')
-        // 4029, not 4003: the client should retry in 30 s, not give up.
-        session.close(CLOSE_CODES.RATE_LIMITED, 'Board is full')
-        return
-      }
-
+      // A full room is NOT refused here — FR-RT-011, D-26. `join` admits the
+      // socket as a viewer instead, counting the room as it actually is.
       wire(session, rooms, joinTimeoutMs)
     })
   } catch (error) {

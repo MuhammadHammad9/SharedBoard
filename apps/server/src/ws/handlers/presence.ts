@@ -51,7 +51,11 @@ export function handlePresence(
    * viewer cannot produce is a `stroke`, because that previews an op they
    * would not be allowed to commit.
    */
-  if (message.t === 'stroke' && session.role === 'VIEWER') return
+  //
+  // `xform` likewise previews a move they could not commit — and an
+  // over-capacity session (D-26) is held to VIEWER, so this covers it too.
+  if ((message.t === 'stroke' || message.t === 'xform') && session.role === 'VIEWER')
+    return
 
   switch (message.t) {
     case 'cursor':

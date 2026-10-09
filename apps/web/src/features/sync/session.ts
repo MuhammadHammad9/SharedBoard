@@ -59,6 +59,8 @@ export interface BoardSessionCallbacks {
   onPending?: (pending: number) => void
   /** Reconnected and drained after a drop — "Back online — {N} changes synced". */
   onBackOnline?: (synced: number) => void
+  /** FR-RT-011, D-26: admitted as a viewer because the room is full. */
+  onOverCapacity?: () => void
 }
 
 export interface BoardSessionResult {
@@ -112,6 +114,7 @@ export class BoardSession {
         onNack: callbacks.onNack,
         onFatal: callbacks.onFatal,
         ...(callbacks.onBoardRenamed ? { onBoardRenamed: callbacks.onBoardRenamed } : {}),
+        ...(callbacks.onOverCapacity ? { onOverCapacity: callbacks.onOverCapacity } : {}),
       },
       {
         send: message => this.socket.send(message),
@@ -248,7 +251,10 @@ export class BoardSession {
     return {
       objects: state.objects.length,
       seq: state.seq,
-      role: state.myRole,
+      // The socket's word wins when it has spoken: a join admitted as a viewer
+      // because the room is full (FR-RT-011, D-26) outranks the membership the
+      // snapshot reports.
+      role: this.latestRole ?? state.myRole,
       name: state.name,
     }
   }

@@ -1,4 +1,4 @@
-import { CLOSE_CODES, type ServerOp } from '@coboard/shared'
+import type { ServerOp } from '@coboard/shared'
 import { opService } from '../../services/OpService.js'
 import { presenceService } from '../../services/PresenceService.js'
 import type { RoomManager } from '../RoomManager.js'
@@ -28,14 +28,20 @@ export async function handleJoin(
   if (session.joined) return
 
   /*
-   * The room cap, again — finding 10. The upgrade checked it, but sockets
-   * that upgraded together all saw the same count before any of them had
-   * joined; this is the check that counts what is actually in the room.
+   * The room cap — FR-RT-011 [P1], D-26. Beyond the soft limit a join is
+   * ADMITTED AS A VIEWER with a notice, not refused (refusal is the [P2]
+   * alternative). Counted here, at join, rather than at the upgrade: sockets
+   * that upgraded together all saw the same count before any had joined
+   * (finding 10), and this is the count of what is actually in the room.
+   *
+   * The demotion is enforced server-side (R-SEC-001): `overCapacity` makes
+   * handleOps refuse every write from this socket, and `role` = VIEWER stops
+   * the stroke previews a viewer may not produce.
    */
   if (rooms.isFull(session.boardId)) {
-    session.log.warn('board full: join refused')
-    session.close(CLOSE_CODES.RATE_LIMITED, 'Board is full')
-    return
+    session.overCapacity = true
+    session.role = 'VIEWER'
+    session.log.warn('board full: admitted as viewer')
   }
   session.joined = true
 
@@ -91,6 +97,7 @@ export async function handleJoin(
     sessionId: session.id,
     colour: session.colour,
     users: [...local, ...remote],
+    ...(session.overCapacity ? { overCapacity: true as const } : {}),
   })
 
   // Everyone else learns about the arrival. Presence is never persisted and

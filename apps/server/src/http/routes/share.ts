@@ -79,13 +79,10 @@ export function createShareRouter(): Router {
       const lookup = await shareService.lookup(String(req.params.token))
       if (lookup.status !== 'ok') refuse(lookup)
 
-      // FLOWS §7.3: "This board is full right now" — refused here, before a
-      // membership is created for someone who could not get in anyway.
-      if (liveRooms().isFull(lookup.boardId)) {
-        throw new HttpError(ERROR_CODES.FORBIDDEN, 'Board is full', 403, {
-          reason: 'board_full',
-        })
-      }
+      // A full room does NOT refuse the join — FR-RT-011 [P1], D-26. The
+      // guest becomes a member as usual; the socket's `join` admits them as a
+      // viewer with a notice while the room is at its soft limit, and as their
+      // link's role once there is space.
 
       const { guestId, name } = req.body as z.infer<typeof JoinSchema>
       const role = await shareService.joinAsGuest(

@@ -258,18 +258,19 @@ describe('joining as a guest — POST /share/:token/join', () => {
     expect(members[0]!.guestName).toBe('Marcus L.')
   })
 
-  it('refuses with board_full when the room is at capacity', async () => {
+  it('does NOT refuse a join when the room is at capacity — FR-RT-011, D-26', async () => {
     const owner = await signUp()
     const boardId = await createBoard(owner)
     const token = await enableLink(owner, boardId)
     const spy = vi.spyOn(roomManager, 'isFull').mockReturnValue(true)
     try {
+      // The membership is created as usual; the SOCKET join is where a full
+      // room holds the guest to viewer (socket.integration.test.ts).
       const { response } = await join(token)
-      expect(response.status).toBe(403)
-      expect(response.body.error.details).toEqual({ reason: 'board_full' })
+      expect(response.status).toBe(200)
       expect(
         await prisma.boardMember.count({ where: { boardId, guestId: { not: null } } }),
-      ).toBe(0)
+      ).toBe(1)
     } finally {
       spy.mockRestore()
     }

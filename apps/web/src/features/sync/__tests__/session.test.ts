@@ -125,6 +125,56 @@ describe('BoardSession — role changes and the outbox', () => {
   })
 })
 
+describe('BoardSession — room capacity, FR-RT-011 (D-26)', () => {
+  let session: InstanceType<typeof BoardSession> | null = null
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    })
+    vi.stubGlobal('navigator', { onLine: true })
+    boards.getBoardState.mockReset()
+  })
+
+  afterEach(() => {
+    session?.dispose()
+    session = null
+    vi.unstubAllGlobals()
+  })
+
+  it('an over-capacity join_ack raises the notice and makes the board view-only', async () => {
+    let resolve: (v: ReturnType<typeof state>) => void = () => {}
+    boards.getBoardState.mockReturnValue(new Promise(r => (resolve = r)))
+    const cb = { ...callbacks(), onOverCapacity: vi.fn() }
+    session = new BoardSession('board-1', cb)
+    const started = session.start()
+
+    session.sync.handle({
+      t: 'join_ack',
+      role: 'VIEWER',
+      seq: 7,
+      overCapacity: true,
+    } as ServerMessage)
+    expect(cb.onOverCapacity).toHaveBeenCalledTimes(1)
+    expect(cb.onRole).toHaveBeenCalledWith('VIEWER')
+
+    // The membership says EDITOR; the socket's word wins.
+    resolve(state('EDITOR'))
+    expect((await started).role).toBe('VIEWER')
+  })
+
+  it('an ordinary join_ack raises no notice', async () => {
+    boards.getBoardState.mockResolvedValue(state('EDITOR'))
+    const cb = { ...callbacks(), onOverCapacity: vi.fn() }
+    session = new BoardSession('board-1', cb)
+    await session.start()
+    session.sync.handle({ t: 'join_ack', role: 'EDITOR', seq: 7 } as ServerMessage)
+    expect(cb.onOverCapacity).not.toHaveBeenCalled()
+  })
+})
+
 describe('BoardSession — presence sweep', () => {
   it('sweeps stale cursors about once a second, and stops on dispose', async () => {
     vi.useFakeTimers()

@@ -218,6 +218,9 @@ export const presence = {
   userLeft: (name: string) => `${name} left`,
   backOnline: (count: number) => `Back online — ${count} changes synced`,
   nowViewer: "You're now a viewer on this board.",
+  // FR-RT-011 [P1] — "admitted as viewers with a notice". PRD §8 gives no
+  // words for the notice; authored to §8.1 and recorded as D-26.
+  overCapacity: "This board is full, so you've joined as a viewer. Try again later to edit.",
   offlineAWhile:
     "You've been offline a while. Refresh when you're back online to make sure everything is up to date.",
   // FLOWS §9 — the avatar stack in the board header.

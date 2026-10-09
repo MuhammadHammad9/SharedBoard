@@ -37,6 +37,8 @@ export interface SyncCallbacks {
   /** The board is gone or access was revoked — S-18/S-19. */
   onFatal: (kind: 'deleted' | 'forbidden') => void
   onBoardRenamed?: (name: string) => void
+  /** FR-RT-011, D-26: this join was admitted as a viewer because the room is full. */
+  onOverCapacity?: () => void
 }
 
 export interface SyncDeps {
@@ -136,6 +138,7 @@ export class SyncEngine {
     switch (message.t) {
       case 'join_ack':
         this.callbacks.onRole(message.role)
+        if (message.overCapacity) this.callbacks.onOverCapacity?.()
         this.deps.markSynced()
         /*
          * A join_ack whose seq is AHEAD of ours means we missed ops while
