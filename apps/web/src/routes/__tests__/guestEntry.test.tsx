@@ -9,7 +9,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { ApiError } from '../../lib/api.js'
-import { guest, states } from '../../lib/strings.js'
+import { actions, guest, states } from '../../lib/strings.js'
 
 const sharing = vi.hoisted(() => ({
   getShareCard: vi.fn(),
@@ -156,6 +156,26 @@ describe('S-11 — the join card', () => {
     expect(await screen.findByText(headline)).toBeTruthy()
   })
 
+  it('offers "Log in instead" → S-03 with ?next= back through this link — FLOWS §1.2, D-37', async () => {
+    sharing.getShareCard.mockResolvedValue(CARD)
+    app(`/join/${TOKEN}`)
+    const link = await screen.findByTestId('join-log-in')
+    expect(link.textContent).toBe(actions.logInInstead)
+    expect(link.getAttribute('href')).toBe(
+      `/login?next=${encodeURIComponent(`/join/${TOKEN}`)}`,
+    )
+    await userEvent.click(link)
+    expect(await screen.findByTestId('login')).toBeTruthy()
+  })
+
+  it('a dead link sends a guest home to S-01, not to a dashboard they cannot see', async () => {
+    sharing.getShareCard.mockRejectedValue(apiError(404))
+    app(`/join/${TOKEN}`)
+    const back = await screen.findByTestId('back-home')
+    expect(back.getAttribute('href')).toBe('/')
+    expect(back.textContent).toBe(actions.backToHome)
+  })
+
   it('a returning guest skips the card entirely — FLOWS §7.2', async () => {
     saveGuest('Marcus')
     sharing.getShareCard.mockResolvedValue(CARD)
@@ -215,6 +235,21 @@ describe('requireBoardAccess — FLOWS §2.3 STEP 4', () => {
     const logIn = screen.getByTestId('forbidden-log-in')
     expect(logIn.getAttribute('href')).toBe(
       `/login?next=${encodeURIComponent(`/board/${BOARD}`)}`,
+    )
+    // FLOWS §1.2: S-17 "Back to home" → S-01 for someone with no account.
+    expect(screen.getByTestId('back-home').getAttribute('href')).toBe('/')
+  })
+
+  it('S-18 sends a guest to S-01 and a member to S-07 — D-31', async () => {
+    boards.getBoardAccess.mockRejectedValue(apiError(404))
+    app(`/board/${BOARD}`)
+    expect((await screen.findByTestId('back-home')).getAttribute('href')).toBe('/')
+    cleanup()
+
+    useAuthStore.setState({ status: 'authenticated' })
+    app(`/board/${BOARD}`)
+    expect((await screen.findByTestId('back-home')).getAttribute('href')).toBe(
+      '/dashboard',
     )
   })
 

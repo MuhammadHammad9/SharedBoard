@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { ERROR_CODES, DISPLAY_NAME_MAX } from '@coboard/shared'
 import { AuthLayout, OrDivider } from '../features/auth/AuthLayout.js'
@@ -10,7 +10,8 @@ import { Button } from '../components/ui/Button.js'
 import { FormError } from '../components/ui/FormError.js'
 import { Input } from '../components/ui/Input.js'
 import { actions, auth, errors, validation } from '../lib/strings.js'
-import { safeNext } from './nextParam.js'
+import { isSafeNext, safeNext } from './nextParam.js'
+import { useToast } from '../components/ui/Toast.js'
 import {
   announceAccountCreated,
   markSignupFromGuest,
@@ -27,12 +28,17 @@ import {
  * matters most: losing a filled-in form to a dropped connection is the point
  * at which someone gives up on signing up at all.
  */
+/** 8d with no `retryAfter` from the server: wait a minute rather than not at all. */
+const DEFAULT_LOCKOUT_SECONDS = 60
+
 export default function Signup() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const next = safeNext(params.get('next'))
   const emailRef = useRef<HTMLInputElement>(null)
-  const retryAfterRef = useRef<number | null>(null)
+  const toast = useToast()
+  /** Seconds left on a 429 (FLOWS §3.1 8d). Null when not rate-limited. */
+  const [lockedFor, setLockedFor] = useState<number | null>(null)
 
   const form = useForm(
     { email: params.get('email') ?? '', password: '', displayName: '' },
@@ -55,6 +61,18 @@ export default function Signup() {
     emailRef.current?.focus()
   }, [])
 
+  // 8d — the countdown. Ticks once a second; at zero the banner goes and the
+  // button comes back, exactly as on S-03 (FLOWS §4 3c).
+  useEffect(() => {
+    if (lockedFor === null) return
+    if (lockedFor <= 0) {
+      setLockedFor(null)
+      return
+    }
+    const timer = setTimeout(() => setLockedFor(s => (s === null ? null : s - 1)), 1000)
+    return () => clearTimeout(timer)
+  }, [lockedFor])
+
   const onSubmit = form.submit(async values => {
     try {
       await register({
@@ -70,6 +88,11 @@ export default function Signup() {
        * shared, so that tab can pick up the session itself.
        */
       if (params.get('from') === 'guest') announceAccountCreated()
+      // FLOWS §3.1 step 9: "A one-time success toast: Welcome to CoBoard".
+      // Raised here, once, because only a successful signup ever reaches this
+      // line; the toast stack sits above the router, so it survives the
+      // navigation to wherever `next` points (D-39).
+      toast.show({ message: auth.signup.welcome })
       navigate(next, { replace: true })
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
@@ -86,14 +109,11 @@ export default function Signup() {
         return
       }
 
-      // 8d — rate limited, with a live countdown from the server's retryAfter.
+      // 8d — rate limited: a live countdown from the server's retryAfter, and
+      // the button stays disabled until it runs out.
       if (err.code === ERROR_CODES.RATE_LIMITED) {
-        retryAfterRef.current = err.retryAfter ?? null
-        form.setFormError(
-          err.retryAfter
-            ? errors.rateLimitedLogin(Math.ceil(err.retryAfter / 60))
-            : errors.rateLimitedShortly,
-        )
+        form.setFormError(null)
+        setLockedFor(err.retryAfter ?? DEFAULT_LOCKOUT_SECONDS)
         return
       }
 
@@ -113,6 +133,21 @@ export default function Signup() {
       form.setFormError(auth.signup.genericFailure)
     }
   })
+
+  const countdown =
+    lockedFor !== null
+      ? errors.rateLimitedLogin(Math.max(1, Math.ceil(lockedFor / 60)))
+      : null
+
+  // 8b — "a 'Log in instead' link that carries the typed email to S-03",
+  // and the deep link with it, so the detour still ends where it was going.
+  const emailTaken = form.errors.email === auth.signup.emailTaken
+  const logInInstead = (() => {
+    const search = new URLSearchParams({ email: form.values.email })
+    const rawNext = params.get('next')
+    if (isSafeNext(rawNext)) search.set('next', rawNext)
+    return `/login?${search.toString()}`
+  })()
 
   return (
     <AuthLayout
@@ -155,6 +190,15 @@ export default function Signup() {
           onChange={e => form.setValue('email', e.target.value)}
           onBlur={() => form.handleBlur('email')}
         />
+        {emailTaken ? (
+          <Link
+            to={logInInstead}
+            className="-mt-2 self-start text-sm font-medium text-accent hover:underline"
+            data-testid="log-in-instead"
+          >
+            {auth.signup.logInInstead}
+          </Link>
+        ) : null}
 
         <div className="flex flex-col gap-2">
           <Input
@@ -193,7 +237,9 @@ export default function Signup() {
           }}
         />
 
-        {form.formError ? (
+        {countdown ? (
+          <FormError message={countdown} />
+        ) : form.formError ? (
           <FormError
             message={form.formError}
             action={
@@ -214,7 +260,14 @@ export default function Signup() {
          * Never disabled for validation — FLOWS §3.2. Disabled only while the
          * request is in flight, which `loading` handles.
          */}
-        <Button type="submit" fullWidth loading={form.submitting} data-testid="submit">
+        <Button
+          type="submit"
+          fullWidth
+          loading={form.submitting}
+          // A server decision, not a validation one — FLOWS §3.2 permits it.
+          disabled={lockedFor !== null}
+          data-testid="submit"
+        >
           {auth.signup.submit}
         </Button>
       </form>

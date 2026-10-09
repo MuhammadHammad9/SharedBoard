@@ -206,6 +206,24 @@ export function isStorageImageUrl(url: string): boolean {
   return key !== null && UPLOAD_KEY.test(key)
 }
 
+/**
+ * An avatar's key: `avatars/<user uuid>/<object uuid>.<ext>` — D-36. Raster
+ * only: an avatar is shown as a small `<img>` on other people's screens, and
+ * there is nothing an SVG adds there that is worth the sanitizer round trip.
+ */
+export const AVATAR_KEY = /^avatars\/([0-9a-f-]{36})\/[0-9a-f-]{36}\.(png|jpg|gif|webp)$/
+
+/** The avatar key `url` points at if it is one of THIS user's uploads, else null. */
+export function ownAvatarKey(
+  url: string | null | undefined,
+  userId: string,
+): string | null {
+  if (!url || !storageConfigured()) return null
+  const key = storage.keyOf(url)
+  const match = key ? AVATAR_KEY.exec(key) : null
+  return match && match[1] === userId ? key : null
+}
+
 /** Tests point the client at a fresh endpoint between suites. */
 export function resetStorageClient(): void {
   client = null

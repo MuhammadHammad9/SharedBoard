@@ -21,6 +21,7 @@ import { openExport } from '../../features/export/exportStore.js'
 import { openShortcuts } from './shortcutsStore.js'
 import { Dropdown } from '../ui/Dropdown.js'
 import { useBreakpoint } from '../../lib/breakpoints.js'
+import { useHomeExit } from '../ui/FullScreenState.js'
 
 /** The canvas fills the window on the board route, so the window is the view. */
 const windowSize = () => ({ width: window.innerWidth, height: window.innerHeight })
@@ -76,14 +77,25 @@ export function BoardHeader({
   const [displayName, setDisplayName] = useState(name)
   const rename = useRenameBoard()
   const toast = useToast()
+  // FLOWS §1.2: back arrow → S-07 when signed in, → S-01 for a guest (and in
+  // /demo, which has no dashboard either).
+  const homeExit = useHomeExit()
+  const exit = demo ? { to: '/', label: demoStrings.back } : homeExit
 
   useEffect(() => setDisplayName(name), [name])
 
   useEffect(() => {
-    if (params.get('new') !== '1') return
-    setEditing(true)
+    const naming = params.get('new') === '1'
+    // D-35: the dashboard card's "Export as PNG" lands here with `?export=1`.
+    // The header mounts only once the board's objects are loaded, so S-14
+    // opens over a complete board, never an empty one.
+    const exporting = params.get('export') === '1'
+    if (!naming && !exporting) return
+    if (naming) setEditing(true)
+    if (exporting) openExport()
     const next = new URLSearchParams(params)
     next.delete('new')
+    next.delete('export')
     // `replace`, so Back does not step through the naming state.
     setParams(next, { replace: true })
   }, [params, setParams])
@@ -93,8 +105,8 @@ export function BoardHeader({
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-header flex items-center gap-3 px-4 py-3">
       <Link
-        to={demo ? '/' : '/dashboard'}
-        aria-label={demo ? demoStrings.back : actions.backToDashboard}
+        to={exit.to}
+        aria-label={exit.label}
         data-testid="board-back"
         className="pointer-events-auto flex items-center gap-1 rounded-md bg-app/90 px-2 py-1.5 text-sm text-muted shadow-panel outline-none transition-colors duration-fast hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >

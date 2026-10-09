@@ -31,6 +31,46 @@ export const ListBoardsQuerySchema = z.object({
   cursor: z.string().max(256).optional(),
 })
 
+/**
+ * One face in a dashboard card's avatar row — FR-BOARD-002, FLOWS §6.2.
+ *
+ * Deliberately minimal. `id` is the MEMBERSHIP row's id, never a guest id (a
+ * guest id is a bearer secret — decision D-1) and never an email. No presence
+ * colour: that is assigned per room session (R-UI-013), not stored, so a card
+ * outside the board has none to show (D-38).
+ */
+export const BoardMemberPreviewSchema = z.object({
+  id: z.string(),
+  displayName: z.string(),
+  avatarUrl: z.string().nullable(),
+  guest: z.boolean(),
+})
+
+/** A board as the dashboard and Trash list it — TRD §4.2, FR-BOARD-002. */
+export const BoardSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  ownerId: z.string(),
+  ownerName: z.string(),
+  ownerAvatarUrl: z.string().nullable(),
+  myRole: RoleSchema,
+  thumbnailUrl: z.string().nullable(),
+  objectCount: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  lastActivityAt: z.string(),
+  deletedAt: z.string().nullable(),
+  /** Days until Trash purges it. Only present when `deletedAt` is set. */
+  daysUntilPurge: z.number().int().optional(),
+  /** Up to `BOARD_CARD_MEMBERS` collaborators other than the owner, oldest first. */
+  members: z.array(BoardMemberPreviewSchema),
+  /** Every collaborator other than the owner — the "+N" is this minus `members.length`. */
+  memberCount: z.number().int(),
+})
+
+/** FLOWS §6.2: the card shows the owner plus "max 4" others, then "+N". */
+export const BOARD_CARD_MEMBERS = 4
+
 /** Permanent delete requires an exact name match — FR-BOARD-006. */
 export const PermanentDeleteSchema = z.object({
   confirmName: z.string().min(1).max(BOARD_NAME_MAX),
@@ -84,4 +124,6 @@ export const ApiErrorSchema = z.object({
 export type CreateBoardInput = z.infer<typeof CreateBoardSchema>
 export type ListBoardsQuery = z.infer<typeof ListBoardsQuerySchema>
 export type AccessResponse = z.infer<typeof AccessResponseSchema>
+export type BoardMemberPreview = z.infer<typeof BoardMemberPreviewSchema>
+export type BoardSummary = z.infer<typeof BoardSummarySchema>
 export type ApiError = z.infer<typeof ApiErrorSchema>

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { ApiError, setGuestCredential } from '../lib/api.js'
 import { actions, guest, states, strings } from '../lib/strings.js'
 import { Button } from '../components/ui/Button.js'
 import { Input } from '../components/ui/Input.js'
-import { BackToDashboard, FullScreenState } from '../components/ui/FullScreenState.js'
+import { BackHome, FullScreenState } from '../components/ui/FullScreenState.js'
 import { useAuthStore } from '../stores/authStore.js'
 import { getShareCard, joinAsGuest, type ShareCard } from '../features/sharing/api.js'
 import {
@@ -13,6 +13,7 @@ import {
   saveGuest,
 } from '../features/auth/guestIdentity.js'
 import { useSessionBootstrap } from './guards.js'
+import { loginUrlFor } from './nextParam.js'
 import { track } from '../lib/analytics.js'
 
 /**
@@ -148,7 +149,7 @@ export default function GuestEntry() {
       <FullScreenState
         headline={copy.headline}
         body={copy.body}
-        action={<BackToDashboard label={actions.backToHome} />}
+        action={<BackHome />}
         testId={`join-${phase.kind}`}
       />
     )
@@ -272,6 +273,20 @@ export default function GuestEntry() {
               <Button type="submit" fullWidth loading={joining} data-testid="join-submit">
                 {actions.joinBoard}
               </Button>
+
+              {/* FLOWS §1.2: S-11 "Log in instead" → S-03 with `?next=`. The
+                  next is THIS link, not the board: a signed-in non-member
+                  still needs the token to be let in (FLOWS §2.4, D-37), and
+                  S-11 forwards a signed-in user straight to the board. */}
+              <p className="text-center text-sm text-primary">
+                <Link
+                  to={loginUrlFor(`/join/${token}`)}
+                  className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                  data-testid="join-log-in"
+                >
+                  {actions.logInInstead}
+                </Link>
+              </p>
             </form>
           )}
         </div>

@@ -1,5 +1,12 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router'
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToastProvider } from './components/ui/Toast.js'
 import {
@@ -16,6 +23,8 @@ import ResetPassword from './routes/ResetPassword.js'
 import VerifyEmail from './routes/VerifyEmail.js'
 import OAuthCallback from './routes/OAuthCallback.js'
 import Settings from './routes/Settings.js'
+import NotFound from './routes/NotFound.js'
+import { GlobalShortcuts } from './components/GlobalShortcuts.js'
 /*
  * S-01 is STATIC, unlike the board. It is prerendered into dist/index.html
  * (scripts/prerender.ts) for the LCP budget, and React's first render must be
@@ -90,6 +99,8 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <BrowserRouter>
+          {/* S-15 off the board route — D-33. */}
+          <GlobalShortcuts />
           <Routes>
             {/* MARKETING — S-01. */}
             <Route
@@ -179,8 +190,9 @@ export default function App() {
               }
             />
 
+            {/* S-08 — PRD §6 and FLOWS §2.1 put Trash under the dashboard. */}
             <Route
-              path="/trash"
+              path="/dashboard/trash"
               element={
                 <RequireAuth>
                   <Suspense fallback={<FullScreenSpinner label={loading.boards} />}>
@@ -189,13 +201,21 @@ export default function App() {
                 </RequireAuth>
               }
             />
+            {/* D-30: the old path keeps working for bookmarks and links. */}
+            <Route path="/trash" element={<LegacyTrashRedirect />} />
 
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            {/* S-20 — the generic 404 (FLOWS §1.1). */}
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
       </ToastProvider>
     </QueryClientProvider>
   )
+}
+
+function LegacyTrashRedirect() {
+  const { search, hash } = useLocation()
+  return <Navigate to={`/dashboard/trash${search}${hash}`} replace />
 }
 
 function BoardRoute() {

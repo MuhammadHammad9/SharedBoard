@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
 import type { Express } from 'express'
 import {
@@ -272,6 +272,91 @@ describe('GET /api/boards', () => {
       .set(auth(priya))
     expect(response.status).toBe(200)
     expect(response.body.boards).toHaveLength(1)
+  })
+})
+
+describe('GET /api/boards — the card avatar row (FLOWS §6.2, FR-BOARD-002)', () => {
+  it('returns the owner avatar, the first four collaborators and the full count', async () => {
+    const priya = await signUp()
+    const id = await createBoard(priya, 'Pricing page — v3')
+    const people = []
+    for (const name of ['Ana Ruiz', 'Ben Okafor', 'Cleo Park', 'Dev Shah', 'Eli Moss']) {
+      people.push(await signUp(name))
+    }
+    for (const [i, person] of people.entries()) {
+      await prisma.boardMember.create({
+        data: {
+          boardId: id,
+          userId: person.userId,
+          role: 'EDITOR',
+          createdAt: new Date(Date.now() + i * 1000),
+        },
+      })
+    }
+    await prisma.boardMember.create({
+      data: {
+        boardId: id,
+        guestId: randomUUID(),
+        guestName: 'Marcus',
+        role: 'VIEWER',
+        createdAt: new Date(Date.now() + 10_000),
+      },
+    })
+
+    const response = await request(app).get('/api/boards').set(auth(priya))
+    const card = response.body.boards[0]
+    expect(card.ownerAvatarUrl).toBeNull()
+    // Five users and one guest besides the owner; the owner is not in the row.
+    expect(card.memberCount).toBe(6)
+    expect(card.members.map((m: { displayName: string }) => m.displayName)).toEqual([
+      'Ana Ruiz',
+      'Ben Okafor',
+      'Cleo Park',
+      'Dev Shah',
+    ])
+    // Minimal, and never a guest id or an email (decision D-1, D-38).
+    expect(Object.keys(card.members[0]).sort()).toEqual([
+      'avatarUrl',
+      'displayName',
+      'guest',
+      'id',
+    ])
+    expect(JSON.stringify(response.body)).not.toContain('@example.com')
+  })
+
+  it('names a guest by their guest name, and marks them as a guest', async () => {
+    const priya = await signUp()
+    const id = await createBoard(priya, 'Retro')
+    const guestId = randomUUID()
+    await prisma.boardMember.create({
+      data: { boardId: id, guestId, guestName: 'Marcus', role: 'EDITOR' },
+    })
+    const response = await request(app).get('/api/boards').set(auth(priya))
+    expect(response.body.boards[0].members).toEqual([
+      expect.objectContaining({ displayName: 'Marcus', guest: true, avatarUrl: null }),
+    ])
+    expect(JSON.stringify(response.body)).not.toContain(guestId)
+  })
+
+  it('reads every card on a page with ONE extra query, not one per board', async () => {
+    const priya = await signUp()
+    for (let i = 0; i < 6; i++) await createBoard(priya, `Board ${i}`)
+    const raw = vi.spyOn(prisma, '$queryRaw')
+    try {
+      const response = await request(app).get('/api/boards').set(auth(priya))
+      expect(response.body.boards).toHaveLength(6)
+      expect(raw).toHaveBeenCalledTimes(1)
+    } finally {
+      raw.mockRestore()
+    }
+  })
+
+  it('answers the Starred tab with nothing, since starring is not built — D-34', async () => {
+    const priya = await signUp()
+    await createBoard(priya, 'Mine')
+    const response = await request(app).get('/api/boards?filter=starred').set(auth(priya))
+    expect(response.status).toBe(200)
+    expect(response.body).toEqual({ boards: [], nextCursor: null })
   })
 })
 

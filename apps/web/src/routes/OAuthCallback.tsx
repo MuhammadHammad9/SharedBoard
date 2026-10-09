@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { PublicUser } from '@coboard/shared'
 import { api, attemptSilentRefresh } from '../lib/api.js'
@@ -7,6 +7,7 @@ import { OAUTH_NEXT_KEY } from '../features/auth/api.js'
 import { FullScreenSpinner } from '../components/ui/Spinner.js'
 import { auth } from '../lib/strings.js'
 import { safeNext } from './nextParam.js'
+import { useToast } from '../components/ui/Toast.js'
 import { track } from '../lib/analytics.js'
 import {
   announceAccountCreated,
@@ -35,6 +36,11 @@ export default function OAuthCallback() {
   const setSession = useAuthStore(s => s.setSession)
   const clear = useAuthStore(s => s.clear)
   const [slow, setSlow] = useState(false)
+  const toast = useToast()
+  // Read through a ref so the effect below runs once, not once per render of
+  // the toast context.
+  const toastRef = useRef(toast)
+  toastRef.current = toast
 
   useEffect(() => {
     let done = false
@@ -70,6 +76,8 @@ export default function OAuthCallback() {
         // made a new account; otherwise it was a log-in.
         const created = new URLSearchParams(window.location.search).get('created') === '1'
         track(created ? 'account_created' : 'logged_in', { method: 'google' })
+        // FLOWS §3.1 step 9 — the same one-time welcome a password signup gets.
+        if (created) toastRef.current.show({ message: auth.signup.welcome })
         // Guest → account through Google (FLOWS §7.4): tell the board tab.
         if (takeSignupFromGuest()) announceAccountCreated()
 

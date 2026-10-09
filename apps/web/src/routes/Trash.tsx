@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '../components/ui/Button.js'
 import { EmptyState } from '../components/ui/EmptyState.js'
 import { Modal } from '../components/ui/Modal.js'
@@ -12,6 +14,7 @@ import {
   usePermanentlyDelete,
   useRestoreBoard,
   useTrash,
+  trashKey,
 } from '../features/boards/useBoards.js'
 import { absoluteTime, relativeTime } from '../lib/relativeTime.js'
 import {
@@ -45,6 +48,11 @@ export default function Trash() {
   const restore = useRestoreBoard()
   const destroy = usePermanentlyDelete()
   const toast = useToast()
+  const navigate = useNavigate()
+  const client = useQueryClient()
+  // Boards restored from this screen, so "is Trash empty now?" does not wait
+  // on the refetch — or get it wrong when two restores overlap.
+  const restored = useRef(new Set<string>())
 
   const [target, setTarget] = useState<BoardSummary | null>(null)
   // Rows fading out after Restore — Phase 13 motion: 200 ms, --ease-out.
@@ -55,7 +63,19 @@ export default function Trash() {
     // The fade runs first; the list refetch then removes the row for real.
     window.setTimeout(() => {
       restore.mutate(id, {
-        onSuccess: () => toast.show({ message: boardStrings.restored }),
+        onSuccess: () => {
+          toast.show({ message: boardStrings.restored })
+          restored.current.add(id)
+          // FLOWS §6.8: "S-08 (or auto-navigate to S-07 if the trash is now
+          // empty)". Restore only — "Delete forever" returns to S-08 (§1.2).
+          // The cache, not this render's `query.data`: the timer above closed
+          // over a render that may be several refetches old.
+          const cached = client.getQueryData<{ boards: BoardSummary[] }>(trashKey)
+          const left = (cached?.boards ?? []).filter(
+            board => !restored.current.has(board.id),
+          )
+          if (left.length === 0) navigate('/dashboard', { replace: true })
+        },
         onError: error => {
           // Back into view: it is still in Trash.
           setLeaving(s => {

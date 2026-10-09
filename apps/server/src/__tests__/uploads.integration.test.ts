@@ -618,3 +618,108 @@ describe('image object urls', () => {
     expect(swap.body.rejected).toHaveLength(1)
   })
 })
+
+/* ── Avatars — FR-SET-001, D-36 ───────────────────────────────────────────── */
+
+async function uploadAvatar(actor: Actor, contentType: string, body: Uint8Array) {
+  const signed = await request(app)
+    .post('/api/uploads/avatar/presign')
+    .set(auth(actor))
+    .send({ contentType, size: body.length })
+  expect(signed.status).toBe(200)
+  const put = await fetch(signed.body.uploadUrl as string, {
+    method: 'PUT',
+    body: Buffer.from(body),
+    headers: signed.body.headers as Record<string, string>,
+  })
+  expect(put.status).toBe(200)
+  const confirm = await request(app)
+    .post('/api/uploads/avatar/confirm')
+    .set(auth(actor))
+    .send({ key: signed.body.key })
+  return { signed, confirm, key: signed.body.key as string }
+}
+
+describe('avatar uploads — D-36', () => {
+  it('keys the upload to the user and sets avatarUrl on confirm', async () => {
+    const priya = await signUp()
+    const { confirm, key } = await uploadAvatar(priya, 'image/png', PNG)
+    expect(key).toMatch(new RegExp(`^avatars/${priya.userId}/[0-9a-f-]{36}\\.png$`))
+    expect(confirm.status).toBe(200)
+    expect(confirm.body.user.avatarUrl).toBe(`${s3.url}/coboard/${key}`)
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: priya.userId } })
+    expect(user.avatarUrl).toBe(`${s3.url}/coboard/${key}`)
+  })
+
+  it('deletes the photo it replaces', async () => {
+    const priya = await signUp()
+    const first = await uploadAvatar(priya, 'image/png', PNG)
+    const second = await uploadAvatar(priya, 'image/jpeg', JPEG)
+    expect(second.confirm.status).toBe(200)
+    expect(stored(first.key)).toBeUndefined()
+    expect(stored(second.key)).toBeDefined()
+  })
+
+  it('refuses an SVG at presign — avatars are raster only', async () => {
+    const priya = await signUp()
+    const response = await request(app)
+      .post('/api/uploads/avatar/presign')
+      .set(auth(priya))
+      .send({ contentType: 'image/svg+xml', size: 100 })
+    expect(response.status).toBe(415)
+  })
+
+  it('refuses a guest — a guest has no profile', async () => {
+    const response = await request(app)
+      .post('/api/uploads/avatar/presign')
+      .set('x-coboard-guest', '00000000-0000-4000-8000-000000000001')
+      .send({ contentType: 'image/png', size: 100 })
+    expect(response.status).toBe(401)
+  })
+
+  it("will not confirm someone else's key, and leaves their avatar alone", async () => {
+    const priya = await signUp()
+    const marcus = await signUp()
+    const signed = await request(app)
+      .post('/api/uploads/avatar/presign')
+      .set(auth(priya))
+      .send({ contentType: 'image/png', size: PNG.length })
+    await fetch(signed.body.uploadUrl as string, {
+      method: 'PUT',
+      body: Buffer.from(PNG),
+      headers: signed.body.headers as Record<string, string>,
+    })
+    const confirm = await request(app)
+      .post('/api/uploads/avatar/confirm')
+      .set(auth(marcus))
+      .send({ key: signed.body.key })
+    expect(confirm.status).toBe(404)
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: marcus.userId } })
+    expect(user.avatarUrl).toBeNull()
+  })
+
+  it('deletes bytes that are not the declared image — R-SEC-012', async () => {
+    const priya = await signUp()
+    const { confirm, key } = await uploadAvatar(priya, 'image/png', EXE)
+    expect(confirm.status).toBe(415)
+    expect(stored(key)).toBeUndefined()
+  })
+
+  it('PATCH /auth/me refuses a URL, and null removes the avatar and its bytes', async () => {
+    const priya = await signUp()
+    const forged = await request(app)
+      .patch('/api/auth/me')
+      .set(auth(priya))
+      .send({ avatarUrl: 'https://tracker.example.com/pixel.png' })
+    expect(forged.status).toBe(422)
+
+    const { key } = await uploadAvatar(priya, 'image/png', PNG)
+    const removed = await request(app)
+      .patch('/api/auth/me')
+      .set(auth(priya))
+      .send({ avatarUrl: null })
+    expect(removed.status).toBe(200)
+    expect(removed.body.user.avatarUrl).toBeNull()
+    expect(stored(key)).toBeUndefined()
+  })
+})

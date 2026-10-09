@@ -133,7 +133,7 @@ export function DashboardSidebar() {
       <NavLink to="/dashboard" end className={link} data-testid="nav-boards">
         {dashboard.nav.boards}
       </NavLink>
-      <NavLink to="/trash" className={link} data-testid="nav-trash">
+      <NavLink to="/dashboard/trash" className={link} data-testid="nav-trash">
         {dashboard.nav.trash}
       </NavLink>
       <NavLink to="/settings" className={link} data-testid="nav-settings">

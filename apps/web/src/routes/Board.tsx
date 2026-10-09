@@ -9,7 +9,7 @@ import { BoardHeader } from '../components/board/BoardHeader.js'
 import { SessionExpiredBanner } from '../components/board/SessionExpiredBanner.js'
 import { OfflineBanner } from '../components/board/OfflineBanner.js'
 import { FullScreenSpinner } from '../components/ui/Spinner.js'
-import { BackToDashboard, FullScreenState } from '../components/ui/FullScreenState.js'
+import { BackHome, FullScreenState } from '../components/ui/FullScreenState.js'
 import { Button } from '../components/ui/Button.js'
 import { DEMO_BOARD_ID, useBoardLoad } from '../features/boards/useBoardLoad.js'
 import { useJoinLeaveToasts } from '../features/presence/useJoinLeaveToasts.js'
@@ -89,7 +89,7 @@ export default function Board({ demo = false }: { demo?: boolean } = {}) {
       <FullScreenState
         headline={states.boardNotFound.headline}
         body={states.boardNotFound.body}
-        action={<BackToDashboard label={actions.backToDashboard} />}
+        action={<BackHome />}
         testId="board-not-found"
       />
     )
@@ -102,7 +102,7 @@ export default function Board({ demo = false }: { demo?: boolean } = {}) {
         // have one to give it.
         headline={states.accessDenied.headline}
         body={states.accessDenied.body}
-        action={<BackToDashboard label={actions.backToDashboard} />}
+        action={<BackHome />}
         testId="board-forbidden"
       />
     )
@@ -175,7 +175,7 @@ export default function Board({ demo = false }: { demo?: boolean } = {}) {
           overlay
           headline={states.boardDeleted.headline}
           body={states.boardDeleted.body}
-          action={<BackToDashboard label={actions.backToDashboard} />}
+          action={<BackHome />}
           testId="board-deleted-live"
         />
       )}
@@ -184,7 +184,7 @@ export default function Board({ demo = false }: { demo?: boolean } = {}) {
           overlay
           headline={states.accessRemoved.headline}
           body={states.accessRemoved.body}
-          action={<BackToDashboard label={actions.backToDashboard} />}
+          action={<BackHome />}
           testId="board-access-removed"
         />
       )}

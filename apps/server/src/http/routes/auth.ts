@@ -18,6 +18,7 @@ import { buildAuthUrl, getExchanger, redirectUri } from '../../lib/google.js'
 import { env } from '../../lib/env.js'
 import { getMailer } from '../../lib/mailer.js'
 import { logger } from '../../lib/logger.js'
+import { ownAvatarKey, storage } from '../../lib/s3.js'
 import { assertAuthenticated, requireAuth } from '../middleware/auth.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
 import { validateBody } from '../middleware/validate.js'
@@ -392,10 +393,20 @@ export function createAuthRouter(): Router {
     requireAuth,
     validateBody(UpdateProfileSchema),
     ah(async (req, res) => {
-      const user = await authService.updateProfile(
-        assertAuthenticated(req),
-        req.body as { displayName?: string; avatarUrl?: string | null },
-      )
+      const userId = assertAuthenticated(req)
+      const patch = req.body as { displayName?: string; avatarUrl?: null }
+      const previous =
+        patch.avatarUrl === null ? (await authService.findById(userId))?.avatarUrl : null
+      const user = await authService.updateProfile(userId, patch)
+      // D-36: removing an uploaded avatar removes its bytes too.
+      const stale = ownAvatarKey(previous, userId)
+      if (stale) {
+        await storage
+          .remove(stale)
+          .catch(err =>
+            logger.warn({ err, key: stale }, 'could not delete an old avatar'),
+          )
+      }
       res.json({ user: toPublicUser(user) })
     }),
   )
@@ -425,7 +436,16 @@ export function createAuthRouter(): Router {
     validateBody(DeleteAccountSchema),
     ah(async (req, res) => {
       const { confirm } = req.body as { confirm: string }
-      await authService.deleteAccount(assertAuthenticated(req), confirm)
+      const userId = assertAuthenticated(req)
+      const avatar = (await authService.findById(userId))?.avatarUrl
+      await authService.deleteAccount(userId, confirm)
+      // D-36: an uploaded avatar belongs to nobody once its account is gone.
+      const stale = ownAvatarKey(avatar, userId)
+      if (stale) {
+        await storage
+          .remove(stale)
+          .catch(err => logger.warn({ err, key: stale }, 'could not delete an avatar'))
+      }
       res.clearCookie(REFRESH_COOKIE, clearOptions()).status(204).end()
     }),
   )

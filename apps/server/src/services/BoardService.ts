@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import type { Prisma, PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import {
+  BOARD_CARD_MEMBERS,
   BOARD_NAME_MAX,
   ERROR_CODES,
   TRASH_RETENTION_DAYS,
+  type BoardMemberPreview,
+  type BoardSummary,
   type ListBoardsQuery,
   type Role,
 } from '@coboard/shared'
@@ -21,28 +24,22 @@ import { prisma as defaultPrisma } from '../lib/prisma.js'
 
 export const BOARDS_PAGE_SIZE = 24
 
-export interface BoardSummary {
-  id: string
-  name: string
-  ownerId: string
-  ownerName: string
-  myRole: Role
-  thumbnailUrl: string | null
-  objectCount: number
-  createdAt: string
-  updatedAt: string
-  lastActivityAt: string
-  deletedAt: string | null
-  /** Days until Trash purges it. Only meaningful when `deletedAt` is set. */
-  daysUntilPurge?: number
-}
+export type { BoardSummary }
 
 type BoardRow = Prisma.BoardGetPayload<{
   include: {
-    owner: { select: { displayName: true } }
+    owner: { select: { displayName: true; avatarUrl: true } }
     members: { select: { role: true } }
   }
 }>
+
+/** The avatar row of each board — FLOWS §6.2. See `BoardService.memberPreviews`. */
+interface MemberPreviews {
+  members: BoardMemberPreview[]
+  memberCount: number
+}
+
+const NO_MEMBERS: MemberPreviews = { members: [], memberCount: 0 }
 
 function daysUntilPurge(deletedAt: Date): number {
   const elapsedMs = Date.now() - deletedAt.getTime()
@@ -50,7 +47,11 @@ function daysUntilPurge(deletedAt: Date): number {
   return Math.max(0, Math.ceil(remaining))
 }
 
-function toSummary(row: BoardRow, userId: string): BoardSummary {
+function toSummary(
+  row: BoardRow,
+  userId: string,
+  previews: MemberPreviews = NO_MEMBERS,
+): BoardSummary {
   const myRole: Role =
     row.ownerId === userId ? 'OWNER' : ((row.members[0]?.role ?? 'VIEWER') as Role)
 
@@ -59,6 +60,7 @@ function toSummary(row: BoardRow, userId: string): BoardSummary {
     name: row.name,
     ownerId: row.ownerId,
     ownerName: row.owner.displayName,
+    ownerAvatarUrl: row.owner.avatarUrl,
     myRole,
     thumbnailUrl: row.thumbnailUrl,
     objectCount: row.objectCount,
@@ -67,6 +69,8 @@ function toSummary(row: BoardRow, userId: string): BoardSummary {
     lastActivityAt: row.lastActivityAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,
     ...(row.deletedAt ? { daysUntilPurge: daysUntilPurge(row.deletedAt) } : {}),
+    members: previews.members,
+    memberCount: previews.memberCount,
   }
 }
 
@@ -107,9 +111,88 @@ export class BoardService {
    */
   private include(userId: string) {
     return {
-      owner: { select: { displayName: true } },
+      owner: { select: { displayName: true, avatarUrl: true } },
       members: { where: { userId }, select: { role: true }, take: 1 },
     } as const
+  }
+
+  /**
+   * The card avatar row for a whole PAGE of boards, in ONE query — FLOWS §6.2,
+   * FR-BOARD-002 ("owner avatar, and up to 4 collaborator avatars with a +N
+   * overflow").
+   *
+   * Not a Prisma `include`: a nested `take` per parent is not something
+   * Postgres can be asked for through it, so the include would read EVERY
+   * membership of every listed board — a board shared by link with two
+   * hundred guests would ship two hundred rows to draw four circles. A window
+   * function ranks each board's members and keeps the first four, and the
+   * same pass counts them all for the "+N".
+   *
+   * The owner is excluded (the card shows them separately), and so is a
+   * guest's id: the preview carries the membership row's id instead (D-1).
+   */
+  private async memberPreviews(
+    boardIds: readonly string[],
+  ): Promise<Map<string, MemberPreviews>> {
+    const out = new Map<string, MemberPreviews>()
+    if (boardIds.length === 0) return out
+
+    const rows = await this.db.$queryRaw<
+      Array<{
+        boardId: string
+        id: string
+        displayName: string | null
+        avatarUrl: string | null
+        guest: boolean
+        total: bigint
+      }>
+    >`
+      SELECT "boardId", id, "displayName", "avatarUrl", guest, total
+      FROM (
+        SELECT
+          m."boardId",
+          m.id,
+          COALESCE(u."displayName", m."guestName") AS "displayName",
+          u."avatarUrl",
+          (m."userId" IS NULL) AS guest,
+          ROW_NUMBER() OVER (
+            PARTITION BY m."boardId" ORDER BY m."createdAt", m.id
+          ) AS rank,
+          COUNT(*) OVER (PARTITION BY m."boardId") AS total
+        FROM "BoardMember" m
+        JOIN "Board" b ON b.id = m."boardId"
+        LEFT JOIN "User" u ON u.id = m."userId"
+        WHERE m."boardId" IN (${Prisma.join(boardIds)})
+          AND (m."userId" IS NULL OR m."userId" <> b."ownerId")
+      ) ranked
+      WHERE rank <= ${BOARD_CARD_MEMBERS}
+      ORDER BY "boardId", rank
+    `
+
+    for (const row of rows) {
+      const entry = out.get(row.boardId) ?? {
+        members: [],
+        memberCount: Number(row.total),
+      }
+      entry.members.push({
+        id: row.id,
+        displayName: row.displayName ?? '',
+        avatarUrl: row.avatarUrl,
+        guest: row.guest,
+      })
+      out.set(row.boardId, entry)
+    }
+    return out
+  }
+
+  /** Rows → summaries, with the avatar rows filled in by one extra query. */
+  private async summaries(rows: BoardRow[], userId: string): Promise<BoardSummary[]> {
+    const previews = await this.memberPreviews(rows.map(row => row.id))
+    return rows.map(row => toSummary(row, userId, previews.get(row.id)))
+  }
+
+  private async summary(row: BoardRow, userId: string): Promise<BoardSummary> {
+    return (await this.summaries([row], userId))[0]!
   }
 
   /**
@@ -129,7 +212,7 @@ export class BoardService {
       },
       include: this.include(userId),
     })
-    return toSummary(row, userId)
+    return this.summary(row, userId)
   }
 
   /**
@@ -144,15 +227,21 @@ export class BoardService {
     userId: string,
     query: ListBoardsQuery,
   ): Promise<{ boards: BoardSummary[]; nextCursor: string | null }> {
+    /*
+     * D-34: starring is FR-BOARD-008 [P2] and has no model, so nothing is
+     * starred and the Starred tab is EMPTY — which the dashboard renders as
+     * the filter-empty state ("No boards match that filter" + Clear filter),
+     * never as "Nothing here yet". Returning every board here, as Phase 8 did,
+     * made the tab claim the user had starred everything.
+     */
+    if (query.filter === 'starred') return { boards: [], nextCursor: null }
+
     const scope: Prisma.BoardWhereInput =
       query.filter === 'owned'
         ? { ownerId: userId }
         : query.filter === 'shared'
           ? { ownerId: { not: userId }, members: { some: { userId } } }
-          : // 'starred' has no model until Phase 12 (there is no Star table yet),
-            // so it resolves to the same set as 'all' rather than returning an
-            // empty list that would read as "you have no boards".
-            { OR: [{ ownerId: userId }, { members: { some: { userId } } }] }
+          : { OR: [{ ownerId: userId }, { members: { some: { userId } } }] }
 
     const where: Prisma.BoardWhereInput = {
       AND: [
@@ -181,7 +270,7 @@ export class BoardService {
         ? encodeCursor(this.sortValue(last, query.sort), last.id)
         : null
 
-    return { boards: page.map(row => toSummary(row, userId)), nextCursor }
+    return { boards: await this.summaries(page, userId), nextCursor }
   }
 
   private orderBy(sort: ListBoardsQuery['sort']): Prisma.BoardOrderByWithRelationInput[] {
@@ -239,7 +328,7 @@ export class BoardService {
       include: this.include(userId),
     })
     if (!row) throw new AuthError(ERROR_CODES.NOT_FOUND, 'Board not found', 404)
-    return toSummary(row, userId)
+    return this.summary(row, userId)
   }
 
   /** FR-BOARD-003. */
@@ -255,7 +344,7 @@ export class BoardService {
       data: { name: trimmed },
       include: this.include(userId),
     })
-    return toSummary(row, userId)
+    return this.summary(row, userId)
   }
 
   /**
@@ -270,7 +359,7 @@ export class BoardService {
       data: { deletedAt: new Date() },
       include: this.include(userId),
     })
-    return toSummary(row, userId)
+    return this.summary(row, userId)
   }
 
   async restore(boardId: string, userId: string): Promise<BoardSummary> {
@@ -279,7 +368,7 @@ export class BoardService {
       data: { deletedAt: null },
       include: this.include(userId),
     })
-    return toSummary(row, userId)
+    return this.summary(row, userId)
   }
 
   async listTrash(userId: string): Promise<BoardSummary[]> {
@@ -289,7 +378,7 @@ export class BoardService {
       orderBy: [{ deletedAt: 'desc' }, { id: 'asc' }],
       take: 200,
     })
-    return rows.map(row => toSummary(row, userId))
+    return this.summaries(rows, userId)
   }
 
   /**

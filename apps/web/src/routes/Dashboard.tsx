@@ -11,6 +11,8 @@ import {
 } from '../components/dashboard/DashboardChrome.js'
 import { BoardCard } from '../features/boards/BoardCard.js'
 import { BoardGrid, BoardGridSkeleton } from '../features/boards/BoardGrid.js'
+import { ShareModal } from '../features/sharing/ShareModal.js'
+import type { BoardSummary } from '../features/boards/api.js'
 import {
   useBoardList,
   useCreateBoard,
@@ -65,6 +67,8 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const toast = useToast()
   const userId = useAuthStore(s => s.user?.id)
+  // FLOWS §6.4 "Share" → S-12, one modal for the whole grid.
+  const [shareTarget, setShareTarget] = useState<BoardSummary | null>(null)
 
   const filter = (params.get('filter') ?? 'all') as BoardFilter
   const sort = (params.get('sort') ?? 'lastEdited') as BoardSort
@@ -260,6 +264,7 @@ export default function Dashboard() {
                     )
                   }
                   onTrash={() => onTrash(board.id)}
+                  onShare={() => setShareTarget(board)}
                   onDuplicate={() =>
                     duplicate.mutate(board.id, {
                       onSuccess: () =>
@@ -293,6 +298,13 @@ export default function Dashboard() {
           ) : null}
         </main>
       </div>
+
+      <ShareModal
+        open={shareTarget !== null}
+        onClose={() => setShareTarget(null)}
+        boardId={shareTarget?.id ?? ''}
+        boardName={shareTarget?.name ?? ''}
+      />
     </div>
   )
 }

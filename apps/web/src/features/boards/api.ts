@@ -1,4 +1,4 @@
-import type { BoardObject, ClientOp, Role } from '@coboard/shared'
+import type { BoardObject, BoardSummary, ClientOp, Role } from '@coboard/shared'
 import { api } from '../../lib/api.js'
 
 /**
@@ -10,20 +10,8 @@ import { api } from '../../lib/api.js'
  * from `@coboard/shared` (R-ARCH-007).
  */
 
-export interface BoardSummary {
-  id: string
-  name: string
-  ownerId: string
-  ownerName: string
-  myRole: Role
-  thumbnailUrl: string | null
-  objectCount: number
-  createdAt: string
-  updatedAt: string
-  lastActivityAt: string
-  deletedAt: string | null
-  daysUntilPurge?: number
-}
+// The list shape is defined once, in @coboard/shared (R-ARCH-007).
+export type { BoardSummary }
 
 export interface BoardState {
   objects: BoardObject[]

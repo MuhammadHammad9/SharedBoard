@@ -11,11 +11,12 @@ import { storageConfigured } from '../../lib/env.js'
 import { EXTENSION, sniffImageType } from '../../lib/fileType.js'
 import { identityKey } from '../../lib/identity.js'
 import { logger } from '../../lib/logger.js'
-import { storage, UPLOAD_KEY } from '../../lib/s3.js'
+import { AVATAR_KEY, ownAvatarKey, storage, UPLOAD_KEY } from '../../lib/s3.js'
 import { sanitizeSvg } from '../../lib/svgSanitize.js'
 import { consume, UPLOADS_BUCKET } from '../../lib/tokenBucket.js'
 import { permissionService } from '../../services/PermissionService.js'
-import { assertIdentified, identify } from '../middleware/auth.js'
+import { authService, toPublicUser } from '../../services/AuthService.js'
+import { assertAuthenticated, assertIdentified, identify } from '../middleware/auth.js'
 import { ah, HttpError } from '../middleware/errorHandler.js'
 import { validateBody } from '../middleware/validate.js'
 
@@ -43,6 +44,19 @@ const PresignSchema = z.object({
 })
 
 const ConfirmSchema = z.object({ key: z.string().min(1).max(200) })
+
+/** D-36: an avatar belongs to a user, not a board, so there is no boardId. */
+const AvatarPresignSchema = z.object({
+  contentType: z.string().min(1).max(100),
+  size: z.number().int().positive(),
+})
+
+const AVATAR_TYPES: readonly AcceptedImageType[] = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]
 
 const KEY = UPLOAD_KEY
 
@@ -177,6 +191,87 @@ export function createUploadsRouter(): Router {
       }
 
       res.json({ url: storage.publicUrl(key), contentType: declared })
+    }),
+  )
+
+  /*
+   * Avatars — FR-SET-001, D-36. The same presign → PUT → confirm round trip,
+   * keyed to the USER instead of a board: only a signed-in user has a profile
+   * (a guest gets the 401 `assertAuthenticated` gives every guest), and only
+   * the user named in the key may confirm it. Confirm is what sets
+   * `avatarUrl` — PATCH /auth/me no longer accepts a URL at all, so an avatar
+   * can only ever point at bytes this server has looked at.
+   */
+  router.post(
+    '/avatar/presign',
+    validateBody(AvatarPresignSchema),
+    ah(async (req, res) => {
+      const userId = assertAuthenticated(req)
+      const { contentType, size } = req.body as z.infer<typeof AvatarPresignSchema>
+
+      if (!isAccepted(contentType) || !AVATAR_TYPES.includes(contentType)) {
+        throw unsupported()
+      }
+      if (size > MAX_UPLOAD_BYTES) throw tooLarge()
+      requireStorage()
+
+      if (!(await consume(`upload:user:${userId}`, 1, UPLOADS_BUCKET))) {
+        throw new HttpError(ERROR_CODES.RATE_LIMITED, 'Too many uploads', 429)
+      }
+
+      const key = `avatars/${userId}/${randomUUID()}.${EXTENSION[contentType]}`
+      res.json({
+        uploadUrl: await storage.presignPut(key, contentType, size),
+        publicUrl: storage.publicUrl(key),
+        key,
+        headers: { 'content-type': contentType },
+      })
+    }),
+  )
+
+  router.post(
+    '/avatar/confirm',
+    validateBody(ConfirmSchema),
+    ah(async (req, res) => {
+      const userId = assertAuthenticated(req)
+      const { key } = req.body as z.infer<typeof ConfirmSchema>
+      const match = AVATAR_KEY.exec(key)
+      // Someone else's key answers exactly like a missing one.
+      if (!match || match[1] !== userId) {
+        throw new HttpError(ERROR_CODES.NOT_FOUND, 'Upload not found', 404)
+      }
+      const declared = TYPE_OF_EXTENSION[match[2]!]!
+      requireStorage()
+
+      const head = await storage.head(key)
+      if (!head) throw new HttpError(ERROR_CODES.NOT_FOUND, 'Upload not found', 404)
+
+      const reject = async (error: HttpError): Promise<never> => {
+        await storage
+          .remove(key)
+          .catch(err => logger.warn({ err, key }, 'could not delete a rejected avatar'))
+        throw error
+      }
+      if (head.size > MAX_UPLOAD_BYTES) return reject(tooLarge())
+      const bytes = await storage.read(key)
+      if (bytes.length > MAX_UPLOAD_BYTES) return reject(tooLarge())
+      // R-SEC-012: the bytes decide.
+      if (sniffImageType(bytes) !== declared) return reject(unsupported())
+
+      const previous = (await authService.findById(userId))?.avatarUrl
+      const user = await authService.updateProfile(userId, {
+        avatarUrl: storage.publicUrl(key),
+      })
+      // The photo it replaced is nobody's any more.
+      const stale = ownAvatarKey(previous, userId)
+      if (stale && stale !== key) {
+        await storage
+          .remove(stale)
+          .catch(err =>
+            logger.warn({ err, key: stale }, 'could not delete an old avatar'),
+          )
+      }
+      res.json({ user: toPublicUser(user) })
     }),
   )
 

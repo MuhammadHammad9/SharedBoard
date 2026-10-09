@@ -21,8 +21,6 @@ export const errors = {
   wrongCredentials: "That email or password didn't match. Try again.",
   rateLimitedLogin: (minutes: number) =>
     `Too many attempts. Try again in ${minutes} minutes.`,
-  // FLOWS §3.1 branch 8d — the server sent no retryAfter.
-  rateLimitedShortly: 'Too many attempts. Try again shortly.',
   emailAlreadyRegistered: 'An account already exists for this email.',
   weakPassword: 'Password needs at least 8 characters, including a letter and a number.',
   noBoardAccess: "You don't have access to this board.",
@@ -202,6 +200,12 @@ export const states = {
     headline: guest.boardGone,
     body: 'It may have been deleted by its owner.',
   },
+  // S-20 — FLOWS §1.1 "GENERIC 404 (*)". Only the action label is specified
+  // ("Take me home", §1.2); headline and body are copy gaps written to §8.1.
+  notFound: {
+    headline: "We couldn't find that page.",
+    body: 'Check the address, or head back home.',
+  },
   errorBoundary: {
     headline: 'Something went wrong.',
     body: "We've logged the problem. Reloading usually fixes it.",
@@ -298,6 +302,10 @@ export const auth = {
     or: 'or',
     // FLOWS §3.1 branch 8b — inline on the email field, beside a route out.
     emailTaken: errors.emailAlreadyRegistered,
+    // PRD §8.2 "Email already registered" → action "Log in instead".
+    logInInstead: actions.logInInstead,
+    // FLOWS §3.1 step 9 — the one-time toast after a first signup, verbatim.
+    welcome: 'Welcome to CoBoard',
     genericFailure: errors.genericServerError,
     // FLOWS §3.1 step 5.
     checklist: {
@@ -317,7 +325,8 @@ export const auth = {
     subtitle: 'Log in to get back to your boards.',
     submit: 'Log in',
     noAccount: "Don't have an account?",
-    signUp: actions.signUp,
+    // FLOWS §1.2: S-03 → S-02 is labelled "Create one".
+    signUp: 'Create one',
     forgot: 'Forgot password?',
     google: 'Continue with Google',
     // FLOWS §3.3 — the two OAuth failure banners.
@@ -363,6 +372,15 @@ export const auth = {
   settings: {
     title: 'Settings',
     profile: 'Profile',
+    // FR-SET-001 avatar (D-36). Copy gaps: the specs name the field only.
+    avatar: 'Avatar',
+    avatarAlt: (name: string) => `${name}'s avatar`,
+    avatarChange: 'Upload a photo',
+    avatarRemove: 'Remove photo',
+    avatarHint: 'PNG, JPG, GIF or WebP, under 10 MB.',
+    avatarUnsupported: 'We support PNG, JPG, GIF, and WebP for avatars.',
+    avatarSaved: 'Avatar updated',
+    avatarFailed: "Couldn't update your avatar. Try again.",
     displayName: 'Display name',
     email: 'Email',
     emailReadOnly: 'Your email address cannot be changed yet.',
@@ -482,7 +500,8 @@ export const dashboard = {
   },
   filters: {
     label: 'Filter boards',
-    all: 'All boards',
+    // FR-BOARD-002 and FLOWS §6.1 both name the tab "All".
+    all: 'All',
     owned: 'Owned by me',
     shared: 'Shared with me',
     starred: 'Starred',
@@ -496,9 +515,24 @@ export const dashboard = {
   // FLOWS §6.4 — the card's overflow menu.
   card: {
     actionsFor: (name: string) => `Actions for ${name}`,
+    // FLOWS §6.4 item labels, in its order.
+    open: 'Open',
+    openInNewTab: 'Open in new tab',
     rename: 'Rename',
     duplicate: 'Duplicate',
+    share: actions.share,
+    copyLink: 'Copy link',
+    exportPng: 'Export as PNG',
     leave: 'Leave board',
+    linkCopied: actions.copied,
+    // Copy gap — the clipboard was refused. Says what to do instead (§8.1).
+    linkCopyFailed:
+      "Couldn't copy the link. Open the board and copy it from the address bar.",
+    // FLOWS §6.2 avatar row: "+2" overflow, and its accessible name.
+    moreMembers: (count: number) => `+${count}`,
+    moreMembersLabel: (count: number) =>
+      count === 1 ? '1 more person' : `${count} more people`,
+    membersLabel: 'People on this board',
   },
 } as const
 

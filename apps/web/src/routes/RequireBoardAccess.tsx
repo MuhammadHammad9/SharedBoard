@@ -12,7 +12,7 @@ import {
 } from '../features/auth/guestIdentity.js'
 import { Button } from '../components/ui/Button.js'
 import { Spinner } from '../components/ui/Spinner.js'
-import { BackToDashboard, FullScreenState } from '../components/ui/FullScreenState.js'
+import { BackHome, FullScreenState } from '../components/ui/FullScreenState.js'
 import { loginUrlFor } from './nextParam.js'
 import { RequireAuth, useSessionBootstrap } from './guards.js'
 import { logout } from '../features/auth/api.js'
@@ -156,7 +156,7 @@ function Guard({ boardId, children }: { boardId: string; children: ReactNode }) 
         <FullScreenState
           headline={copy.headline}
           body={copy.body}
-          action={<BackToDashboard label={actions.backToDashboard} />}
+          action={<BackHome />}
           footer={
             <AccountLine
               next={loginUrlFor(location.pathname, location.search)}
@@ -172,7 +172,7 @@ function Guard({ boardId, children }: { boardId: string; children: ReactNode }) 
         <FullScreenState
           headline={states.boardNotFound.headline}
           body={states.boardNotFound.body}
-          action={<BackToDashboard label={actions.backToDashboard} />}
+          action={<BackHome />}
           testId="board-not-found"
         />
       )
@@ -181,7 +181,7 @@ function Guard({ boardId, children }: { boardId: string; children: ReactNode }) 
         <FullScreenState
           headline={states.boardGone.headline}
           body={states.boardGone.body}
-          action={<BackToDashboard label={actions.backToDashboard} />}
+          action={<BackHome />}
           testId="board-deleted"
         />
       )
