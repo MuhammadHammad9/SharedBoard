@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { CaretLeft, DotsThree, Keyboard } from '@phosphor-icons/react'
+import { CaretDown, CaretLeft, DotsThree, Keyboard } from '@phosphor-icons/react'
 import { RenameInline } from '../../features/boards/RenameInline.js'
 import { useToast } from '../ui/Toast.js'
 import { useRenameBoard } from '../../features/boards/useBoards.js'
 import {
   actions,
   boardChrome,
+  boardSettings,
   boards as boardStrings,
   demo as demoStrings,
   shortcuts,
@@ -22,6 +23,7 @@ import { openShortcuts } from './shortcutsStore.js'
 import { Dropdown } from '../ui/Dropdown.js'
 import { useBreakpoint } from '../../lib/breakpoints.js'
 import { useHomeExit } from '../ui/FullScreenState.js'
+import { BoardSettingsModal } from '../../features/boards/BoardSettingsModal.js'
 
 /** The canvas fills the window on the board route, so the window is the view. */
 const windowSize = () => ({ width: window.innerWidth, height: window.innerHeight })
@@ -74,6 +76,7 @@ export function BoardHeader({
   const [params, setParams] = useSearchParams()
   const [editing, setEditing] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [displayName, setDisplayName] = useState(name)
   const rename = useRenameBoard()
   const toast = useToast()
@@ -101,6 +104,8 @@ export function BoardHeader({
   }, [params, setParams])
 
   const canRename = role === 'OWNER'
+  // S-13 is the owner's alone (FR-SHARE-001), and /demo has no server to save to.
+  const hasSettings = role === 'OWNER' && !demo
 
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-header flex items-center gap-3 px-4 py-3">
@@ -149,6 +154,35 @@ export function BoardHeader({
         )}
       </div>
 
+      {/* FLOWS §14.2: "board title (editable, with a ▾ menu)"; FLOWS §1.2:
+          "Title menu → Settings" (owner). Below desktop it lives in `⋯`. */}
+      {hasSettings && !mobile && (
+        <span className="pointer-events-auto -ml-2">
+          <Dropdown
+            label={boardSettings.titleMenu}
+            align="left"
+            items={[
+              {
+                label: boardSettings.menu,
+                onSelect: () => setSettingsOpen(true),
+                testId: 'board-settings-open',
+              },
+            ]}
+            trigger={props => (
+              <button
+                {...props}
+                type="button"
+                aria-label={boardSettings.titleMenu}
+                data-testid="board-title-menu"
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md bg-app/90 text-muted shadow-panel outline-none transition-colors duration-fast hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                <CaretDown size={14} weight="bold" aria-hidden="true" />
+              </button>
+            )}
+          />
+        </span>
+      )}
+
       {/* FLOWS §9.4: while we cannot hear anyone, the faces we last saw go
           grey — they are a memory, not a live roster. */}
       <AvatarStack stale={connection === 'reconnecting' || connection === 'offline'} />
@@ -179,6 +213,15 @@ export function BoardHeader({
                       label: actions.share,
                       onSelect: () => setSharing(true),
                       testId: 'share-button',
+                    },
+                  ]
+                : []),
+              ...(hasSettings
+                ? [
+                    {
+                      label: boardSettings.menu,
+                      onSelect: () => setSettingsOpen(true),
+                      testId: 'board-settings-open',
                     },
                   ]
                 : []),
@@ -234,6 +277,16 @@ export function BoardHeader({
           onClose={() => setSharing(false)}
           boardId={boardId}
           boardName={displayName}
+        />
+      )}
+      {hasSettings && (
+        <BoardSettingsModal
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          boardId={boardId}
+          boardName={displayName}
+          onRenamed={setDisplayName}
+          onOpenShare={() => setSharing(true)}
         />
       )}
     </header>

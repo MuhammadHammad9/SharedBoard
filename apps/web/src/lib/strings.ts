@@ -259,6 +259,25 @@ export const boards = {
   scratchName: 'Scratch board',
 } as const
 
+/**
+ * S-13 — board settings (owner only). Neither PRD §8 nor FLOWS gives this
+ * modal any copy; authored to the §8.1 tone rules and recorded as D-24. The
+ * destructive confirm reuses `boards.deleteConfirm*`, the board-card copy.
+ */
+export const boardSettings = {
+  // FLOWS §1.2: "Title menu → Settings".
+  menu: 'Settings',
+  titleMenu: 'Board menu',
+  title: 'Board settings',
+  save: 'Save name',
+  renamed: 'Board renamed',
+  sharing: 'Sharing',
+  sharingBody: 'Invite people and manage who can view or edit this board.',
+  dangerZone: 'Danger zone',
+  dangerBody:
+    'Moving this board to trash disconnects everyone working on it. You can restore it for 30 days.',
+} as const
+
 /** FLOWS §11 — export. Labels follow the §11 S-14 drawing word for word. */
 export const exportStrings = {
   nothingToExport: "There's nothing to export yet.",
