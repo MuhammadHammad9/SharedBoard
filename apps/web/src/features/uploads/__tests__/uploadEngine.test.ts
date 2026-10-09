@@ -6,6 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_UPLOAD_BYTES } from '@coboard/shared'
+import type { PutFile } from '../uploadEngine.js'
 
 const lib = vi.hoisted(() => ({ post: vi.fn() }))
 vi.mock('../../../lib/api.js', async importOriginal => ({
@@ -26,8 +27,8 @@ const file = (type: string, size = 2048, name = 'cat.png') => {
 const items = () => Object.values(engine.useUploadStore.getState().items)
 const flush = () => new Promise(r => setTimeout(r, 0))
 
-let notify: ReturnType<typeof vi.fn>
-let put: ReturnType<typeof vi.fn>
+let notify: ReturnType<typeof vi.fn<(message: string) => void>>
+let put: ReturnType<typeof vi.fn<PutFile>>
 
 beforeEach(() => {
   boardStore.getState().loadObjects([])
